@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 proto_src_files = [
-    "pymoliere/config.proto"
+    "pymoliere/config/config.proto"
 ]
 
 

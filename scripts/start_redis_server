@@ -1,0 +1,4 @@
+#!/bin/bash
+
+echo $HOSTNAME > ~/.addresses/redis_server
+~/redis/redis-stable/src/redis-server moliere.db.conf

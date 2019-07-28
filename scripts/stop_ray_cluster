@@ -1,0 +1,18 @@
+#!/bin/bash
+
+echo Stopping all ray workers...
+
+# Necessary to call ray
+CONDA_START=~/anaconda3/etc/profile.d/conda.sh
+MODULE_GROUP=~/module_groups/redis_dist
+
+for ADDR in $(cat $PBS_NODEFILE);
+do { ssh -T $ADDR << EOF
+  source $CONDA_START
+  source $MODULE_GROUP
+  ray stop
+  echo Stopped $ADDR
+EOF
+} &
+done
+wait

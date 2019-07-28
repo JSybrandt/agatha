@@ -1,0 +1,38 @@
+syntax = "proto2";
+package pymoliere;
+
+
+// This is used to specify the remote location of pubmed articles.
+// Defaults to the most recent baseline.
+message FtpSource {
+  optional string address = 1 [default = "ftp.ncbi.nlm.nih.gov"];
+  optional string dir_path = 2 [default = "pubmed/baseline"];
+}
+
+// The ClusterConfig defines the ray cluster connection param. Any cluster-specific deatuls will occur here.
+message ClusterConfig {
+  // Where to connect to cluster. If not specified, defaults to $HOSTNAME
+  optional string head_address = 1;
+  optional int32 port = 2;
+}
+
+// The DataServerConfig describes where to save/load moliere data from.
+// This host is a redis server.
+message DataServerConfig {
+  optional string address = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Config used to construct the network.
+message BuildConfig {
+  optional ClusterConfig cluster = 1;
+  optional DataServerConfig dataserver = 2;
+  optional FtpSource ftp_source = 3;
+}
+
+// Config used to query the network.
+message QueryConfig {
+  optional ClusterConfig cluster = 1;
+  optional DataServerConfig dataserver = 2;
+}

@@ -25,7 +25,7 @@ message DataServerConfig {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Config used to construct the network.
-message BuildConfig {
+message ConstructConfig {
   // Details about the ray cluster
   optional ClusterConfig cluster = 1;
   // Details about the redis dataserver

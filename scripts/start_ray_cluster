@@ -5,6 +5,11 @@ RAY_PORT=4545
 RAY_HEAD=$HOSTNAME:$RAY_PORT
 WORKER_FILE=$(mktemp)
 
+echo "Add to config:"
+echo "--cluster.head_address=$HOSTNAME"
+echo "--cluster.port=$RAY_PORT"
+
+
 source $CONDA_START
 source $MODULE_GROUP
 

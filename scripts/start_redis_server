@@ -1,4 +1,7 @@
 #!/bin/bash
 
 echo $HOSTNAME > ~/.addresses/redis_server
+echo "Add to config:"
+echo "--dataserver.address=$HOSTNAME"
 ~/redis/redis-stable/src/redis-server moliere.db.conf
+

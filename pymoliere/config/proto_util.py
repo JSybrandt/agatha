@@ -72,8 +72,7 @@ def load_text_as_proto(
 EXT_TO_PROTO_PARSER: Dict[str, ProtoLoadFn] = {
   ".pb": load_serialized_pb_as_proto,
   ".json": load_json_as_proto,
-  ".txt": load_text_as_proto,
-  ".config": load_text_as_proto,
+  ".conf": load_text_as_proto,
 }
 
 def load_proto(
@@ -174,15 +173,24 @@ def setup_parser_with_proto(config_proto:ProtoObj)->ArgumentParser:
     parser.add_argument(
         f"--{field}",
         type=type(val),
-        default=val,
     )
   return parser
 
-def transfer_args_to_proto(args:Namespace, config_proto:ProtoObj) -> ProtoObj:
+def transfer_args_to_proto(args:Namespace, config_proto:ProtoObj) -> None:
   """
   Writes the fields from the args to the config proto.
   """
   for field in get_full_field_names(config_proto):
-    if hasattr(args, field):
+    if hasattr(args, field) and getattr(args, field) is not None:
       set_field(config_proto, field, getattr(args, field))
-  return config_proto
+
+def parse_args_to_config_proto(config_proto:ProtoObj)->None:
+  "Combines the above steps to replace parse_args."
+  parser = setup_parser_with_proto(config_proto)
+  args = parser.parse_args()
+  if args.config is not None:
+    if not args.config.is_file():
+      raise RuntimeError("Supplied config path does not exit.")
+    else:
+      load_proto(args.config, config_proto)
+  transfer_args_to_proto(args, config_proto)

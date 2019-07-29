@@ -67,11 +67,12 @@ def test_parse_proto_fields_build_config():
     "ftp_source.address",
     "ftp_source.dir_path",
   ])
-  actual = set(proto_util.get_full_field_names(cpb.BuildConfig()))
-  assert actual == expected
+  actual = set(proto_util.get_full_field_names(cpb.ConstructConfig()))
+  # Assert that the ConstructConfig has at least these names
+  assert actual.intersection(expected) == expected
 
 def test_setup_parser_with_proto():
-  parser = proto_util.setup_parser_with_proto(cpb.BuildConfig())
+  parser = proto_util.setup_parser_with_proto(cpb.ConstructConfig())
   args = parser.parse_args([])
   assert hasattr(args, "cluster.head_address")
   assert hasattr(args, "cluster.port")
@@ -80,9 +81,9 @@ def test_setup_parser_with_proto():
   assert hasattr(args, "ftp_source.dir_path")
 
 def test_set_field_nested():
-  expected = cpb.BuildConfig()
+  expected = cpb.ConstructConfig()
   expected.cluster.head_address = "new_addr_val"
-  actual = cpb.BuildConfig()
+  actual = cpb.ConstructConfig()
   proto_util.set_field(actual, "cluster.head_address", "new_addr_val")
   assert actual == expected
 
@@ -94,7 +95,7 @@ def test_set_field_unnested():
   assert actual == expected
 
 def test_transfer_args_to_proto():
-  actual = cpb.BuildConfig()
+  actual = cpb.ConstructConfig()
   actual.cluster.head_address = "original_addr_val"
   actual.cluster.port = 1234
   actual.ftp_source.address = "unrelated"
@@ -102,9 +103,9 @@ def test_transfer_args_to_proto():
   ns = Namespace()
   setattr(ns, "cluster.head_address", "NEW_addr_val")
   setattr(ns, "cluster.port", 4321)
-  actual = proto_util.transfer_args_to_proto(ns, actual)
+  proto_util.transfer_args_to_proto(ns, actual)
 
-  expected = cpb.BuildConfig()
+  expected = cpb.ConstructConfig()
   expected.cluster.head_address = "NEW_addr_val"
   expected.cluster.port = 4321
   expected.ftp_source.address = "unrelated"

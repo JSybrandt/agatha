@@ -6,6 +6,7 @@ from pymoliere.config import (
 )
 from tempfile import TemporaryDirectory
 from pathlib import Path
+from argparse import Namespace
 
 # Ensures that parsers are working properly
 def test_load_serialized_pb_as_proto():
@@ -51,4 +52,61 @@ def test_load_text_as_proto():
       path=path,
       proto_obj=cpb.FtpSource()
     )
+  assert actual == expected
+
+def test_parse_proto_fields_ftp_source():
+  expected = set(["address", "dir_path"])
+  actual = set(proto_util.get_full_field_names(cpb.FtpSource()))
+  assert actual == expected
+
+def test_parse_proto_fields_build_config():
+  expected = set([
+    "cluster.head_address",
+    "cluster.port",
+    "dataserver.address",
+    "ftp_source.address",
+    "ftp_source.dir_path",
+  ])
+  actual = set(proto_util.get_full_field_names(cpb.BuildConfig()))
+  assert actual == expected
+
+def test_setup_parser_with_proto():
+  parser = proto_util.setup_parser_with_proto(cpb.BuildConfig())
+  args = parser.parse_args([])
+  assert hasattr(args, "cluster.head_address")
+  assert hasattr(args, "cluster.port")
+  assert hasattr(args, "dataserver.address")
+  assert hasattr(args, "ftp_source.address")
+  assert hasattr(args, "ftp_source.dir_path")
+
+def test_set_field_nested():
+  expected = cpb.BuildConfig()
+  expected.cluster.head_address = "new_addr_val"
+  actual = cpb.BuildConfig()
+  proto_util.set_field(actual, "cluster.head_address", "new_addr_val")
+  assert actual == expected
+
+def test_set_field_unnested():
+  expected = cpb.FtpSource()
+  expected.address = "new_addr_val"
+  actual = cpb.FtpSource()
+  proto_util.set_field(actual, "address", "new_addr_val")
+  assert actual == expected
+
+def test_transfer_args_to_proto():
+  actual = cpb.BuildConfig()
+  actual.cluster.head_address = "original_addr_val"
+  actual.cluster.port = 1234
+  actual.ftp_source.address = "unrelated"
+  # Overwrite some values with ns
+  ns = Namespace()
+  setattr(ns, "cluster.head_address", "NEW_addr_val")
+  setattr(ns, "cluster.port", 4321)
+  actual = proto_util.transfer_args_to_proto(ns, actual)
+
+  expected = cpb.BuildConfig()
+  expected.cluster.head_address = "NEW_addr_val"
+  expected.cluster.port = 4321
+  expected.ftp_source.address = "unrelated"
+
   assert actual == expected

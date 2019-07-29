@@ -26,9 +26,14 @@ message DataServerConfig {
 
 // Config used to construct the network.
 message BuildConfig {
+  // Details about the ray cluster
   optional ClusterConfig cluster = 1;
+  // Details about the redis dataserver
   optional DataServerConfig dataserver = 2;
+  // Details about the medline distribution to download.
   optional FtpSource ftp_source = 3;
+  // A descriptive name
+  optional string name = 4;
 }
 
 // Config used to query the network.

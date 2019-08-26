@@ -1,0 +1,18 @@
+#!/bin/bash
+
+PROCESSES_PER_NODE=16
+THREADS_PER_PROCESS=1
+
+CONDA_START=~/anaconda3/etc/profile.d/conda.sh
+MODULE_GROUP=~/module_groups/pymoliere
+
+source $CONDA_START
+source $MODULE_GROUP
+
+LOG_DIR=/tmp/dask_logs
+mkdir $LOG_DIR
+dask-ssh \
+  --hostfile $PBS_NODEFILE\
+  --log-directory $LOG_DIR\
+  --nthreads $THREADS_PER_PROCESS\
+  --nprocs $PROCESSES_PER_NODE

@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='pymoliere',
   syntax='proto2',
   serialized_options=None,
-  serialized_pb=_b('\n\x1dpymoliere/config/config.proto\x12\tpymoliere\"U\n\tFtpSource\x12%\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\x14\x66tp.ncbi.nlm.nih.gov\x12!\n\x08\x64ir_path\x18\x02 \x01(\t:\x0fpubmed/baseline\"3\n\rClusterConfig\x12\x14\n\x0chead_address\x18\x01 \x01(\t\x12\x0c\n\x04port\x18\x02 \x01(\x05\"#\n\x10\x44\x61taServerConfig\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\t\"\xa5\x01\n\x0f\x43onstructConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12/\n\ndataserver\x18\x02 \x01(\x0b\x32\x1b.pymoliere.DataServerConfig\x12(\n\nftp_source\x18\x03 \x01(\x0b\x32\x14.pymoliere.FtpSource\x12\x0c\n\x04name\x18\x04 \x01(\t\"i\n\x0bQueryConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12/\n\ndataserver\x18\x02 \x01(\x0b\x32\x1b.pymoliere.DataServerConfig')
+  serialized_pb=_b('\n\x1dpymoliere/config/config.proto\x12\tpymoliere\"T\n\tFtpSource\x12%\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\x14\x66tp.ncbi.nlm.nih.gov\x12 \n\x07workdir\x18\x02 \x01(\t:\x0fpubmed/baseline\"i\n\rClusterConfig\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\t\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x38\x37\x38\x36\x12\x1b\n\rlocal_scratch\x18\x03 \x01(\t:\x04/tmp\x12\x16\n\x0eshared_scratch\x18\x04 \x01(\t\"\x1f\n\x0cServerConfig\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\t\"\x88\x01\n\x0f\x43onstructConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12\'\n\x06server\x18\x02 \x01(\x0b\x32\x17.pymoliere.ServerConfig\x12!\n\x03\x66tp\x18\x03 \x01(\x0b\x32\x14.pymoliere.FtpSource\"a\n\x0bQueryConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12\'\n\x06server\x18\x02 \x01(\x0b\x32\x17.pymoliere.ServerConfig')
 )
 
 
@@ -40,7 +40,7 @@ _FTPSOURCE = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dir_path', full_name='pymoliere.FtpSource.dir_path', index=1,
+      name='workdir', full_name='pymoliere.FtpSource.workdir', index=1,
       number=2, type=9, cpp_type=9, label=1,
       has_default_value=True, default_value=_b("pubmed/baseline").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -59,7 +59,7 @@ _FTPSOURCE = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=44,
-  serialized_end=129,
+  serialized_end=128,
 )
 
 
@@ -71,7 +71,7 @@ _CLUSTERCONFIG = _descriptor.Descriptor(
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='head_address', full_name='pymoliere.ClusterConfig.head_address', index=0,
+      name='address', full_name='pymoliere.ClusterConfig.address', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -80,7 +80,21 @@ _CLUSTERCONFIG = _descriptor.Descriptor(
     _descriptor.FieldDescriptor(
       name='port', full_name='pymoliere.ClusterConfig.port', index=1,
       number=2, type=5, cpp_type=1, label=1,
-      has_default_value=False, default_value=0,
+      has_default_value=True, default_value=8786,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='local_scratch', full_name='pymoliere.ClusterConfig.local_scratch', index=2,
+      number=3, type=9, cpp_type=9, label=1,
+      has_default_value=True, default_value=_b("/tmp").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='shared_scratch', full_name='pymoliere.ClusterConfig.shared_scratch', index=3,
+      number=4, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
@@ -96,20 +110,20 @@ _CLUSTERCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=131,
-  serialized_end=182,
+  serialized_start=130,
+  serialized_end=235,
 )
 
 
-_DATASERVERCONFIG = _descriptor.Descriptor(
-  name='DataServerConfig',
-  full_name='pymoliere.DataServerConfig',
+_SERVERCONFIG = _descriptor.Descriptor(
+  name='ServerConfig',
+  full_name='pymoliere.ServerConfig',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='address', full_name='pymoliere.DataServerConfig.address', index=0,
+      name='address', full_name='pymoliere.ServerConfig.address', index=0,
       number=1, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
@@ -127,8 +141,8 @@ _DATASERVERCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=184,
-  serialized_end=219,
+  serialized_start=237,
+  serialized_end=268,
 )
 
 
@@ -147,23 +161,16 @@ _CONSTRUCTCONFIG = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dataserver', full_name='pymoliere.ConstructConfig.dataserver', index=1,
+      name='server', full_name='pymoliere.ConstructConfig.server', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ftp_source', full_name='pymoliere.ConstructConfig.ftp_source', index=2,
+      name='ftp', full_name='pymoliere.ConstructConfig.ftp', index=2,
       number=3, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='name', full_name='pymoliere.ConstructConfig.name', index=3,
-      number=4, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
@@ -179,8 +186,8 @@ _CONSTRUCTCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=222,
-  serialized_end=387,
+  serialized_start=271,
+  serialized_end=407,
 )
 
 
@@ -199,7 +206,7 @@ _QUERYCONFIG = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='dataserver', full_name='pymoliere.QueryConfig.dataserver', index=1,
+      name='server', full_name='pymoliere.QueryConfig.server', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -217,18 +224,18 @@ _QUERYCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=389,
-  serialized_end=494,
+  serialized_start=409,
+  serialized_end=506,
 )
 
 _CONSTRUCTCONFIG.fields_by_name['cluster'].message_type = _CLUSTERCONFIG
-_CONSTRUCTCONFIG.fields_by_name['dataserver'].message_type = _DATASERVERCONFIG
-_CONSTRUCTCONFIG.fields_by_name['ftp_source'].message_type = _FTPSOURCE
+_CONSTRUCTCONFIG.fields_by_name['server'].message_type = _SERVERCONFIG
+_CONSTRUCTCONFIG.fields_by_name['ftp'].message_type = _FTPSOURCE
 _QUERYCONFIG.fields_by_name['cluster'].message_type = _CLUSTERCONFIG
-_QUERYCONFIG.fields_by_name['dataserver'].message_type = _DATASERVERCONFIG
+_QUERYCONFIG.fields_by_name['server'].message_type = _SERVERCONFIG
 DESCRIPTOR.message_types_by_name['FtpSource'] = _FTPSOURCE
 DESCRIPTOR.message_types_by_name['ClusterConfig'] = _CLUSTERCONFIG
-DESCRIPTOR.message_types_by_name['DataServerConfig'] = _DATASERVERCONFIG
+DESCRIPTOR.message_types_by_name['ServerConfig'] = _SERVERCONFIG
 DESCRIPTOR.message_types_by_name['ConstructConfig'] = _CONSTRUCTCONFIG
 DESCRIPTOR.message_types_by_name['QueryConfig'] = _QUERYCONFIG
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
@@ -247,12 +254,12 @@ ClusterConfig = _reflection.GeneratedProtocolMessageType('ClusterConfig', (_mess
   ))
 _sym_db.RegisterMessage(ClusterConfig)
 
-DataServerConfig = _reflection.GeneratedProtocolMessageType('DataServerConfig', (_message.Message,), dict(
-  DESCRIPTOR = _DATASERVERCONFIG,
+ServerConfig = _reflection.GeneratedProtocolMessageType('ServerConfig', (_message.Message,), dict(
+  DESCRIPTOR = _SERVERCONFIG,
   __module__ = 'pymoliere.config.config_pb2'
-  # @@protoc_insertion_point(class_scope:pymoliere.DataServerConfig)
+  # @@protoc_insertion_point(class_scope:pymoliere.ServerConfig)
   ))
-_sym_db.RegisterMessage(DataServerConfig)
+_sym_db.RegisterMessage(ServerConfig)
 
 ConstructConfig = _reflection.GeneratedProtocolMessageType('ConstructConfig', (_message.Message,), dict(
   DESCRIPTOR = _CONSTRUCTCONFIG,

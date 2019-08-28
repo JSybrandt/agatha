@@ -1,7 +1,7 @@
 #!/bin/bash
 
-PROCESSES_PER_NODE=2
-THREADS_PER_PROCESS=8
+PROCESSES_PER_NODE=4
+THREADS_PER_PROCESS=5
 
 CONDA_START=~/anaconda3/etc/profile.d/conda.sh
 MODULE_GROUP=~/module_groups/pymoliere

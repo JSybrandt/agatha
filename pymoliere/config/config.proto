@@ -20,20 +20,12 @@ message ClusterConfig {
   optional string shared_scratch = 4;
 }
 
-// The DataServerConfig describes where to save/load moliere data from.
-// This host is a redis server.
-message ServerConfig {
-  optional string address = 1;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 // Config used to construct the network.
 message ConstructConfig {
   // Details about the ray cluster
   optional ClusterConfig cluster = 1;
-  // Details about the redis server
-  optional ServerConfig server = 2;
   // Details about the medline distribution to download.
   optional FtpSource ftp = 3;
 }
@@ -41,5 +33,4 @@ message ConstructConfig {
 // Config used to query the network.
 message QueryConfig {
   optional ClusterConfig cluster = 1;
-  optional ServerConfig server = 2;
 }

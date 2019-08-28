@@ -17,18 +17,18 @@ def ftp_list_files(conn:FTP, pattern:str=".*") -> List[str]:
   return [f for f in conn.nlst() if pattern.match(f)]
 
 
-def ftp_download(conn:FTP, remote_name:str, local_dir:Path) -> Path:
-  local_path = local_dir.joinpath(remote_name)
+def ftp_download(conn:FTP, remote_name:str, directory:Path) -> Path:
+  local_path = directory.joinpath(remote_name)
   assert not local_path.exists()
   with local_path.open('wb') as local_file:
     conn.retrbinary(f"RETR {remote_name}", local_file.write, 1024)
   return local_path
 
 
-def ftp_download_if_missing(conn:FTP, remote_name:str, local_dir:Path) -> Path:
+def ftp_download_if_missing(conn:FTP, remote_name:str, directory:Path) -> Path:
   "If the file already exists, skip it."
-  assert local_dir.is_dir()
-  local_path = local_dir.joinpath(remote_name)
+  assert directory.is_dir()
+  local_path = directory.joinpath(remote_name)
   if local_path.is_file():
     return local_path
   else:
@@ -36,20 +36,20 @@ def ftp_download_if_missing(conn:FTP, remote_name:str, local_dir:Path) -> Path:
     return ftp_download(
         conn=conn,
         remote_name=remote_name,
-        local_dir=local_dir
+        directory=directory
     )
 
 
 def ftp_retreive_all(
   conn:FTP,
-  local_dir:Path,
+  directory:Path,
   pattern:str=".*",
   show_progress:bool=False,
 ) -> List[Path]:
   """
-  For each file matching the given pattern, download if not in local_dir.
+  For each file matching the given pattern, download if not in directory.
   """
-  assert local_dir.is_dir()
+  assert directory.is_dir()
   files = ftp_list_files(
     conn=conn,
     pattern=pattern,
@@ -60,7 +60,7 @@ def ftp_retreive_all(
       ftp_download_if_missing(
         conn=conn,
         remote_name=f,
-        local_dir=local_dir
+        directory=directory
       )
     )
   return res

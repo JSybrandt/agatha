@@ -4,7 +4,11 @@ from pymoliere.config import (
     dask_config,
 )
 from pymoliere.util import file_util, ftp_util, pipeline_operator
+from pymoliere.util.pipeline_operator import FilterOperator
 from pymoliere.construct.parse_pubmed_xml import ParsePubmedOperator
+from pymoliere.construct.text_operators import (
+    SplitSentencesOperator,
+)
 from dask.distributed import Client
 from pathlib import Path
 
@@ -30,16 +34,22 @@ if __name__ == "__main__":
   print("Configuring Dask, attaching to cluster")
   print(f"\t{cluster_address}")
   dask_config.set_local_tmp(local_scratch_root)
-  dclient = Client(address=cluster_address)
-  dclient.restart()
+  dask_client = Client(address=cluster_address)
+  if config.cluster.restart:
+    print("Restarting cluster...")
+    dask_client.restart()
+    datasets = dask_client.list_datasets()
+    for d in datasets:
+      dask_client.unpublish_dataset(d)
 
   # Configure pipeline defaults
   pipeline_operator.DEFAULTS["shared_scratch_root"] = shared_scratch_root
   pipeline_operator.DEFAULTS["local_scratch_root"] = local_scratch_root
+  pipeline_operator.DEFAULTS["dask_client"] = dask_client
 
   # READY TO GO!
 
-  print("Retrieving PubMed")
+  print("Checking / Retrieving PubMed")
   pubmed_xml_dir = file_util.prep_scratch_subdir(
       scratch_root=shared_scratch_root,
       dir_name="download_pubmed",
@@ -55,7 +65,22 @@ if __name__ == "__main__":
         show_progress=True,
     )
 
-  pubmed = ParsePubmedOperator(
-      shared_xml_gz_paths=xml_paths,
+  ParsePubmedOperator(
       name="parse_pubmed",
+      shared_xml_gz_paths=xml_paths,
+      repartition_kwargs={"partition_size":"100MB"},
+  ).eval()
+
+  FilterOperator(
+      name="pubmed_english",
+      input_dataset="parse_pubmed",
+      expression="language == 'eng'",
+      repartition_kwargs={"partition_size":"100MB"},
+  ).eval()
+
+  SplitSentencesOperator(
+      name="pubmed_sentences",
+      input_dataset="pubmed_english",
+      scispacy_version=config.parser.scispacy_version,
+      text_fields=["raw_title", "raw_abstract"],
   ).eval()

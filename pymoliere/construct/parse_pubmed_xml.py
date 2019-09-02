@@ -1,26 +1,20 @@
-from lxml import etree
-import gzip
-from typing import List
-from pymoliere.datatypes.datatypes_pb2 import PubMedRecord
-from pathlib import Path
-import dask.dataframe as ddf
-import pandas as pd
-from pymoliere.util.file_util import (
-    copy_to_local_scratch,
-)
 from dask.delayed import delayed
+from dask.distributed import Client
+from lxml import etree
+from pathlib import Path
+from pymoliere.util.file_util import copy_to_local_scratch
 from pymoliere.util.pipeline_operator import PipelineOperator
+from typing import List
+import dask.dataframe as ddf
+import gzip
+import pandas as pd
 
 
 class ParsePubmedOperator(PipelineOperator):
   def __init__(
       self,
       shared_xml_gz_paths:List[Path],
-      name:str,
-      #-- Replaced with DEFAULTS
-      local_scratch_root:Path=None,
-      shared_scratch_root:Path=None,
-      clear_scratch:bool=None,
+      **kwargs
   ):
     """
     This operator reads .xml.gz files download from Medline/Pubmed into a dask
@@ -28,14 +22,11 @@ class ParsePubmedOperator(PipelineOperator):
     """
     PipelineOperator.__init__(
       self,
-      local_scratch_root=local_scratch_root,
-      name=name,
-      shared_scratch_root=shared_scratch_root,
-      clear_scratch=clear_scratch,
+      **kwargs
     )
     self.shared_xml_gz_paths = shared_xml_gz_paths
 
-  def get_dataframe(self)->ddf.DataFrame:
+  def get_dataframe(self, dask_client:Client)->ddf.DataFrame:
     return ddf.from_delayed([
       delayed(self.parse_pubmed_xml)(
         xml_path=p,
@@ -70,7 +61,7 @@ class ParsePubmedOperator(PipelineOperator):
     with gzip.open(str(local_xml_gz_path), "rb") as xml_file:
       for _, pubmed_elem in etree.iterparse(xml_file, tag="PubmedArticle"):
         record = {
-            "id": None,
+            "pmid": None,
             "version": None,
             "date": None,
             "language": None,
@@ -87,7 +78,7 @@ class ParsePubmedOperator(PipelineOperator):
 
           pmid_elem = medline_cite_elem.find("PMID")
           if pmid_elem is not None:
-            record["id"] = int(pmid_elem.text)
+            record["pmid"] = int(pmid_elem.text)
             record["version"] = int(pmid_elem.attrib["Version"])
 
           article_elem = medline_cite_elem.find("Article")
@@ -145,7 +136,7 @@ class ParsePubmedOperator(PipelineOperator):
                   record["date"] = self.xml_obj_to_date(date_elem)
 
         # Set defaults, or skip if required field not present
-        if record["id"] is None:
+        if record["pmid"] is None:
           continue
         if record["version"] is None:
           record["version"] = -1
@@ -157,8 +148,10 @@ class ParsePubmedOperator(PipelineOperator):
           record["raw_title"] = ""
         if record["raw_abstract"] is None:
           record["raw_abstract"] = ""
-        record["publication_types"] = ",".join(record["publication_types"])
-        record["mesh_headings"] = ','.join(record["mesh_headings"])
+        if len(record["publication_types"]) == 0:
+          record["publication_types"] = ["None"]
+        if len(record["mesh_headings"]) == 0:
+          record["mesh_headings"] = ["None"]
         records.append(record)
 
     return pd.DataFrame(records)

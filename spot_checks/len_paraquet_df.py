@@ -13,7 +13,11 @@ if __name__=="__main__":
   args = parser.parse_args()
   assert paraquet_exists(args.path)
   client = Client(address = args.cluster_address)
-  recs = ddf.read_parquet(args.path, engine="pyarrow")
-  vals = recs.sample(frac=args.sample_rate).compute()
-  for row in vals.itertuples():
-    print(row)
+  print(args.path.name)
+  if args.path.name in client.list_datasets():
+    print("\t- Cached")
+    recs = client.get_dataset(args.path.name)
+  else:
+    print("\t- Loading")
+    recs = ddf.read_parquet(args.path, engine="pyarrow")
+  print(len(recs))

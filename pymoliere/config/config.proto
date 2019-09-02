@@ -18,6 +18,12 @@ message ClusterConfig {
   // Fast scratch dir to use for intermediate storage.
   optional string local_scratch = 3 [default="/tmp"];
   optional string shared_scratch = 4;
+  // Restarting cluster refreshes all code, but also clears stored datasets.
+  optional bool restart= 5 [default=false];
+}
+
+message TextParserConfig {
+  optional string scispacy_version = 1 [default="en_core_sci_lg"];
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -28,6 +34,7 @@ message ConstructConfig {
   optional ClusterConfig cluster = 1;
   // Details about the medline distribution to download.
   optional FtpSource ftp = 3;
+  optional TextParserConfig parser = 4;
 }
 
 // Config used to query the network.

@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='pymoliere',
   syntax='proto2',
   serialized_options=None,
-  serialized_pb=_b('\n\x1dpymoliere/config/config.proto\x12\tpymoliere\"T\n\tFtpSource\x12%\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\x14\x66tp.ncbi.nlm.nih.gov\x12 \n\x07workdir\x18\x02 \x01(\t:\x0fpubmed/baseline\"i\n\rClusterConfig\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\t\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x38\x37\x38\x36\x12\x1b\n\rlocal_scratch\x18\x03 \x01(\t:\x04/tmp\x12\x16\n\x0eshared_scratch\x18\x04 \x01(\t\"_\n\x0f\x43onstructConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12!\n\x03\x66tp\x18\x03 \x01(\x0b\x32\x14.pymoliere.FtpSource\"8\n\x0bQueryConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig')
+  serialized_pb=_b('\n\x1dpymoliere/config/config.proto\x12\tpymoliere\"T\n\tFtpSource\x12%\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\x14\x66tp.ncbi.nlm.nih.gov\x12 \n\x07workdir\x18\x02 \x01(\t:\x0fpubmed/baseline\"\x81\x01\n\rClusterConfig\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\t\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x38\x37\x38\x36\x12\x1b\n\rlocal_scratch\x18\x03 \x01(\t:\x04/tmp\x12\x16\n\x0eshared_scratch\x18\x04 \x01(\t\x12\x16\n\x07restart\x18\x05 \x01(\x08:\x05\x66\x61lse\"<\n\x10TextParserConfig\x12(\n\x10scispacy_version\x18\x01 \x01(\t:\x0e\x65n_core_sci_lg\"\x8c\x01\n\x0f\x43onstructConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12!\n\x03\x66tp\x18\x03 \x01(\x0b\x32\x14.pymoliere.FtpSource\x12+\n\x06parser\x18\x04 \x01(\x0b\x32\x1b.pymoliere.TextParserConfig\"8\n\x0bQueryConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig')
 )
 
 
@@ -99,6 +99,13 @@ _CLUSTERCONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='restart', full_name='pymoliere.ClusterConfig.restart', index=4,
+      number=5, type=8, cpp_type=7, label=1,
+      has_default_value=True, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -111,8 +118,39 @@ _CLUSTERCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=130,
-  serialized_end=235,
+  serialized_start=131,
+  serialized_end=260,
+)
+
+
+_TEXTPARSERCONFIG = _descriptor.Descriptor(
+  name='TextParserConfig',
+  full_name='pymoliere.TextParserConfig',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='scispacy_version', full_name='pymoliere.TextParserConfig.scispacy_version', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=True, default_value=_b("en_core_sci_lg").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto2',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=262,
+  serialized_end=322,
 )
 
 
@@ -137,6 +175,13 @@ _CONSTRUCTCONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='parser', full_name='pymoliere.ConstructConfig.parser', index=2,
+      number=4, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -149,8 +194,8 @@ _CONSTRUCTCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=237,
-  serialized_end=332,
+  serialized_start=325,
+  serialized_end=465,
 )
 
 
@@ -180,15 +225,17 @@ _QUERYCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=334,
-  serialized_end=390,
+  serialized_start=467,
+  serialized_end=523,
 )
 
 _CONSTRUCTCONFIG.fields_by_name['cluster'].message_type = _CLUSTERCONFIG
 _CONSTRUCTCONFIG.fields_by_name['ftp'].message_type = _FTPSOURCE
+_CONSTRUCTCONFIG.fields_by_name['parser'].message_type = _TEXTPARSERCONFIG
 _QUERYCONFIG.fields_by_name['cluster'].message_type = _CLUSTERCONFIG
 DESCRIPTOR.message_types_by_name['FtpSource'] = _FTPSOURCE
 DESCRIPTOR.message_types_by_name['ClusterConfig'] = _CLUSTERCONFIG
+DESCRIPTOR.message_types_by_name['TextParserConfig'] = _TEXTPARSERCONFIG
 DESCRIPTOR.message_types_by_name['ConstructConfig'] = _CONSTRUCTCONFIG
 DESCRIPTOR.message_types_by_name['QueryConfig'] = _QUERYCONFIG
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
@@ -206,6 +253,13 @@ ClusterConfig = _reflection.GeneratedProtocolMessageType('ClusterConfig', (_mess
   # @@protoc_insertion_point(class_scope:pymoliere.ClusterConfig)
   })
 _sym_db.RegisterMessage(ClusterConfig)
+
+TextParserConfig = _reflection.GeneratedProtocolMessageType('TextParserConfig', (_message.Message,), {
+  'DESCRIPTOR' : _TEXTPARSERCONFIG,
+  '__module__' : 'pymoliere.config.config_pb2'
+  # @@protoc_insertion_point(class_scope:pymoliere.TextParserConfig)
+  })
+_sym_db.RegisterMessage(TextParserConfig)
 
 ConstructConfig = _reflection.GeneratedProtocolMessageType('ConstructConfig', (_message.Message,), {
   'DESCRIPTOR' : _CONSTRUCTCONFIG,

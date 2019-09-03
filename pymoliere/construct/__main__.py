@@ -3,13 +3,16 @@ from pymoliere.config import (
     proto_util,
     dask_config,
 )
-from pymoliere.util import file_util, ftp_util, pipeline_operator
-from pymoliere.util.pipeline_operator import FilterOperator
-from pymoliere.construct.parse_pubmed_xml import ParsePubmedOperator
-from pymoliere.construct.text_operators import (
-    SplitSentencesOperator,
+from pymoliere.util import file_util, ftp_util
+from pymoliere.construct.parse_pubmed_xml import parse_pubmed_xml
+from pymoliere.construct.text_util import (
+    setup_scispacy,
+    split_sentences,
+    add_entitites,
 )
 from dask.distributed import Client
+import dask.bag as dbag
+import dask
 from pathlib import Path
 
 if __name__ == "__main__":
@@ -42,17 +45,13 @@ if __name__ == "__main__":
     for d in datasets:
       dask_client.unpublish_dataset(d)
 
-  # Configure pipeline defaults
-  pipeline_operator.DEFAULTS["shared_scratch_root"] = shared_scratch_root
-  pipeline_operator.DEFAULTS["local_scratch_root"] = local_scratch_root
-  pipeline_operator.DEFAULTS["dask_client"] = dask_client
-
   # READY TO GO!
 
   print("Checking / Retrieving PubMed")
-  pubmed_xml_dir = file_util.prep_scratch_subdir(
-      scratch_root=shared_scratch_root,
-      dir_name="download_pubmed",
+  download_local, download_shared = file_util.prep_scratches(
+    local_scratch_root=local_scratch_root,
+    shared_scratch_root=shared_scratch_root,
+    task_name="download_pubmed",
   )
   with ftp_util.ftp_connect(
       address=config.ftp.address,
@@ -61,26 +60,46 @@ if __name__ == "__main__":
     xml_paths = ftp_util.ftp_retreive_all(
         conn=conn,
         pattern="^.*\.xml\.gz$",
-        directory=pubmed_xml_dir,
+        directory=download_shared,
         show_progress=True,
     )
 
-  ParsePubmedOperator(
-      name="parse_pubmed",
-      shared_xml_gz_paths=xml_paths,
-      repartition_kwargs={"partition_size":"100MB"},
-  ).eval()
+  pubmed = dbag.from_delayed([
+    dask.delayed(parse_pubmed_xml)(
+      xml_path=p,
+      local_scratch=download_local
+    )
+    for p in xml_paths
+  ])
 
-  FilterOperator(
-      name="pubmed_english",
-      input_dataset="parse_pubmed",
-      expression="language == 'eng'",
-      repartition_kwargs={"partition_size":"100MB"},
-  ).eval()
+  pubmed_eng = pubmed.filter(lambda r: r["language"]=="eng")
 
-  SplitSentencesOperator(
-      name="pubmed_sentences",
-      input_dataset="pubmed_english",
+  pubmed_sentences = pubmed_eng.map(
+      split_sentences,
+      # --
+      text_fields=["title", "abstract"],
       scispacy_version=config.parser.scispacy_version,
-      text_fields=["raw_title", "raw_abstract"],
-  ).eval()
+  ).flatten().repartition(500)
+
+  # pubmed_sentences = pubmed_sentences.persist()
+  # count = pubmed_sentences.count().compute()
+  # print(f"Found {count} pubmed sentences")
+  # example = pubmed_sentences.take(5)
+  # print("Here's an example:")
+  # print(example)
+
+  _, out_shared = file_util.prep_scratches(
+    local_scratch_root=local_scratch_root,
+    shared_scratch_root=shared_scratch_root,
+    task_name="pubmed_sentences",
+  )
+  file_util.save(pubmed_sentences, out_shared)
+
+
+  # pubmed_sent_with_ent = pubmed_sentences.map(
+      # add_entitites,
+      # # --
+      # text_field="sentence",
+      # nlp=scispacy,
+  # )
+  # pubmed_sent_with_ent.persist()

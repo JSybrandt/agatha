@@ -25,7 +25,7 @@ def prep_scratches(
 def load(path:Path)->dbag.Bag:
   assert is_result_saved(path)
   return dbag.read_text(
-      str(self.shared_scratch.joinpath("*.json.gz")),
+      str(path.joinpath("*.json.gz")),
   ).map(json.loads)
 
 def save(bag:dbag.Bag, path:Path, **kwargs)->None:

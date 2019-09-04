@@ -3,8 +3,11 @@
 PROCESSES_PER_NODE=2
 THREADS_PER_PROCESS=8
 
+MODULE_NAME="pymoliere"
+
 CONDA_START=~/anaconda3/etc/profile.d/conda.sh
-MODULE_GROUP=~/module_groups/pymoliere
+MODULE_GROUP=~/module_groups/$MODULE_NAME
+
 
 source $CONDA_START
 source $MODULE_GROUP
@@ -12,7 +15,8 @@ source $MODULE_GROUP
 LOG_DIR=/tmp/dask_logs
 mkdir $LOG_DIR
 dask-ssh \
-  --hostfile $PBS_NODEFILE\
-  --log-directory $LOG_DIR\
-  --nthreads $THREADS_PER_PROCESS\
-  --nprocs $PROCESSES_PER_NODE
+  --hostfile $PBS_NODEFILE \
+  --log-directory $LOG_DIR \
+  --nthreads $THREADS_PER_PROCESS \
+  --nprocs $PROCESSES_PER_NODE \
+  --remote-python "~/anaconda3/envs/$MODULE_NAME/bin/python3.7"

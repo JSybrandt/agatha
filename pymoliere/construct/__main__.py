@@ -4,12 +4,7 @@ from pymoliere.config import (
     dask_config,
 )
 from pymoliere.util import file_util, ftp_util
-from pymoliere.construct.parse_pubmed_xml import parse_pubmed_xml
-from pymoliere.construct.text_util import (
-    setup_scispacy,
-    split_sentences,
-    add_entitites,
-)
+from pymoliere.construct import parse_pubmed_xml, text_util
 from dask.distributed import Client
 import dask.bag as dbag
 import dask
@@ -64,42 +59,46 @@ if __name__ == "__main__":
         show_progress=True,
     )
 
-  pubmed = dbag.from_delayed([
-    dask.delayed(parse_pubmed_xml)(
-      xml_path=p,
-      local_scratch=download_local
-    )
-    for p in xml_paths
-  ])
-
-  pubmed_eng = pubmed.filter(lambda r: r["language"]=="eng")
-
-  pubmed_sentences = pubmed_eng.map(
-      split_sentences,
-      # --
-      text_fields=["title", "abstract"],
-      scispacy_version=config.parser.scispacy_version,
-  ).flatten().repartition(500)
-
-  # pubmed_sentences = pubmed_sentences.persist()
-  # count = pubmed_sentences.count().compute()
-  # print(f"Found {count} pubmed sentences")
-  # example = pubmed_sentences.take(5)
-  # print("Here's an example:")
-  # print(example)
-
-  _, out_shared = file_util.prep_scratches(
+  _, out_sent = file_util.prep_scratches(
     local_scratch_root=local_scratch_root,
     shared_scratch_root=shared_scratch_root,
     task_name="pubmed_sentences",
   )
-  file_util.save(pubmed_sentences, out_shared)
+  if file_util.is_result_saved(out_sent):
+    pubmed_sentences = file_util.load(out_sent)
+  else:
+    print("Splitting sentences.")
+    pubmed_sentences = dbag.from_delayed([
+      dask.delayed(parse_pubmed_xml.parse_pubmed_xml)(
+        xml_path=p,
+        local_scratch=download_local
+      )
+      for p in xml_paths
+    ]).filter(
+        lambda r: r["language"]=="eng"
+    ).map(
+        text_util.split_sentences,
+        # --
+        text_fields=["title", "abstract"],
+        scispacy_version=config.parser.scispacy_version,
+    ).flatten(
+    ).persist()
+    file_util.save(pubmed_sentences, out_sent)
 
-
-  # pubmed_sent_with_ent = pubmed_sentences.map(
-      # add_entitites,
-      # # --
-      # text_field="sentence",
-      # nlp=scispacy,
-  # )
-  # pubmed_sent_with_ent.persist()
+  _, out_sent_w_ent = file_util.prep_scratches(
+    local_scratch_root=local_scratch_root,
+    shared_scratch_root=shared_scratch_root,
+    task_name="pubmed_sent_w_ent",
+  )
+  if file_util.is_result_saved(out_sent_w_ent):
+    pubmed_sent_w_ent = file_util.load(out_sent_w_ent)
+  else:
+    print("Analyzing each document.")
+    pubmed_sent_w_ent = pubmed_sentences.map(
+        text_util.analyze_sentence,
+        # --
+        text_field="sentence",
+        scispacy_version=config.parser.scispacy_version,
+        scibert_dir=config.parser.scibert_data_dir,
+    )
+    file_util.save(pubmed_sent_w_ent, out_sent_w_ent)

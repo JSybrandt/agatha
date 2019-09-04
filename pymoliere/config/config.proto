@@ -23,7 +23,8 @@ message ClusterConfig {
 }
 
 message TextParserConfig {
-  optional string scispacy_version = 1 [default="en_core_sci_lg"];
+  optional string scispacy_version = 1;
+  optional string scibert_data_dir = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

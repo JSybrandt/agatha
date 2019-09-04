@@ -19,7 +19,8 @@ message ClusterConfig {
   optional string local_scratch = 3 [default="/tmp"];
   optional string shared_scratch = 4;
   // Restarting cluster refreshes all code, but also clears stored datasets.
-  optional bool restart= 5 [default=false];
+  optional bool restart = 5 [default=false];
+  optional bool run_locally = 6 [default=false];
 }
 
 message TextParserConfig {

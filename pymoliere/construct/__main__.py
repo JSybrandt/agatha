@@ -5,7 +5,7 @@ from pymoliere.config import (
 )
 from pymoliere.util import file_util, ftp_util
 from pymoliere.construct import parse_pubmed_xml, text_util
-from dask.distributed import Client
+from dask.distributed import Client, LocalCluster
 import dask.bag as dbag
 import dask
 from pathlib import Path
@@ -26,13 +26,20 @@ if __name__ == "__main__":
   local_scratch_root = Path(config.cluster.local_scratch)
   local_scratch_root.mkdir(parents=True, exist_ok=True)
   assert local_scratch_root.is_dir()
-  cluster_address = f"{config.cluster.address}:{config.cluster.port}"
 
   # Configure Dask
-  print("Configuring Dask, attaching to cluster")
-  print(f"\t{cluster_address}")
   dask_config.set_local_tmp(local_scratch_root)
-  dask_client = Client(address=cluster_address)
+
+  if config.cluster.run_locally:
+    print("Running on local machine!")
+    cluster = LocalCluster(n_workers=1, threads_per_worker=1)
+    dask_client = Client(cluster)
+  else:
+    cluster_address = f"{config.cluster.address}:{config.cluster.port}"
+    print("Configuring Dask, attaching to cluster")
+    print(f"\t{cluster_address}")
+    dask_client = Client(address=cluster_address)
+
   if config.cluster.restart:
     print("Restarting cluster...")
     dask_client.restart()
@@ -67,6 +74,12 @@ if __name__ == "__main__":
   if file_util.is_result_saved(out_sent):
     pubmed_sentences = file_util.load(out_sent)
   else:
+    print("Initializing helper object")
+    dask_client.run(
+        text_util.init_split_sentences,
+        # --
+        scispacy_version=config.parser.scispacy_version,
+    )
     print("Splitting sentences.")
     pubmed_sentences = dbag.from_delayed([
       dask.delayed(parse_pubmed_xml.parse_pubmed_xml)(
@@ -93,12 +106,17 @@ if __name__ == "__main__":
   if file_util.is_result_saved(out_sent_w_ent):
     pubmed_sent_w_ent = file_util.load(out_sent_w_ent)
   else:
+    print("Initializing helper object")
+    dask_client.run(
+        text_util.init_analyze_sentence,
+        # --
+        scispacy_version=config.parser.scispacy_version,
+        scibert_dir=config.parser.scibert_data_dir,
+    )
     print("Analyzing each document.")
     pubmed_sent_w_ent = pubmed_sentences.map(
         text_util.analyze_sentence,
         # --
         text_field="sentence",
-        scispacy_version=config.parser.scispacy_version,
-        scibert_dir=config.parser.scibert_data_dir,
     )
     file_util.save(pubmed_sent_w_ent, out_sent_w_ent)

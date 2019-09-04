@@ -18,5 +18,4 @@ dask-ssh \
   --hostfile $PBS_NODEFILE \
   --log-directory $LOG_DIR \
   --nthreads $THREADS_PER_PROCESS \
-  --nprocs $PROCESSES_PER_NODE \
-  --remote-python "~/anaconda3/envs/$MODULE_NAME/bin/python3.7"
+  --nprocs $PROCESSES_PER_NODE

@@ -42,21 +42,23 @@ def setup_scispacy(
     )
   return nlp
 
+def init_split_sentences(
+    scispacy_version:str=None,
+)->None:
+    if GLOBAL_NLP_OBJS["split_sentences"] is None:
+      GLOBAL_NLP_OBJS["split_sentences"] = setup_scispacy(
+          scispacy_version=scispacy_version,
+      )
 
 def split_sentences(
     elem:Dict[str, Any],
     text_fields:List[str],
     nlp:Any=None,
-    scispacy_version:str=None,
     sentence_text_field:str="sentence",
     sentence_idx_field:str="sentence_idx",
 )->List[Dict[str, Any]]:
   "Replaces text_fields with sentence"
   if nlp is None:
-    if GLOBAL_NLP_OBJS["split_sentences"] is None:
-      GLOBAL_NLP_OBJS["split_sentences"] = setup_scispacy(
-          scispacy_version=scispacy_version,
-      )
     nlp = GLOBAL_NLP_OBJS["split_sentences"]
 
   res = []
@@ -81,12 +83,23 @@ def split_sentences(
         sent_idx += 1
   return res
 
+
+def init_analyze_sentence(
+    scispacy_version:str=None,
+    scibert_dir:Path=None,
+)->None:
+    if GLOBAL_NLP_OBJS["analyze_sentence"] is None:
+      GLOBAL_NLP_OBJS["analyze_sentence"] = setup_scispacy(
+          scispacy_version=scispacy_version,
+          scibert_dir=scibert_dir,
+          add_scibert_parts=True,
+          add_scispacy_parts=True,
+      )
+
 def analyze_sentence(
     elem:Dict[str, Any],
     text_field:str,
     nlp:Any=None,
-    scispacy_version:str=None,
-    scibert_dir:Path=None,
     token_field:str="tokens",
     entity_field:str="entities",
     vector_field:str="vector"
@@ -98,13 +111,6 @@ def analyze_sentence(
   assert vector_field not in elem
 
   if nlp is None:
-    if GLOBAL_NLP_OBJS["analyze_sentence"] is None:
-      GLOBAL_NLP_OBJS["analyze_sentence"] = setup_scispacy(
-          scispacy_version=scispacy_version,
-          scibert_dir=scibert_dir,
-          add_scibert_parts=True,
-          add_scispacy_parts=True,
-      )
     nlp = GLOBAL_NLP_OBJS["analyze_sentence"]
 
   elem = copy(elem)

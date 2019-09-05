@@ -74,13 +74,14 @@ if __name__ == "__main__":
   if file_util.is_result_saved(out_sent):
     pubmed_sentences = file_util.load(out_sent)
   else:
-    print("Initializing helper object")
+    print("Splitting sentences.")
+    print("\t- Initializing helper object")
     dask_client.run(
         text_util.init_split_sentences,
         # --
         scispacy_version=config.parser.scispacy_version,
     )
-    print("Splitting sentences.")
+    print("\t- Done!")
     pubmed_sentences = dbag.from_delayed([
       dask.delayed(parse_pubmed_xml.parse_pubmed_xml)(
         xml_path=p,
@@ -93,9 +94,9 @@ if __name__ == "__main__":
         text_util.split_sentences,
         # --
         text_fields=["title", "abstract"],
-        scispacy_version=config.parser.scispacy_version,
     ).flatten(
     ).persist()
+    print("\t- Saving...")
     file_util.save(pubmed_sentences, out_sent)
 
   _, out_sent_w_ent = file_util.prep_scratches(
@@ -106,17 +107,19 @@ if __name__ == "__main__":
   if file_util.is_result_saved(out_sent_w_ent):
     pubmed_sent_w_ent = file_util.load(out_sent_w_ent)
   else:
-    print("Initializing helper object")
+    print("Analyzing each document.")
+    print("\t- Initializing helper object")
     dask_client.run(
         text_util.init_analyze_sentence,
         # --
         scispacy_version=config.parser.scispacy_version,
         scibert_dir=config.parser.scibert_data_dir,
     )
-    print("Analyzing each document.")
+    print("\t- Done!")
     pubmed_sent_w_ent = pubmed_sentences.map(
         text_util.analyze_sentence,
         # --
         text_field="sentence",
     )
+    print("\t- Saving...")
     file_util.save(pubmed_sent_w_ent, out_sent_w_ent)

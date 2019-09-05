@@ -16,8 +16,8 @@ GLOBAL_NLP_OBJS = {
 
 def setup_scispacy(
     scispacy_version:str,
-    add_scispacy_parts:bool,
-    add_scibert_parts:bool,
+    add_scispacy_parts:bool=False,
+    add_scibert_parts:bool=False,
     scibert_dir:Path=None,
 )->Tuple[Any, UmlsEntityLinker]:
   print("Loading scispacy... Might take a bit.")
@@ -114,28 +114,34 @@ def analyze_sentence(
     nlp = GLOBAL_NLP_OBJS["analyze_sentence"]
 
   elem = copy(elem)
-  doc = nlp(elem[text_field])
-  elem[vector_field] = doc.vector.tolist()
-  elem[entity_field] = [
-    {
-      "tok_start": ent.start,
-      "tok_end": ent.end,
-      "text": ent.text,
-      "umls": ent._.umls_ents[0][0] if len(ent._.umls_ents) > 0 else None,
-      "vector": ent.vector.tolist(),
-    }
-    for ent in doc.ents
-  ]
-  elem[token_field] = [
+  try:
+    doc = nlp(elem[text_field])
+    elem[vector_field] = doc.vector.tolist()
+    elem[entity_field] = [
       {
-        "cha_start": tok.idx,
-        "cha_end": tok.idx + len(tok),
-        "text": tok.text,
-        "lemma": tok.lemma_,
-        "pos": tok.pos_,
-        "tag": tok.tag_,
-        "vector": tok.vector.tolist(),
+        "tok_start": ent.start,
+        "tok_end": ent.end,
+        "cha_start": ent.start_char,
+        "cha_end": ent.end_char,
+        "umls": ent._.umls_ents[0][0] if len(ent._.umls_ents) > 0 else None,
+        "vector": ent.vector.tolist(),
       }
-      for tok in doc
-  ]
+      for ent in doc.ents
+    ]
+    elem[token_field] = [
+        {
+          "cha_start": tok.idx,
+          "cha_end": tok.idx + len(tok),
+          "lemma": tok.lemma_,
+          "pos": tok.pos_,
+          "tag": tok.tag_,
+          "dep": tok.dep_,
+          "vector": tok.vector.tolist() if not tok.is_stop else None,
+          "stop": tok.is_stop,
+        }
+        for tok in doc
+    ]
+  except Exception(e):
+    elem["ERR"] = e.msg
+    print(e)
   return elem

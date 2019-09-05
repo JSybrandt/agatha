@@ -1,5 +1,4 @@
-from pymoliere.construct import text_operators
-from pymoliere.util import pipeline_operator
+from pymoliere.construct import text_util
 from pathlib import Path
 import re
 import dask
@@ -84,29 +83,10 @@ def test_split_sentences_simple():
   input_data = get_input()
   expected = get_expected()
   actual = input_data.map(
-      text_operators.split_sentences,
+      text_util.split_sentences,
       # --
       text_fields=["title", "abstract"],
       sentence_text_field="sentence",
       sentence_idx_field="sentence_idx",
-      nlp=SpacyTestStub()
   ).flatten().compute()
-  assert actual == expected
-
-def test_split_sentences_hard():
-  input_data = get_input()
-  expected = get_expected()
-  # Smaller text lang for scipy
-  nlp = dask.delayed(text_operators.setup_scispacy)("en_core_web_sm")
-  actual = text_operators.SplitSentencesOperator(
-      name="test_SplitSentencesOperator",
-      input_data=input_data,
-      text_fields=["title", "abstract"],
-      sentence_text_field="sentence",
-      sentence_idx_field="sentence_idx",
-      nlp=nlp,
-      # --
-      skip_scratch=True,
-  ).get_value().compute()
-  print(actual)
   assert actual == expected

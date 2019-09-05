@@ -75,13 +75,6 @@ if __name__ == "__main__":
     pubmed_sentences = file_util.load(out_sent)
   else:
     print("Splitting sentences.")
-    print("\t- Initializing helper object")
-    dask_client.run(
-        text_util.init_split_sentences,
-        # --
-        scispacy_version=config.parser.scispacy_version,
-    )
-    print("\t- Done!")
     pubmed_sentences = dbag.from_delayed([
       dask.delayed(parse_pubmed_xml.parse_pubmed_xml)(
         xml_path=p,

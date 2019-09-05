@@ -8,9 +8,9 @@ from spacy_pytorch_transformers import (
     PyTT_WordPiecer,
     PyTT_TokenVectorEncoder,
 )
+from nltk.tokenize import sent_tokenize
 
 GLOBAL_NLP_OBJS = {
-    "split_sentences": None,
     "analyze_sentence": None,
 }
 
@@ -42,24 +42,13 @@ def setup_scispacy(
     )
   return nlp
 
-def init_split_sentences(
-    scispacy_version:str=None,
-)->None:
-    if GLOBAL_NLP_OBJS["split_sentences"] is None:
-      GLOBAL_NLP_OBJS["split_sentences"] = setup_scispacy(
-          scispacy_version=scispacy_version,
-      )
-
 def split_sentences(
     elem:Dict[str, Any],
     text_fields:List[str],
-    nlp:Any=None,
     sentence_text_field:str="sentence",
     sentence_idx_field:str="sentence_idx",
 )->List[Dict[str, Any]]:
   "Replaces text_fields with sentence"
-  if nlp is None:
-    nlp = GLOBAL_NLP_OBJS["split_sentences"]
 
   res = []
   # Get all non-textual data
@@ -73,11 +62,9 @@ def split_sentences(
   sent_idx = 0
   for field in text_fields:
     if elem[field] is not None:
-      doc = nlp(elem[field])
-      for sent in doc.sents:
-        sent_text = "".join([t.string for t in sent])
+      for sent_text in sent_tokenize(elem[field]):
         new_elem = copy(non_text_elem)
-        new_elem[sentence_text_field] = sent_text.strip()
+        new_elem[sentence_text_field] = sent_text
         new_elem[sentence_idx_field] = sent_idx
         res.append(new_elem)
         sent_idx += 1

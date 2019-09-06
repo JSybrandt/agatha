@@ -5,7 +5,7 @@ install:
 	pip install -e .
 
 test: build
-	pytest
+	pytest -Wignore -v
 
 clean:
 	python3 setup.py clean

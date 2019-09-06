@@ -66,53 +66,35 @@ if __name__ == "__main__":
         show_progress=True,
     )
 
-  _, out_sent = file_util.prep_scratches(
-    local_scratch_root=local_scratch_root,
-    shared_scratch_root=shared_scratch_root,
-    task_name="pubmed_sentences",
-  )
-  if file_util.is_result_saved(out_sent):
-    pubmed_sentences = file_util.load(out_sent)
-  else:
-    print("Splitting sentences.")
-    pubmed_sentences = dbag.from_delayed([
-      dask.delayed(parse_pubmed_xml.parse_pubmed_xml)(
-        xml_path=p,
-        local_scratch=download_local
-      )
-      for p in xml_paths
-    ]).filter(
-        lambda r: r["language"]=="eng"
-    ).map(
-        text_util.split_sentences,
-        # --
-        text_fields=["title", "abstract"],
-    ).flatten(
-    ).persist()
-    print("\t- Saving...")
-    file_util.save(pubmed_sentences, out_sent)
+  print("Splitting sentences.")
+  pubmed_sentences = dbag.from_delayed([
+    dask.delayed(parse_pubmed_xml.parse_zipped_pubmed_xml)(
+      xml_path=p,
+      local_scratch=download_local
+    )
+    for p in xml_paths
+  ]).filter(lambda r: r["language"]=="eng"
+  ).map(text_util.split_sentences,
+  ).flatten()
 
+  print("Analyzing each document.")
+  print("\t- Initializing helper object")
+  dask_client.run(
+      text_util.init_analyze_sentence,
+      # --
+      scispacy_version=config.parser.scispacy_version,
+      scibert_dir=config.parser.scibert_data_dir,
+  )
+  print("\t- Done!")
+  pubmed_sent_w_ent = pubmed_sentences.map(
+      text_util.analyze_sentence,
+      # --
+      text_field="sent_text",
+  )
+  print("\t- Saving...")
   _, out_sent_w_ent = file_util.prep_scratches(
     local_scratch_root=local_scratch_root,
     shared_scratch_root=shared_scratch_root,
     task_name="pubmed_sent_w_ent",
   )
-  if file_util.is_result_saved(out_sent_w_ent):
-    pubmed_sent_w_ent = file_util.load(out_sent_w_ent)
-  else:
-    print("Analyzing each document.")
-    print("\t- Initializing helper object")
-    dask_client.run(
-        text_util.init_analyze_sentence,
-        # --
-        scispacy_version=config.parser.scispacy_version,
-        scibert_dir=config.parser.scibert_data_dir,
-    )
-    print("\t- Done!")
-    pubmed_sent_w_ent = pubmed_sentences.map(
-        text_util.analyze_sentence,
-        # --
-        text_field="sentence",
-    )
-    print("\t- Saving...")
-    file_util.save(pubmed_sent_w_ent, out_sent_w_ent)
+  file_util.save(pubmed_sent_w_ent, out_sent_w_ent)

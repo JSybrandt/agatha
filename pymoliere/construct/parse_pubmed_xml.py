@@ -18,7 +18,122 @@ def xml_obj_to_date(elem)->str:
   day = int(day_elem.text) if day_elem is not None else 0
   return f"{year:04}-{month:02}-{day:02}"
 
-def parse_pubmed_xml(
+def pubmed_xml_to_record(
+    pubmed_elem:etree._Element,
+)->Dict[str, Any]:
+  """
+  Given a PubmedArticle element, parse out all the fields we care about.
+  Fields are represented as a dictionary.
+  """
+  record = {
+      "pmid": None,
+      "version": None,
+      "date": None,
+      "language": None,
+      "medline_status": None,
+      "text_data": [],
+      "publication_types": [],
+      "mesh_headings": [],
+      "data_banks": [],
+  }
+
+  medline_cite_elem = pubmed_elem.find("MedlineCitation")
+  if medline_cite_elem is not None:
+    record["medline_status"] = medline_cite_elem.attrib["Status"]
+
+    pmid_elem = medline_cite_elem.find("PMID")
+    if pmid_elem is not None:
+      record["pmid"] = int(pmid_elem.text)
+      record["version"] = int(pmid_elem.attrib["Version"])
+
+    article_elem = medline_cite_elem.find("Article")
+    if article_elem is not None:
+        language_elem = article_elem.find("Language")
+        if language_elem is not None:
+          record["language"] = language_elem.text
+
+        title_elem = article_elem.find("ArticleTitle")
+        if title_elem is not None:
+          record["text_data"].append({
+            "text": "".join(title_elem.itertext()),
+            "type": "title",
+          })
+
+        abstract_elem = article_elem.find("Abstract")
+        if abstract_elem is not None:
+          text_elems = abstract_elem.findall("AbstractText")
+          if text_elems is not None:
+            for abstract_text_elem in text_elems:
+              if "NlmCategory" in abstract_text_elem.attrib:
+                sub_type = abstract_text_elem.attrib["NlmCategory"].lower()
+              else:
+                sub_type = "raw"
+              record["text_data"].append({
+                "text": "".join(abstract_text_elem.itertext()),
+                "type": f"abstract:{sub_type}"
+              })
+
+        pub_type_list_elem = article_elem.find("PublicationTypeList")
+        if pub_type_list_elem is not None:
+          pub_type_elems = pub_type_list_elem.findall("PublicationType")
+          if pub_type_elems is not None:
+            for x in pub_type_elems:
+              record["publication_types"].append("".join(x.itertext()))
+
+        data_bank_list_elem = article_elem.find("DataBankList")
+        if data_bank_list_elem is not None:
+          data_bank_elems = data_bank_list_elem.findall("DataBank")
+          if data_bank_elems is not None:
+            for data_bank_elem in data_bank_elems:
+              bank_name_elem = data_bank_elem.find("DataBankName")
+              if bank_name_elem is not None:
+                bank_name = "".join(bank_name_elem.itertext())
+              else:
+                bank_name = None
+              num_list_elem = data_bank_elem.find("AccessionNumberList")
+              if num_list_elem is not None:
+                num_list_elems = num_list_elem.findall("AccessionNumber")
+                if num_list_elems is not None:
+                  for num_elem in num_list_elems:
+                    record["data_banks"].append({
+                      "name": bank_name,
+                      "id": "".join(num_elem.itertext())
+                    })
+
+    chemical_list_elem = medline_cite_elem.find("ChemicalList")
+    if chemical_list_elem is not None:
+      chemical_elems = chemical_list_elem.findall("Chemical")
+      if chemical_elems is not None:
+        for chem_elem in chemical_elems:
+          name_elem = chem_elem.find("NameOfSubstance")
+          if name_elem is not None:
+            record["mesh_headings"].append(name_elem.attrib["UI"])
+
+    mesh_heading_list_elem = medline_cite_elem.find("MeshHeadingList")
+    if mesh_heading_list_elem is not None:
+      mesh_heading_elems = mesh_heading_list_elem.find("MeshHeading")
+      if mesh_heading_elems is not None:
+        for mesh_elem in mesh_heading_elems:
+          desc_elem = mesh_elem.find("DescriptorName")
+          if desc_elem is not None:
+            record["mesh_headings"].append(desc_elem.attrib["UI"])
+
+  pubmed_data_elem = pubmed_elem.find("PubmedData")
+  if pubmed_data_elem is not None:
+    history_elem = pubmed_data_elem.find("History")
+    if history_elem is not None:
+      pm_date_elems = history_elem.findall("PubMedPubDate")
+      if pm_date_elems is not None:
+        for date_elem in pm_date_elems:
+          date = xml_obj_to_date(date_elem)
+          if date == "0000-00-00": continue
+          if record["date"] is None or record["date"] > date:
+            record["date"] = xml_obj_to_date(date_elem)
+
+  return record
+
+
+def parse_zipped_pubmed_xml(
     xml_path:Path,
     local_scratch:Path,
 )->List[Dict[str, Any]]:
@@ -29,91 +144,13 @@ def parse_pubmed_xml(
   if not xml_path.is_file():
     raise ValueError(f"Cannot find {xml_path}") 
   assert str(xml_path).endswith(".xml.gz")
-
   local_xml_gz_path = copy_to_local_scratch(
       src=xml_path,
       local_scratch_dir=local_scratch,
   )
-
-  records = []
   with gzip.open(str(local_xml_gz_path), "rb") as xml_file:
-    for _, pubmed_elem in etree.iterparse(xml_file, tag="PubmedArticle"):
-      record = {
-          "pmid": None,
-          "version": None,
-          "date": None,
-          "language": None,
-          "title": None,
-          "abstract": None,
-          "publication_types": [],
-          "mesh_headings": [],
-          "medline_status": None,
-      }
-
-      medline_cite_elem = pubmed_elem.find("MedlineCitation")
-      if medline_cite_elem is not None:
-        record["medline_status"] = medline_cite_elem.attrib["Status"]
-
-        pmid_elem = medline_cite_elem.find("PMID")
-        if pmid_elem is not None:
-          record["pmid"] = int(pmid_elem.text)
-          record["version"] = int(pmid_elem.attrib["Version"])
-
-        article_elem = medline_cite_elem.find("Article")
-        if article_elem is not None:
-            language_elem = article_elem.find("Language")
-            if language_elem is not None:
-              record["language"] = language_elem.text
-
-            title_elem = article_elem.find("ArticleTitle")
-            if title_elem is not None:
-              record["title"] = title_elem.text
-
-            abstract_elem = article_elem.find("Abstract")
-            if abstract_elem is not None:
-              text_elems = abstract_elem.findall("AbstractText")
-              if text_elems is not None:
-                record["abstract"] = " ".join([
-                  x.text for x in text_elems if x.text is not None
-                ])
-
-            pub_type_list_elem = article_elem.find("PublicationTypeList")
-            if pub_type_list_elem is not None:
-              pub_type_elems = pub_type_list_elem.findall("PublicationType")
-              if pub_type_elems is not None:
-                for x in pub_type_elems:
-                  if x.text is not None:
-                    record["publication_types"].append(x.text)
-
-        chemical_list_elem = medline_cite_elem.find("ChemicalList")
-        if chemical_list_elem is not None:
-          chemical_elems = chemical_list_elem.findall("Chemical")
-          if chemical_elems is not None:
-            for chem_elem in chemical_elems:
-              name_elem = chem_elem.find("NameOfSubstance")
-              if name_elem is not None:
-                record["mesh_headings"].append(name_elem.attrib["UI"])
-
-        mesh_heading_list_elem = medline_cite_elem.find("MeshHeadingList")
-        if mesh_heading_list_elem is not None:
-          mesh_heading_elems = mesh_heading_list_elem.find("MeshHeading")
-          if mesh_heading_elems is not None:
-            for mesh_elem in mesh_heading_elems:
-              desc_elem = mesh_elem.find("DescriptorName")
-              if desc_elem is not None:
-                record["mesh_headings"].append(desc_elem.attrib["UI"])
-
-      pubmed_data_elem = pubmed_elem.find("PubmedData")
-      if pubmed_data_elem is not None:
-        history_elem = pubmed_data_elem.find("History")
-        if history_elem is not None:
-          pm_date_elems = history_elem.findall("PubMedPubDate")
-          if pm_date_elems is not None:
-            for date_elem in pm_date_elems:
-              date = xml_obj_to_date(date_elem)
-              if date == "0000-00-00": continue
-              if record["date"] is None or record["date"] > date:
-                record["date"] = xml_obj_to_date(date_elem)
-
-      records.append(record)
-  return records
+    return [
+      pubmed_xml_to_record(elem)
+      for _, elem in
+      etree.iterparse(xml_file, tag="PubmedArticle")
+    ]

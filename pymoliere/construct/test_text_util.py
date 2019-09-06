@@ -24,69 +24,106 @@ class SpacyTestStub():
     ]
     return self
 
-def get_input():
+def get_documents():
   return dbag.from_sequence(
     seq=[{
         "id": 123,
-        "title": "Document 1",
-        "abstract": "This is an abstract. Hopefully it parses well.",
         "status": "Example",
+        "text_data": [{
+            "text": "Document 1",
+            "type": "title",
+          },{
+            "text": "This is an abstract. Hopefully it parses well.",
+            "type": "abstract:raw",
+        }]
       }, {
         "id": 456,
-        "title": "Document 2",
-        "abstract": "Here's another. Hope its good. Maybe it parses well.",
         "status": "Test",
+        "text_data": [{
+            "text": "Document 2",
+            "type": "title",
+          },{
+            "text": "Here's another. Hope its good. Maybe it parses well.",
+            "type": "abstract:raw",
+        }]
     }],
     npartitions=1,
   )
 
-def get_expected():
+def get_sentences():
   return [{
         "id": 123,
         "status": "Example",
-        "sentence": "Document 1",
-        "sentence_idx": 0,
+        "sent_type": "title",
+        "sent_text": "Document 1",
+        "sent_idx": 0,
+        "sent_total": 3,
       }, {
         "id": 123,
         "status": "Example",
-        "sentence": "This is an abstract.",
-        "sentence_idx": 1,
+        "sent_type": "abstract:raw",
+        "sent_text": "This is an abstract.",
+        "sent_idx": 1,
+        "sent_total": 3,
       }, {
         "id": 123,
         "status": "Example",
-        "sentence": "Hopefully it parses well.",
-        "sentence_idx": 2,
+        "sent_type": "abstract:raw",
+        "sent_text": "Hopefully it parses well.",
+        "sent_idx": 2,
+        "sent_total": 3,
       }, {
         "id": 456,
         "status": "Test",
-        "sentence": "Document 2",
-        "sentence_idx": 0,
+        "sent_type": "title",
+        "sent_text": "Document 2",
+        "sent_idx": 0,
+        "sent_total": 4,
       }, {
         "id": 456,
         "status": "Test",
-        "sentence": "Here's another.",
-        "sentence_idx": 1,
+        "sent_type": "abstract:raw",
+        "sent_text": "Here's another.",
+        "sent_idx": 1,
+        "sent_total": 4,
       }, {
         "id": 456,
         "status": "Test",
-        "sentence": "Hope its good.",
-        "sentence_idx": 2,
+        "sent_type": "abstract:raw",
+        "sent_text": "Hope its good.",
+        "sent_idx": 2,
+        "sent_total": 4,
       }, {
         "id": 456,
         "status": "Test",
-        "sentence": "Maybe it parses well.",
-        "sentence_idx": 3,
+        "sent_type": "abstract:raw",
+        "sent_text": "Maybe it parses well.",
+        "sent_idx": 3,
+        "sent_total": 4,
   }]
 
 
 def test_split_sentences_simple():
-  input_data = get_input()
-  expected = get_expected()
+  input_data = get_documents()
+  expected = get_sentences()
   actual = input_data.map(
       text_util.split_sentences,
-      # --
-      text_fields=["title", "abstract"],
-      sentence_text_field="sentence",
-      sentence_idx_field="sentence_idx",
   ).flatten().compute()
   assert actual == expected
+
+
+text_util.init_analyze_sentence(
+    scispacy_version="en_core_sci_lg"
+)
+
+def test_analyze_sentence():
+  input_data = get_sentences()
+  actual = text_util.analyze_sentence(
+    sent_elem=input_data[0],
+    text_field="sent_text",
+  )
+  # Corresponds to "Document 1"
+  assert "tokens" in actual
+  assert len(actual["tokens"]) == 2
+  assert "entities" in actual
+

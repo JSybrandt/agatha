@@ -78,6 +78,6 @@ def _record_part_to_vectors(
       texts = texts.cuda()
     embedding = model(texts)[-1].detach().numpy()
     for emb in embedding:
-      embeddings.append(emb.aslist())
+      embeddings.append(emb.tolist())
 
   return pd.DataFrame({"id":ids, "embedding": embeddings})

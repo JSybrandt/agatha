@@ -1,13 +1,9 @@
 from pathlib import Path
 from scispacy.abbreviation import AbbreviationDetector
 from scispacy.umls_linking import UmlsEntityLinker
-from typing import List, Tuple, Any, Optional, Dict
+from typing import List, Tuple, Any, Optional, Dict, Callable
 import spacy
 from copy import copy
-from spacy_pytorch_transformers import (
-    PyTT_WordPiecer,
-    PyTT_TokenVectorEncoder,
-)
 from nltk.tokenize import sent_tokenize
 
 GLOBAL_NLP_OBJS = {
@@ -17,30 +13,37 @@ GLOBAL_NLP_OBJS = {
 def setup_scispacy(
     scispacy_version:str,
     add_scispacy_parts:bool=False,
-    add_scibert_parts:bool=False,
-    scibert_dir:Path=None,
-)->Tuple[Any, UmlsEntityLinker]:
+)->Any:
   print("Loading scispacy... Might take a bit.")
   nlp = spacy.load(scispacy_version)
   if add_scispacy_parts:
     print("\t- And UMLS Component")
     nlp.add_pipe(AbbreviationDetector(nlp))
     nlp.add_pipe(UmlsEntityLinker(resolve_abbreviations=True))
-  if add_scibert_parts:
-    print("\t- And SciBert Component")
-    nlp.add_pipe(
-        PyTT_WordPiecer.from_pretrained(
-          nlp.vocab,
-          str(scibert_dir)
-        )
-    )
-    nlp.add_pipe(
-        PyTT_TokenVectorEncoder.from_pretrained(
-          nlp.vocab,
-          str(scibert_dir)
-        )
-    )
   return nlp
+
+def setup_spacy_transformer(
+    scibert_dir:Path=None,
+    lang:str="en",
+)->Any:
+  print("Setting up spacy transformer... Might take a bit.")
+  assert scibert_dir.is_dir()
+  nlp = PyTT_Language(pytt_name=scibert_dir.name, meta={"lang": lang})
+  nlp.add_pipe(nlp.create_pipe("sentencizer"))
+  nlp.add_pipe(
+      PyTT_WordPiecer.from_pretrained(
+        nlp.vocab,
+        str(scibert_dir)
+      )
+  )
+  nlp.add_pipe(
+      PyTT_TokenVectorEncoder.from_pretrained(
+        nlp.vocab,
+        str(scibert_dir)
+      )
+  )
+  return nlp
+
 
 def split_sentences(
     document_elem:Dict[str, Any],
@@ -126,14 +129,10 @@ def split_sentences(
 
 def init_analyze_sentence(
     scispacy_version:str=None,
-    scibert_dir:Path=None,
 )->None:
     if GLOBAL_NLP_OBJS["analyze_sentence"] is None:
       GLOBAL_NLP_OBJS["analyze_sentence"] = setup_scispacy(
           scispacy_version=scispacy_version,
-          #scibert_dir=scibert_dir,
-          #add_scibert_parts=True,
-          #add_scispacy_parts=True,
       )
 
 def analyze_sentence(

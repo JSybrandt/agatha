@@ -26,6 +26,18 @@ message ClusterConfig {
 message TextParserConfig {
   optional string scispacy_version = 1;
   optional string scibert_data_dir = 2;
+  optional int32 batch_size = 3 [default=128];
+}
+
+message KnnConfig {
+  optional int32 num_neighbors = 1 [default=100];
+  optional int32 num_centroids = 2 [default=512];
+  optional int32 num_probes = 3 [default=8];
+  optional int32 num_quantizers = 4 [default=32];
+  optional int32 bits_per_quantizer = 5 [default=8];
+  // The probability that a randomly selected record is included in the inital
+  // training procedure.
+  optional float training_probability = 6 [default=0.001];
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -37,6 +49,7 @@ message ConstructConfig {
   // Details about the medline distribution to download.
   optional FtpSource ftp = 3;
   optional TextParserConfig parser = 4;
+  optional KnnConfig sentence_knn = 5;
 }
 
 // Config used to query the network.

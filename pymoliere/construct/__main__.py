@@ -15,6 +15,9 @@ import dask.bag as dbag
 import dask
 from pathlib import Path
 import faiss
+from copy import copy
+from typing import Dict, Any, Callable
+
 
 if __name__ == "__main__":
   config = cpb.ConstructConfig()
@@ -110,32 +113,20 @@ if __name__ == "__main__":
   else:
     pubmed_sent_w_ent = file_util.load(out_sent_w_ent)
 
-  # Add sentence embeddings
-  print("Getting embeddings per-sentence")
-  pubmed_sent_vectors = embedding_util.record_to_vector(
-    # in the future, we only care about pubmed_sentences
-    records=pubmed_sent_w_ent,
-    text_field="sent_text",
-    scibert_data_dir=config.parser.scibert_data_dir,
-    id_fn=lambda r:f"{r['pmid']}:{r['version']}:{r['sent_idx']}",
-    bert_batch_size=config.parser.bert_inference_batch_size,
-    bert_use_gpu=config.parser.bert_use_gpu,
+  pubmed_sent_w_ent = pubmed_sent_w_ent.random_sample(0.01)
+
+  print("Training KNN for sentence embeddings.")
+  _, tmp_faiss_index_dir = mk_scratch("tmp_faiss_index")
+  trained_knn_path = knn_util.train_distributed_knn_from_text_fields(
+      text_records=pubmed_sent_w_ent,
+      id_fn=lambda r:f"{r['pmid']}:{r['version']}:{r['sent_idx']}",
+      text_field="sent_text",
+      scibert_data_dir=config.parser.scibert_data_dir,
+      batch_size=config.parser.batch_size,
+      num_centroids=config.sentence_knn.num_centroids,
+      num_probes=config.sentence_knn.num_probes,
+      num_quantizers=config.sentence_knn.num_quantizers,
+      bits_per_quantizer=config.sentence_knn.bits_per_quantizer,
+      faiss_training_sample_prob=config.sentence_knn.training_probability,
+      shared_scratch_dir=tmp_faiss_index_dir,
   )
-
-  print("Computing KNN")
-  _, out_idx_path = mk_scratch("pubmed_sent_idx")
-  pubmed_knn_index = knn_util.get_knn_index(
-    sent_vec_df=pubmed_sent_vectors,
-    num_neighbors=config.knn.num_neighbors,
-    num_cells=config.knn.num_cells,
-    num_probes=config.knn.num_probes,
-    training_sample_rate=config.knn.training_sample_rate,
-    shared_scratch=out_idx_path,
-  )
-  faiss.write_index(pubmed_knn_index, out_idx_path.joinpath("index"))
-
-
-  # perform KNN
-  # Remove sentence emb
-  # TO EDGES!
-  # SAVE!

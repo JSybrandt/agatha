@@ -3,6 +3,8 @@
 PROCESSES_PER_NODE=1
 THREADS_PER_PROCESS=16
 
+export OMP_NUM_THREADS=1
+
 MODULE_NAME="pymoliere"
 
 CONDA_START=~/anaconda3/etc/profile.d/conda.sh

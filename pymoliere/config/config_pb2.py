@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='pymoliere',
   syntax='proto2',
   serialized_options=None,
-  serialized_pb=_b('\n\x1dpymoliere/config/config.proto\x12\tpymoliere\"T\n\tFtpSource\x12%\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\x14\x66tp.ncbi.nlm.nih.gov\x12 \n\x07workdir\x18\x02 \x01(\t:\x0fpubmed/baseline\"\x9d\x01\n\rClusterConfig\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\t\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x38\x37\x38\x36\x12\x1b\n\rlocal_scratch\x18\x03 \x01(\t:\x04/tmp\x12\x16\n\x0eshared_scratch\x18\x04 \x01(\t\x12\x16\n\x07restart\x18\x05 \x01(\x08:\x05\x66\x61lse\x12\x1a\n\x0brun_locally\x18\x06 \x01(\x08:\x05\x66\x61lse\"F\n\x10TextParserConfig\x12\x18\n\x10scispacy_version\x18\x01 \x01(\t\x12\x18\n\x10scibert_data_dir\x18\x02 \x01(\t\"\x8c\x01\n\x0f\x43onstructConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12!\n\x03\x66tp\x18\x03 \x01(\x0b\x32\x14.pymoliere.FtpSource\x12+\n\x06parser\x18\x04 \x01(\x0b\x32\x1b.pymoliere.TextParserConfig\"8\n\x0bQueryConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig')
+  serialized_pb=_b('\n\x1dpymoliere/config/config.proto\x12\tpymoliere\"T\n\tFtpSource\x12%\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\x14\x66tp.ncbi.nlm.nih.gov\x12 \n\x07workdir\x18\x02 \x01(\t:\x0fpubmed/baseline\"\x9d\x01\n\rClusterConfig\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\t\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x38\x37\x38\x36\x12\x1b\n\rlocal_scratch\x18\x03 \x01(\t:\x04/tmp\x12\x16\n\x0eshared_scratch\x18\x04 \x01(\t\x12\x16\n\x07restart\x18\x05 \x01(\x08:\x05\x66\x61lse\x12\x1a\n\x0brun_locally\x18\x06 \x01(\x08:\x05\x66\x61lse\"_\n\x10TextParserConfig\x12\x18\n\x10scispacy_version\x18\x01 \x01(\t\x12\x18\n\x10scibert_data_dir\x18\x02 \x01(\t\x12\x17\n\nbatch_size\x18\x03 \x01(\x05:\x03\x31\x32\x38\"\xba\x01\n\tKnnConfig\x12\x1a\n\rnum_neighbors\x18\x01 \x01(\x05:\x03\x31\x30\x30\x12\x1a\n\rnum_centroids\x18\x02 \x01(\x05:\x03\x35\x31\x32\x12\x15\n\nnum_probes\x18\x03 \x01(\x05:\x01\x38\x12\x1a\n\x0enum_quantizers\x18\x04 \x01(\x05:\x02\x33\x32\x12\x1d\n\x12\x62its_per_quantizer\x18\x05 \x01(\x05:\x01\x38\x12#\n\x14training_probability\x18\x06 \x01(\x02:\x05\x30.001\"\xb8\x01\n\x0f\x43onstructConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12!\n\x03\x66tp\x18\x03 \x01(\x0b\x32\x14.pymoliere.FtpSource\x12+\n\x06parser\x18\x04 \x01(\x0b\x32\x1b.pymoliere.TextParserConfig\x12*\n\x0csentence_knn\x18\x05 \x01(\x0b\x32\x14.pymoliere.KnnConfig\"8\n\x0bQueryConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig')
 )
 
 
@@ -151,6 +151,13 @@ _TEXTPARSERCONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='batch_size', full_name='pymoliere.TextParserConfig.batch_size', index=2,
+      number=3, type=5, cpp_type=1, label=1,
+      has_default_value=True, default_value=128,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -164,7 +171,73 @@ _TEXTPARSERCONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=290,
-  serialized_end=360,
+  serialized_end=385,
+)
+
+
+_KNNCONFIG = _descriptor.Descriptor(
+  name='KnnConfig',
+  full_name='pymoliere.KnnConfig',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='num_neighbors', full_name='pymoliere.KnnConfig.num_neighbors', index=0,
+      number=1, type=5, cpp_type=1, label=1,
+      has_default_value=True, default_value=100,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='num_centroids', full_name='pymoliere.KnnConfig.num_centroids', index=1,
+      number=2, type=5, cpp_type=1, label=1,
+      has_default_value=True, default_value=512,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='num_probes', full_name='pymoliere.KnnConfig.num_probes', index=2,
+      number=3, type=5, cpp_type=1, label=1,
+      has_default_value=True, default_value=8,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='num_quantizers', full_name='pymoliere.KnnConfig.num_quantizers', index=3,
+      number=4, type=5, cpp_type=1, label=1,
+      has_default_value=True, default_value=32,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='bits_per_quantizer', full_name='pymoliere.KnnConfig.bits_per_quantizer', index=4,
+      number=5, type=5, cpp_type=1, label=1,
+      has_default_value=True, default_value=8,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='training_probability', full_name='pymoliere.KnnConfig.training_probability', index=5,
+      number=6, type=2, cpp_type=6, label=1,
+      has_default_value=True, default_value=float(0.001),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto2',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=388,
+  serialized_end=574,
 )
 
 
@@ -196,6 +269,13 @@ _CONSTRUCTCONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='sentence_knn', full_name='pymoliere.ConstructConfig.sentence_knn', index=3,
+      number=5, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -208,8 +288,8 @@ _CONSTRUCTCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=363,
-  serialized_end=503,
+  serialized_start=577,
+  serialized_end=761,
 )
 
 
@@ -239,17 +319,19 @@ _QUERYCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=505,
-  serialized_end=561,
+  serialized_start=763,
+  serialized_end=819,
 )
 
 _CONSTRUCTCONFIG.fields_by_name['cluster'].message_type = _CLUSTERCONFIG
 _CONSTRUCTCONFIG.fields_by_name['ftp'].message_type = _FTPSOURCE
 _CONSTRUCTCONFIG.fields_by_name['parser'].message_type = _TEXTPARSERCONFIG
+_CONSTRUCTCONFIG.fields_by_name['sentence_knn'].message_type = _KNNCONFIG
 _QUERYCONFIG.fields_by_name['cluster'].message_type = _CLUSTERCONFIG
 DESCRIPTOR.message_types_by_name['FtpSource'] = _FTPSOURCE
 DESCRIPTOR.message_types_by_name['ClusterConfig'] = _CLUSTERCONFIG
 DESCRIPTOR.message_types_by_name['TextParserConfig'] = _TEXTPARSERCONFIG
+DESCRIPTOR.message_types_by_name['KnnConfig'] = _KNNCONFIG
 DESCRIPTOR.message_types_by_name['ConstructConfig'] = _CONSTRUCTCONFIG
 DESCRIPTOR.message_types_by_name['QueryConfig'] = _QUERYCONFIG
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
@@ -274,6 +356,13 @@ TextParserConfig = _reflection.GeneratedProtocolMessageType('TextParserConfig', 
   # @@protoc_insertion_point(class_scope:pymoliere.TextParserConfig)
   })
 _sym_db.RegisterMessage(TextParserConfig)
+
+KnnConfig = _reflection.GeneratedProtocolMessageType('KnnConfig', (_message.Message,), {
+  'DESCRIPTOR' : _KNNCONFIG,
+  '__module__' : 'pymoliere.config.config_pb2'
+  # @@protoc_insertion_point(class_scope:pymoliere.KnnConfig)
+  })
+_sym_db.RegisterMessage(KnnConfig)
 
 ConstructConfig = _reflection.GeneratedProtocolMessageType('ConstructConfig', (_message.Message,), {
   'DESCRIPTOR' : _CONSTRUCTCONFIG,

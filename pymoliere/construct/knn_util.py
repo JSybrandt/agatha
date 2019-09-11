@@ -19,7 +19,7 @@ def train_distributed_knn_from_text_fields(
     num_probes:int,
     num_quantizers:int,
     bits_per_quantizer:int,
-    faiss_training_sample_prob:float,
+    training_sample_prob:float,
     shared_scratch_dir:Path,
 )->Path:
   """
@@ -42,7 +42,7 @@ def train_distributed_knn_from_text_fields(
   @param num_quantizers: number of sub-vectors to discritize
   @param bits_per_quantizer: bits per sub-vector
   @param shared_scratch_dir: location to store intermediate results.
-  @param faiss_training_sample_prob: chance a point is trained on
+  @param training_sample_prob: chance a point is trained on
   @return The path you can load the resulting FAISS index
   """
 
@@ -55,16 +55,21 @@ def train_distributed_knn_from_text_fields(
   }).persist()
 
   # First off, we need to get a representative sample for faiss training
-  print("\t- Getting representative sample:", faiss_training_sample_prob)
+  print("\t- Getting representative sample:", training_sample_prob)
   training_texts = text_records.random_sample(
-      prob=faiss_training_sample_prob
+      prob=training_sample_prob
   ).pluck(
       "text"
   ).compute()
 
   print(f"\t- Embedding on {len(training_texts)} values")
+  batches = embedding_util.embed_texts(
+      texts=training_texts,
+      batch_size=batch_size,
+      scibert_data_dir=scibert_data_dir,
+  )
   training_data = None
-  for training_batch in embedding_util.embed_texts(training_texts):
+  for training_batch in batches:
     if training_data is None:
       training_data = training_batch.astype(dtype=np.float32)
     else:
@@ -91,12 +96,14 @@ def train_distributed_knn_from_text_fields(
       load_path=init_index_path,
       shared_scratch_dir=shared_scratch_dir,
       batch_size=batch_size,
+      scibert_data_dir=scibert_data_dir,
   ).compute()
+  del text_records
 
   print("\t- Merging points")
   for path in partial_idx_paths:
     part_idx = faiss.read_index(str(path))
-    init_index.merge_from(part_idx)
+    init_index.merge_from(part_idx, 0)
 
   print("\t- Writing final index")
   final_idx_path = shared_scratch_dir.joinpath("final.index")
@@ -176,16 +183,19 @@ def rw_embed_and_add_partition_to_idx(
 def embed_and_add_partition_to_idx(
     records:Iterable[Dict[str, Any]],
     index:faiss.Index,
+    scibert_data_dir:Path,
     batch_size:int,
     text_field:str="text",
     id_num_field:str="id",
 )->faiss.Index:
   assert index.is_trained
   batches = embedding_util.embed_texts(
-      list(map(
+      texts=list(map(
         lambda r: r[text_field],
         records,
-      ))
+      )),
+      scibert_data_dir=scibert_data_dir,
+      batch_size=batch_size,
   )
   id_idx = 0
   for embeddings in batches:

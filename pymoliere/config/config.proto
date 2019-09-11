@@ -37,7 +37,7 @@ message KnnConfig {
   optional int32 bits_per_quantizer = 5 [default=8];
   // The probability that a randomly selected record is included in the inital
   // training procedure.
-  optional float training_probability = 6 [default=0.001];
+  optional float training_probability = 6 [default=0.01];
 }
 
 ////////////////////////////////////////////////////////////////////////////////

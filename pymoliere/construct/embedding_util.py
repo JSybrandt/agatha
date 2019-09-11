@@ -19,7 +19,7 @@ def record_to_vector(
     id_field:str,
     embedding_field:str,
     scibert_data_dir:Path,
-    bert_batch_size:int,
+    batch_size:int,
     bert_use_gpu:bool,
 )->dbag.Bag:
   """
@@ -35,7 +35,7 @@ def record_to_vector(
       id_field=id_field,
       embedding_field=embedding_field,
       scibert_data_dir=scibert_data_dir,
-      bert_batch_size=bert_batch_size,
+      batch_size=batch_size,
       bert_use_gpu=bert_use_gpu,
   )
 
@@ -45,15 +45,15 @@ def _record_part_to_vectors(
     id_field:str,
     embedding_field:str,
     scibert_data_dir:Path,
-    bert_batch_size:int,
+    batch_size:int,
 )->Iterable[Dict[str, Any]]:
   records = list(records)
   print("Setting up SciBert")
   tok = BertTokenizer.from_pretrained(scibert_data_dir)
   model = BertModel.from_pretrained(scibert_data_dir)
 
-  for start_idx in range(0, len(records), bert_batch_size):
-    end_idx = min(len(records), start_idx+bert_batch_size)
+  for start_idx in range(0, len(records), batch_size):
+    end_idx = min(len(records), start_idx+batch_size)
     texts = pad_sequence(
       sequences = [
         torch.tensor(tok.encode(r[text_field], add_special_tokens=True))
@@ -68,20 +68,28 @@ def _record_part_to_vectors(
 def embed_texts(
     texts:List[str],
     scibert_data_dir:Path,
-    bert_batch_size:int,
+    batch_size:int,
 )->Iterable[np.ndarray]:
   "A lower-level function to get text embeddings without the bulk of records"
-  tok = BertTokenizer.from_pretrained(scibert_data_dir)
-  model = BertModel.from_pretrained(scibert_data_dir)
-  for start_idx in range(0, len(records), bert_batch_size):
-    end_idx = min(len(records), start_idx+bert_batch_size)
-    texts = pad_sequence(
-      sequences = [
-        torch.tensor(tok.encode(r[text_field], add_special_tokens=True))
-        for r in records[start_idx:end_idx]
+  if hasattr(embed_texts, "tok"):
+    tok = embed_texts.tok
+  else:
+    print("configuring tok")
+    tok = embed_texts.tok = BertTokenizer.from_pretrained(scibert_data_dir)
+  if hasattr(embed_texts, "model"):
+    model = embed_texts.model
+  else:
+    print("configuring model")
+    model = embed_texts.model = BertModel.from_pretrained(scibert_data_dir)
+  # Done getting static data
+  for start_idx in range(0, len(texts), batch_size):
+    end_idx = min(len(texts), start_idx+batch_size)
+    sequs = pad_sequence(
+      sequences=[
+        torch.tensor(tok.encode(t, add_special_tokens=True))
+        for t in texts[start_idx:end_idx]
       ],
       batch_first=True,
     )
-    embedding = model(texts)[-1].detach().numpy()
+    embedding = model(sequs)[-1].detach().numpy()
     yield embedding
-

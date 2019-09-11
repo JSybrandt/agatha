@@ -127,6 +127,6 @@ if __name__ == "__main__":
       num_probes=config.sentence_knn.num_probes,
       num_quantizers=config.sentence_knn.num_quantizers,
       bits_per_quantizer=config.sentence_knn.bits_per_quantizer,
-      faiss_training_sample_prob=config.sentence_knn.training_probability,
+      training_sample_prob=config.sentence_knn.training_probability,
       shared_scratch_dir=tmp_faiss_index_dir,
   )

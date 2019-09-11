@@ -60,7 +60,7 @@ def touch_random_unused_file(base_dir:Path, ext:Optional[str]=None)->Path:
   elif ext[0] != ".":
     ext = f".{ext}"
   lock = Lock(f"dir_lock:{base_dir.name}")
-  lock.aquire(timeout=5)
+  lock.acquire(timeout=5)
   # THREADSAFE
   name = f"{get_random_ascii_str(10)}{ext}"
   path = base_dir.joinpath(name)

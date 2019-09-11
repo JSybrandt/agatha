@@ -3,6 +3,20 @@ from pymoliere.construct import knn_util
 import numpy as np
 import faiss
 import dask
+from pathlib import Path
+import random
+import faiss
+
+from dask.distributed import Client, LocalCluster
+cluster = LocalCluster(n_workers=1)
+client = Client(cluster)
+
+def get_random_word():
+  if not hasattr(get_random_word, "words"):
+    with open("/usr/share/dict/words") as f:
+      get_random_word.words = [l.strip().lower() for l in f]
+  return random.choice(get_random_word.words)
+
 
 def get_example_data(
     num_vectors:int,
@@ -34,6 +48,35 @@ def test_initial_index():
   )
   assert isinstance(init_index, faiss.Index)
   assert init_index.is_trained
+
+def test_train_distributed_knn_from_text():
+  num_docs = 2000
+  text_records = dbag.from_sequence([{
+        "text":get_random_word(),
+        "id": str(i),
+      }
+      for i in range(num_docs)
+    ],
+    npartitions=5,
+  )
+
+  actual = knn_util.train_distributed_knn_from_text_fields(
+    text_records=text_records,
+    id_fn=lambda r: r["id"],
+    text_field="text",
+    scibert_data_dir=Path("data/scibert_scivocab_uncased"),
+    batch_size=32,
+    num_centroids=4,
+    num_probes=1,
+    num_quantizers=32,
+    bits_per_quantizer=8,
+    training_sample_prob=0.2,
+    shared_scratch_dir=Path("/tmp"),
+  )
+  assert actual.is_file()
+  actual_idx = faiss.read_index(str(actual))
+  assert actual_idx.ntotal == num_docs
+
 
 # def test_add_points_to_index():
   # records=get_example_data(

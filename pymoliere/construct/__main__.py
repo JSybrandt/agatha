@@ -113,8 +113,6 @@ if __name__ == "__main__":
   else:
     pubmed_sent_w_ent = file_util.load(out_sent_w_ent)
 
-  pubmed_sent_w_ent = pubmed_sent_w_ent.random_sample(0.01)
-
   print("Training KNN for sentence embeddings.")
   _, tmp_faiss_index_dir = mk_scratch("tmp_faiss_index")
   trained_knn_path = knn_util.train_distributed_knn_from_text_fields(

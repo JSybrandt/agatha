@@ -12,6 +12,8 @@ from pathlib import Path
 import math
 from torch.nn.utils.rnn import pad_sequence
 import pandas as pd
+from pymoliere.util.misc_util import iter_to_batches
+from tqdm import tqdm
 
 def record_to_vector(
     records:dbag.Bag,
@@ -69,27 +71,31 @@ def embed_texts(
     texts:List[str],
     scibert_data_dir:Path,
     batch_size:int,
+    use_gpu:bool=False,
 )->Iterable[np.ndarray]:
   "A lower-level function to get text embeddings without the bulk of records"
-  if hasattr(embed_texts, "tok"):
-    tok = embed_texts.tok
-  else:
+  if not hasattr(embed_texts, "tok"):
     print("configuring tok")
-    tok = embed_texts.tok = BertTokenizer.from_pretrained(scibert_data_dir)
-  if hasattr(embed_texts, "model"):
-    model = embed_texts.model
-  else:
+    embed_texts.tok = BertTokenizer.from_pretrained(scibert_data_dir)
+    if use_gpu:
+      embed_texts.tok = embed_texts.tok.cuda()
+  if not hasattr(embed_texts, "model"):
     print("configuring model")
-    model = embed_texts.model = BertModel.from_pretrained(scibert_data_dir)
-  # Done getting static data
-  for start_idx in range(0, len(texts), batch_size):
-    end_idx = min(len(texts), start_idx+batch_size)
+    embed_texts.model = BertModel.from_pretrained(scibert_data_dir)
+    if use_gpu:
+      embed_texts.model = embed_texts.model.cuda()
+
+  tok = embed_texts.tok
+  model = embed_texts.model
+  for batch in tqdm(iter_to_batches(texts, batch_size)):
     sequs = pad_sequence(
       sequences=[
-        torch.tensor(tok.encode(t, add_special_tokens=True))
-        for t in texts[start_idx:end_idx]
+        torch.tensor(tok.encode(t))
+        for t in batch
       ],
       batch_first=True,
     )
+    if use_gpu:
+      sequs = sequs.cuda()
     embedding = model(sequs)[-1].detach().numpy()
     yield embedding

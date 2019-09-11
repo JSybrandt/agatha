@@ -7,7 +7,8 @@ import numpy as np
 from typing import Iterable, List, Dict, Any, Callable, Optional
 from pymoliere.construct import embedding_util
 from pymoliere.util import file_util
-
+from pymoliere.util.misc_util import iter_to_batches
+from tqdm import tqdm
 
 def train_distributed_knn_from_text_fields(
     text_records:dbag.Bag,
@@ -45,6 +46,12 @@ def train_distributed_knn_from_text_fields(
   @param training_sample_prob: chance a point is trained on
   @return The path you can load the resulting FAISS index
   """
+  init_index_path = shared_scratch_dir.joinpath("init.index")
+  final_idx_path = shared_scratch_dir.joinpath("final.index")
+  print("Cleaning up any tmp files...")
+  for f in tqdm(shared_scratch_dir.iterdir()):
+    if f.suffix == ".index" and f not in [init_index_path, final_idx_path]:
+      f.unlink()
 
   # Fileter for only those texts we care about, and index what we care about
   text_records = text_records.filter(
@@ -52,43 +59,47 @@ def train_distributed_knn_from_text_fields(
   ).map(lambda r:{
         "id": hash(id_fn(r)),
         "text": r[text_field],
-  }).persist()
+  })
 
-  # First off, we need to get a representative sample for faiss training
-  print("\t- Getting representative sample:", training_sample_prob)
-  training_texts = text_records.random_sample(
-      prob=training_sample_prob
-  ).pluck(
-      "text"
-  ).compute()
+  if not init_index_path.is_file():
+    # First off, we need to get a representative sample for faiss training
+    print("\t- Getting representative sample:", training_sample_prob)
+    training_texts = text_records.random_sample(
+        prob=training_sample_prob
+    ).pluck(
+        "text"
+    ).compute()
 
-  print(f"\t- Embedding on {len(training_texts)} values")
-  batches = embedding_util.embed_texts(
-      texts=training_texts,
-      batch_size=batch_size,
-      scibert_data_dir=scibert_data_dir,
-  )
-  training_data = None
-  for training_batch in batches:
-    if training_data is None:
-      training_data = training_batch.astype(dtype=np.float32)
-    else:
-      training_data = np.vstack((
-        training_data,
-        training_batch.astype(np.float32)
-      ))
+    print(f"\t- Embedding on {len(training_texts)} values")
+    batches = embedding_util.embed_texts(
+        texts=training_texts,
+        batch_size=batch_size,
+        scibert_data_dir=scibert_data_dir,
+        use_gpu=True,
+    )
+    training_data = None
+    for training_batch in tqdm(batches):
+      if training_data is None:
+        training_data = training_batch.astype(dtype=np.float32)
+      else:
+        training_data = np.vstack((
+          training_data,
+          training_batch.astype(np.float32)
+        ))
 
-  print(f"\t- Training on sample")
-  init_index = train_initial_index(
-    data=training_data,
-    num_centroids=num_centroids,
-    num_probes=num_probes,
-    num_quantizers=num_quantizers,
-    bits_per_quantizer=bits_per_quantizer,
-  )
-  init_index_path = shared_scratch_dir.joinpath("init.index")
-  print("\t- Saving index", init_index_path)
-  faiss.write_index(init_index, str(init_index_path))
+    print(f"\t- Training on sample")
+    init_index = train_initial_index(
+      data=training_data,
+      num_centroids=num_centroids,
+      num_probes=num_probes,
+      num_quantizers=num_quantizers,
+      bits_per_quantizer=bits_per_quantizer,
+    )
+    print("\t- Saving index", init_index_path)
+    faiss.write_index(init_index, str(init_index_path))
+  else:
+    print("\t- Using cached pretrained index!")
+    init_index = faiss.read_index(str(init_index_path))
 
   print("\t- Adding points")
   partial_idx_paths = text_records.map_partitions(
@@ -98,15 +109,13 @@ def train_distributed_knn_from_text_fields(
       batch_size=batch_size,
       scibert_data_dir=scibert_data_dir,
   ).compute()
-  del text_records
 
   print("\t- Merging points")
-  for path in partial_idx_paths:
+  for path in tqdm(partial_idx_paths):
     part_idx = faiss.read_index(str(path))
     init_index.merge_from(part_idx, 0)
 
   print("\t- Writing final index")
-  final_idx_path = shared_scratch_dir.joinpath("final.index")
   faiss.write_index(init_index, str(final_idx_path))
 
   return final_idx_path
@@ -170,15 +179,21 @@ def rw_embed_and_add_partition_to_idx(
     shared_scratch_dir:Path,
     **kwargs,
 )->List[Path]:
-  index = faiss.read_index(str(load_path))
-  index = embed_and_add_partition_to_idx(
-      records=records,
-      index=index,
-      **kwargs
-  )
-  write_path = file_util.touch_random_unused_file(shared_scratch_dir, ".index")
-  faiss.write_index(index, str(write_path))
-  return [write_path]
+  partial_index_paths = []
+  for record_batch in iter_to_batches(records, 300000):
+    index = embed_and_add_partition_to_idx(
+        records=record_batch,
+        index=faiss.read_index(str(load_path)),
+        **kwargs
+    )
+    print("Got:", index.ntotal)
+    write_path = file_util.touch_random_unused_file(
+        shared_scratch_dir,
+        ".index"
+    )
+    faiss.write_index(index, str(write_path))
+    partial_index_paths.append(write_path)
+  return partial_index_paths
 
 def embed_and_add_partition_to_idx(
     records:Iterable[Dict[str, Any]],

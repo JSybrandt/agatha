@@ -5,16 +5,16 @@ package pymoliere;
 // This is used to specify the remote location of pubmed articles.
 // Defaults to the most recent baseline.
 message FtpSource {
-  optional string address = 1 [default = "ftp.ncbi.nlm.nih.gov"];
+  optional string address = 1 [default="ftp.ncbi.nlm.nih.gov"];
   // The remote location to download from
-  optional string workdir = 2 [default = "pubmed/baseline"];
+  optional string workdir = 2 [default="pubmed/baseline"];
 }
 
 // The ClusterConfig defines the ray cluster connection param. Any cluster-specific deatuls will occur here.
 message ClusterConfig {
   // Where to connect to cluster.
   optional string address = 1;
-  optional int32 port = 2 [default = 8786];
+  optional int32 port = 2 [default=8786];
   // Fast scratch dir to use for intermediate storage.
   optional string local_scratch = 3 [default="/tmp"];
   optional string shared_scratch = 4;
@@ -40,6 +40,19 @@ message KnnConfig {
   optional float training_probability = 6 [default=0.01];
 }
 
+message RedisConfig {
+  optional string address = 1 [default="localhost"];
+  optional int32 port = 2 [default=6379];
+  optional int32 db_num = 3 [default=0];
+}
+
+message LdaConfig {
+  optional int32 num_topics = 1 [default=20];
+  optional int32 random_seed = 2 [default=42];
+  optional int32 passes = 3 [default=20];
+  optional int32 batch_size = 4 [default=128];
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Config used to construct the network.
@@ -54,5 +67,9 @@ message ConstructConfig {
 
 // Config used to query the network.
 message QueryConfig {
-  optional ClusterConfig cluster = 1;
+  optional string source = 1;
+  optional string target = 2;
+  optional RedisConfig db = 3;
+  optional int32 max_sentences_per_path_elem = 4 [default=5000];
+  optional LdaConfig topic_model = 5;
 }

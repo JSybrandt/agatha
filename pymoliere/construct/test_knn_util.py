@@ -50,7 +50,7 @@ def test_initial_index():
   assert init_index.is_trained
 
 def test_train_distributed_knn_from_text():
-  num_docs = 2000
+  num_docs = 5000
   text_records = dbag.from_sequence([{
         "text":get_random_word(),
         "id": str(i),
@@ -65,12 +65,12 @@ def test_train_distributed_knn_from_text():
     id_fn=lambda r: r["id"],
     text_field="text",
     scibert_data_dir=Path("data/scibert_scivocab_uncased"),
-    batch_size=32,
+    batch_size=4096,
     num_centroids=4,
     num_probes=1,
     num_quantizers=32,
     bits_per_quantizer=8,
-    training_sample_prob=0.2,
+    training_sample_prob=1,
     shared_scratch_dir=Path("/tmp"),
   )
   assert actual.is_file()

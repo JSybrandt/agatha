@@ -71,31 +71,46 @@ def embed_texts(
     texts:List[str],
     scibert_data_dir:Path,
     batch_size:int,
-    use_gpu:bool=False,
+    use_gpu:bool,
 )->Iterable[np.ndarray]:
   "A lower-level function to get text embeddings without the bulk of records"
+  "use_gpu uses it if available"
+
+  use_gpu = use_gpu and torch.cuda.is_available()
+
   if not hasattr(embed_texts, "tok"):
     print("configuring tok")
     embed_texts.tok = BertTokenizer.from_pretrained(scibert_data_dir)
-    if use_gpu:
-      embed_texts.tok = embed_texts.tok.cuda()
   if not hasattr(embed_texts, "model"):
     print("configuring model")
     embed_texts.model = BertModel.from_pretrained(scibert_data_dir)
     if use_gpu:
+      print("Sending to GPU...")
       embed_texts.model = embed_texts.model.cuda()
+    embed_texts.model.eval()
 
   tok = embed_texts.tok
   model = embed_texts.model
+
   for batch in tqdm(iter_to_batches(texts, batch_size)):
-    sequs = pad_sequence(
-      sequences=[
-        torch.tensor(tok.encode(t))
-        for t in batch
-      ],
-      batch_first=True,
-    )
-    if use_gpu:
-      sequs = sequs.cuda()
-    embedding = model(sequs)[-1].detach().numpy()
-    yield embedding
+    try:
+      sequs = pad_sequence(
+        sequences=[
+          torch.tensor(tok.encode(t))
+          for t in batch
+        ],
+        batch_first=True,
+      )
+      with torch.no_grad():
+        embedding = model(sequs)[-1].detach().numpy()
+      yield embedding
+    except:
+      # Switch to per-text embedding to find the bad one
+      for t in batch:
+        try:
+          with torch.no_grad():
+            yield model(
+                torch.tensor([tok.encode(t)])
+            )[-1].detach().numpy()
+        except:
+          print(t)

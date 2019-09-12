@@ -7,7 +7,7 @@ import numpy as np
 from typing import Iterable, List, Dict, Any, Callable, Optional
 from pymoliere.construct import embedding_util
 from pymoliere.util import file_util
-from pymoliere.util.misc_util import iter_to_batches
+from pymoliere.util.misc_util import iter_to_batches, generator_to_list
 from tqdm import tqdm
 
 def train_distributed_knn_from_text_fields(
@@ -64,28 +64,23 @@ def train_distributed_knn_from_text_fields(
   if not init_index_path.is_file():
     # First off, we need to get a representative sample for faiss training
     print("\t- Getting representative sample:", training_sample_prob)
-    training_texts = text_records.random_sample(
+    training_data = text_records.random_sample(
         prob=training_sample_prob
     ).pluck(
         "text"
-    ).compute()
-
-    print(f"\t- Embedding on {len(training_texts)} values")
-    batches = embedding_util.embed_texts(
-        texts=training_texts,
+    ).map_partitions(
+        generator_to_list,
+        gen_fn=embedding_util.embed_texts,
         batch_size=batch_size,
         scibert_data_dir=scibert_data_dir,
-        use_gpu=True,
-    )
-    training_data = None
-    for training_batch in tqdm(batches):
-      if training_data is None:
-        training_data = training_batch.astype(dtype=np.float32)
-      else:
-        training_data = np.vstack((
-          training_data,
-          training_batch.astype(np.float32)
-        ))
+        use_gpu=False, # it wasn't working right...
+    ).compute()
+
+    training_data = np.vstack([
+      b.astype(dtype=np.float32) for b in training_data
+    ])
+
+    print(training_data.shape)
 
     print(f"\t- Training on sample")
     init_index = train_initial_index(
@@ -108,6 +103,7 @@ def train_distributed_knn_from_text_fields(
       shared_scratch_dir=shared_scratch_dir,
       batch_size=batch_size,
       scibert_data_dir=scibert_data_dir,
+      use_gpu=False,  # workers won't have it
   ).compute()
 
   print("\t- Merging points")
@@ -170,6 +166,7 @@ def train_initial_index(
       bits_per_quantizer
   )
   index.nprobe = num_probes
+  print("\t\t- Training!!!")
   index.train(data)
   return index
 
@@ -200,6 +197,7 @@ def embed_and_add_partition_to_idx(
     index:faiss.Index,
     scibert_data_dir:Path,
     batch_size:int,
+    use_gpu:bool,
     text_field:str="text",
     id_num_field:str="id",
 )->faiss.Index:
@@ -211,6 +209,7 @@ def embed_and_add_partition_to_idx(
       )),
       scibert_data_dir=scibert_data_dir,
       batch_size=batch_size,
+      use_gpu=use_gpu,
   )
   id_idx = 0
   for embeddings in batches:

@@ -10,6 +10,41 @@ from pymoliere.util import file_util
 from pymoliere.util.misc_util import iter_to_batches, generator_to_list
 from tqdm import tqdm
 
+
+def create_inverted_index(
+    ids:dbag.Bag,
+)->Dict[int, List[str]]:
+  def part_to_inv_idx(
+      part:Iterable[str],
+  )->Iterable[Dict[int, List[str]]]:
+    res = {}
+    for str_id in part:
+      int_id = hash(str_id)
+      if int_id not in res:
+        res[int_id] = [str_id]
+      else:
+        res[int_id].append(str_id)
+    return [res]
+
+  def merge_inv_idx(
+      d1:Dict[int, List[str]],
+      d2:Dict[int, List[str]]=None,
+  )->Dict[int, List[str]]:
+    if d2 is None:
+      return d1
+    print(d1)
+    print(d2)
+    if len(d2) > len(d1):
+      d1, d2 = d2, d1
+    for int_id, str_ids in d2.items():
+      if int_id not in d1:
+        d1[int_id] = str_ids
+      else:
+        d1[int_id] += str_ids
+    return d1
+  return ids.map_partitions(part_to_inv_idx).fold(merge_inv_idx)
+
+
 def train_distributed_knn_from_text_fields(
     text_records:dbag.Bag,
     id_fn:Callable[[Dict[str,Any]], str],
@@ -29,7 +64,6 @@ def train_distributed_knn_from_text_fields(
   to reduce their dimensionality and process the appropriatly.
 
   I'm so sorry this one function has to do so much...
-
 
   @param text_records: bag of text dicts
   @param id_fn: fn that gets a string per dict, we hash this

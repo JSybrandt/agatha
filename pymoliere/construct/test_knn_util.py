@@ -7,9 +7,9 @@ from pathlib import Path
 import random
 import faiss
 
-from dask.distributed import Client, LocalCluster
-cluster = LocalCluster(n_workers=1)
-client = Client(cluster)
+# from dask.distributed import Client, LocalCluster
+# cluster = LocalCluster(n_workers=1)
+# client = Client(cluster)
 
 def get_random_word():
   if not hasattr(get_random_word, "words"):
@@ -76,6 +76,30 @@ def test_train_distributed_knn_from_text():
   assert actual.is_file()
   actual_idx = faiss.read_index(str(actual))
   assert actual_idx.ntotal == num_docs
+
+
+def test_inverted_index():
+  num_docs = 100
+  input_objs = [{
+      "text":get_random_word(),
+      "id": str(i),
+    }
+    for i in range(num_docs)
+  ]
+  expected = {
+      hash(e["id"]): [e["id"]]
+      for e in input_objs
+  }
+  input_ids = dbag.from_sequence(
+    input_objs,
+    npartitions=5,
+  ).map(
+    lambda x: x["id"]
+  )
+  actual = knn_util.create_inverted_index(
+    ids=input_ids,
+  ).compute()
+  assert actual == expected
 
 
 # def test_add_points_to_index():

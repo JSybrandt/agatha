@@ -5,7 +5,7 @@ install:
 	pip install -e .
 
 test: build
-	pytest -Wignore -v --fulltrace --durations=0 -s ${TEST}
+	pytest -Wignore -v --durations=0 ${FLGS}
 
 clean:
 	python3 setup.py clean

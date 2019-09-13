@@ -125,3 +125,4 @@ dmypy.json
 
 dask-worker-space/
 data/
+*.swp

@@ -49,9 +49,19 @@ def split_sentences(
     document_elem:Dict[str, Any],
     text_data_field:str="text_data",
     sentence_prefix:str="sent",
+    min_sentence_len:Optional[int]=None,
+    max_sentence_len:Optional[int]=None,
 )->List[Dict[str, Any]]:
   """
-  Splits a document into its collection of sentences. In order of text field elements, we split sentences and create new elements for the result. All fields from the original document, as well as the text field (minus the actual text itself) are copied over. For instance:
+  Splits a document into its collection of sentences. In order of text field
+  elements, we split sentences and create new elements for the result. All
+  fields from the original document, as well as the text field (minus the
+  actual text itself) are copied over.
+
+  If min/max sentence len are specified, we do NOT consider sentences that fail
+  to match the range.
+
+  For instance:
 
   {
     "status": "Published",
@@ -112,6 +122,10 @@ def split_sentences(
         assert key not in non_text_attr
         non_text_attr[key] = val
     for sentence_text in sent_tokenize(text_data["text"]):
+      if min_sentence_len is not None and len(sentence_text) < min_sentence_len:
+        continue
+      if max_sentence_len is not None and len(sentence_text) > max_sentence_len:
+        continue
       sent_elem = copy(non_text_attr)
       assert sent_text_key not in sent_elem
       sent_elem[sent_text_key] = sentence_text

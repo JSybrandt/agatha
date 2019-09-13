@@ -27,6 +27,8 @@ message TextParserConfig {
   optional string scispacy_version = 1;
   optional string scibert_data_dir = 2;
   optional int32 batch_size = 3 [default=512];
+  optional int32 min_sentence_len = 4 [default=10];
+  optional int32 max_sentence_len = 5 [default=1000];
 }
 
 message KnnConfig {
@@ -63,6 +65,8 @@ message ConstructConfig {
   optional FtpSource ftp = 3;
   optional TextParserConfig parser = 4;
   optional KnnConfig sentence_knn = 5;
+  // if set, sample our input by this rate.
+  optional float debug_sample_rate = 6;
 }
 
 // Config used to query the network.

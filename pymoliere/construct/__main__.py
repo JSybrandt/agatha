@@ -17,6 +17,7 @@ from pathlib import Path
 import faiss
 from copy import copy
 from typing import Dict, Any, Callable
+from random import random
 
 
 if __name__ == "__main__":
@@ -84,6 +85,10 @@ if __name__ == "__main__":
           show_progress=True,
       )
 
+    if config.HasField("debug_sample_rate"):
+      xml_paths = [x for x in xml_paths if random() < config.debug_sample_rate]
+      print(f"\t- Downsampled XML files to {len(xml_paths)} files.")
+
     print("Splitting sentences.")
     pubmed_sentences = dbag.from_delayed([
       dask.delayed(parse_pubmed_xml.parse_zipped_pubmed_xml)(
@@ -92,8 +97,17 @@ if __name__ == "__main__":
       )
       for p in xml_paths
     ]).filter(lambda r: r["language"]=="eng"
-    ).map(text_util.split_sentences,
+    ).map(
+        text_util.split_sentences,
+        min_sentence_len=config.parser.min_sentence_len,
+        max_sentence_len=config.parser.max_sentence_len,
     ).flatten()
+
+    if config.HasField("debug_sample_rate"):
+      pubmed_sentences = pubmed_sentences.random_sample(
+          config.debug_sample_rate
+      )
+      print(f"\t- Downsampled pubmed sentences by {config.debug_sample_rate}")
 
     print("Analyzing each document.")
     print("\t- Initializing helper object")

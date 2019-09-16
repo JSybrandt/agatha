@@ -1,14 +1,11 @@
 #!/bin/bash
 
-PROCESSES_PER_NODE=1
-THREADS_PER_PROCESS=16
-
-export OMP_NUM_THREADS=1
-
 MODULE_NAME="pymoliere"
 
 CONDA_START=~/anaconda3/etc/profile.d/conda.sh
 MODULE_GROUP=~/module_groups/$MODULE_NAME
+
+echo $MODULE_NAME > ~/.default_module
 
 
 source $CONDA_START
@@ -19,5 +16,3 @@ mkdir $LOG_DIR
 dask-ssh \
   --hostfile $PBS_NODEFILE \
   --log-directory $LOG_DIR \
-  --nthreads $THREADS_PER_PROCESS \
-  --nprocs $PROCESSES_PER_NODE

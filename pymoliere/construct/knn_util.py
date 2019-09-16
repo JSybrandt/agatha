@@ -5,10 +5,59 @@ import faiss
 from pathlib import Path
 import numpy as np
 from typing import Iterable, List, Dict, Any, Callable, Optional
+from tqdm import tqdm
 from pymoliere.construct import embedding_util
 from pymoliere.util import file_util
-from pymoliere.util.misc_util import iter_to_batches, generator_to_list
-from tqdm import tqdm
+from pymoliere.util.misc_util import (
+    iter_to_batches,
+    generator_to_list,
+    flatten_list,
+    hash_str_to_int64
+)
+
+
+def get_neighbors_from_index_per_part(
+    records:Iterable[Dict[str, Any]],
+    inverted_ids: Dict[int, List[str]],
+    text_field:str,
+    num_neighbors:int,
+    scibert_data_dir:Path,
+    batch_size:int,
+    index:Optional[faiss.Index]=None,
+    index_path:Optional[Path]=None,
+    id_field:str="id"
+)->Iterable[Dict[str, Any]]:
+  """
+  """
+  self = get_neighbors_from_index_per_part
+  if not hasattr(self, "index"):
+    if index is not None:
+      self.index = index
+    elif index_path is not None:
+      print("\t- Loading index from path...")
+      self.index = faiss.read_index(str(index_path))
+    assert hasattr(self, "index")
+    assert self.index is not None
+
+  for rec_batch in iter_to_batches(records, batch_size):
+    texts = [r[text_field] for r in rec_batch]
+    ids = [r[id_field] for r in rec_batch]
+    embs = next(embedding_util.embed_texts(
+        texts=texts,
+        scibert_data_dir=scibert_data_dir,
+        batch_size=batch_size,
+    ))
+    if embs.shape[0] != len(texts):
+      raise Exception("Error in:" + str(ids))
+    _, neighbors = self.index.search(embs, num_neighbors)
+    for root_id, neigh_indices in zip(ids, neighbors):
+      neigh_ids = flatten_list(
+          inverted_ids[x] for x in neigh_indices if x in inverted_ids
+      )
+      yield {
+          "id": root_id,
+          "neigh_ids": neigh_ids,
+      }
 
 
 def create_inverted_index(
@@ -19,7 +68,7 @@ def create_inverted_index(
   )->Iterable[Dict[int, List[str]]]:
     res = {}
     for str_id in part:
-      int_id = hash(str_id)
+      int_id = hash_str_to_int64(str_id)
       if int_id not in res:
         res[int_id] = [str_id]
       else:
@@ -32,8 +81,6 @@ def create_inverted_index(
   )->Dict[int, List[str]]:
     if d2 is None:
       return d1
-    print(d1)
-    print(d2)
     if len(d2) > len(d1):
       d1, d2 = d2, d1
     for int_id, str_ids in d2.items():
@@ -47,7 +94,6 @@ def create_inverted_index(
 
 def train_distributed_knn_from_text_fields(
     text_records:dbag.Bag,
-    id_fn:Callable[[Dict[str,Any]], str],
     text_field:str,
     scibert_data_dir:Path,
     batch_size:int,
@@ -57,6 +103,8 @@ def train_distributed_knn_from_text_fields(
     bits_per_quantizer:int,
     training_sample_prob:float,
     shared_scratch_dir:Path,
+    final_index_path:Path,
+    id_field:str="id"
 )->Path:
   """
   Computing all of the embeddings and then performing a KNN is a problem for memory.
@@ -66,9 +114,7 @@ def train_distributed_knn_from_text_fields(
   I'm so sorry this one function has to do so much...
 
   @param text_records: bag of text dicts
-  @param id_fn: fn that gets a string per dict, we hash this
   @param text_field: input text field that we embed.
-  @param id_field: output id field we use to store string ids
   @param id_num_field: output id field we use to store number ids
   @param scibert_data_dir: location we can load scibert weights
   @param batch_size: number of sentences per batch
@@ -81,17 +127,16 @@ def train_distributed_knn_from_text_fields(
   @return The path you can load the resulting FAISS index
   """
   init_index_path = shared_scratch_dir.joinpath("init.index")
-  final_idx_path = shared_scratch_dir.joinpath("final.index")
   print("Cleaning up any tmp files...")
   for f in tqdm(shared_scratch_dir.iterdir()):
-    if f.suffix == ".index" and f not in [init_index_path, final_idx_path]:
+    if f.suffix == ".index" and f not in [init_index_path, final_index_path]:
       f.unlink()
 
   # Fileter for only those texts we care about, and index what we care about
   text_records = text_records.filter(
       lambda r: text_field in r and len(text_field) > 0
   ).map(lambda r:{
-        "id": hash(id_fn(r)),
+        "id_num": hash_str_to_int64(r[id_field]),
         "text": r[text_field],
   })
 
@@ -107,7 +152,6 @@ def train_distributed_knn_from_text_fields(
         gen_fn=embedding_util.embed_texts,
         batch_size=batch_size,
         scibert_data_dir=scibert_data_dir,
-        use_gpu=False, # it wasn't working right...
     ).compute()
 
     training_data = np.vstack([
@@ -137,7 +181,6 @@ def train_distributed_knn_from_text_fields(
       shared_scratch_dir=shared_scratch_dir,
       batch_size=batch_size,
       scibert_data_dir=scibert_data_dir,
-      use_gpu=False,  # workers won't have it
   ).compute()
 
   print("\t- Merging points")
@@ -146,9 +189,9 @@ def train_distributed_knn_from_text_fields(
     init_index.merge_from(part_idx, 0)
 
   print("\t- Writing final index")
-  faiss.write_index(init_index, str(final_idx_path))
+  faiss.write_index(init_index, str(final_index_path))
 
-  return final_idx_path
+  return final_index_path
 
 def train_initial_index(
     data:np.ndarray,
@@ -231,9 +274,8 @@ def embed_and_add_partition_to_idx(
     index:faiss.Index,
     scibert_data_dir:Path,
     batch_size:int,
-    use_gpu:bool,
     text_field:str="text",
-    id_num_field:str="id",
+    id_num_field:str="id_num",
 )->faiss.Index:
   assert index.is_trained
   batches = embedding_util.embed_texts(
@@ -243,7 +285,6 @@ def embed_and_add_partition_to_idx(
       )),
       scibert_data_dir=scibert_data_dir,
       batch_size=batch_size,
-      use_gpu=use_gpu,
   )
   id_idx = 0
   for embeddings in batches:

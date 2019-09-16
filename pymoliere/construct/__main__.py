@@ -124,21 +124,46 @@ if __name__ == "__main__":
     )
     print("\t- Saving...")
     file_util.save(pubmed_sent_w_ent, out_sent_w_ent)
-  else:
-    pubmed_sent_w_ent = file_util.load(out_sent_w_ent)
 
-  print("Training KNN for sentence embeddings.")
+  # Once we have our initial processing complete, its important that we always
+  # retrieve these results from storage. Otherwise, we may compute again.
+  # Furthermore, we can't actually afford to keep this whole thing persisted.
+  pubmed_sent_w_ent = file_util.load(out_sent_w_ent)
+
   _, tmp_faiss_index_dir = mk_scratch("tmp_faiss_index")
-  trained_knn_path = knn_util.train_distributed_knn_from_text_fields(
-      text_records=pubmed_sent_w_ent,
-      id_fn=lambda r:f"{r['pmid']}:{r['version']}:{r['sent_idx']}",
+  final_index_path = tmp_faiss_index_dir.joinpath("final.index")
+  if not final_index_path.is_file():
+    print("Training KNN for sentence embeddings.")
+    knn_util.train_distributed_knn_from_text_fields(
+        text_records=pubmed_sent_w_ent,
+        text_field="sent_text",
+        scibert_data_dir=config.parser.scibert_data_dir,
+        batch_size=config.parser.batch_size,
+        num_centroids=config.sentence_knn.num_centroids,
+        num_probes=config.sentence_knn.num_probes,
+        num_quantizers=config.sentence_knn.num_quantizers,
+        bits_per_quantizer=config.sentence_knn.bits_per_quantizer,
+        training_sample_prob=config.sentence_knn.training_probability,
+        shared_scratch_dir=tmp_faiss_index_dir,
+        final_index_path=final_index_path,
+    )
+
+  # Get a map from ID to documents
+  inverted_ids = knn_util.create_inverted_index(
+      ids=pubmed_sent_w_ent.pluck("id")
+  )
+  # Get NN Edges
+  print("Getting Nearest-Neighbors per-sentence")
+  sentence_nn = pubmed_sent_w_ent.map_partitions(
+      knn_util.get_neighbors_from_index_per_part,
+      # --
+      inverted_ids=inverted_ids,
       text_field="sent_text",
+      num_neighbors=config.sentence_knn.num_neighbors,
       scibert_data_dir=config.parser.scibert_data_dir,
       batch_size=config.parser.batch_size,
-      num_centroids=config.sentence_knn.num_centroids,
-      num_probes=config.sentence_knn.num_probes,
-      num_quantizers=config.sentence_knn.num_quantizers,
-      bits_per_quantizer=config.sentence_knn.bits_per_quantizer,
-      training_sample_prob=config.sentence_knn.training_probability,
-      shared_scratch_dir=tmp_faiss_index_dir,
+      index_path=final_index_path,
   )
+  _, sent_nn_dir = mk_scratch("sent_nn")
+  print("Saving...")
+  file_util.save(sentence_nn, sent_nn_dir)

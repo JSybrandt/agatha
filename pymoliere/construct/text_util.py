@@ -5,6 +5,7 @@ from typing import List, Tuple, Any, Optional, Dict, Callable
 import spacy
 from copy import copy
 from nltk.tokenize import sent_tokenize
+from pymoliere.util.db_key_util import SENTENCE_TYPE
 
 GLOBAL_NLP_OBJS = {
     "analyze_sentence": None,
@@ -49,6 +50,7 @@ def split_sentences(
     document_elem:Dict[str, Any],
     text_data_field:str="text_data",
     sentence_prefix:str="sent",
+    id_field:str="id",
     min_sentence_len:Optional[int]=None,
     max_sentence_len:Optional[int]=None,
 )->List[Dict[str, Any]]:
@@ -60,6 +62,8 @@ def split_sentences(
 
   If min/max sentence len are specified, we do NOT consider sentences that fail
   to match the range.
+
+  `id_field` will be set with {SENTENCE_TYPE}:{pmid}:{version}:{sent_idx}
 
   For instance:
 
@@ -138,6 +142,8 @@ def split_sentences(
   for r in res:
     assert sent_total_key not in r
     r[sent_total_key] = sent_idx
+    r[id_field] = \
+        f"{SENTENCE_TYPE}:{r['pmid']}:{r['version']}:{r[sent_idx_key]}"
   return res
 
 

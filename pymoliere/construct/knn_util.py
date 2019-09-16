@@ -28,6 +28,12 @@ def get_neighbors_from_index_per_part(
     id_field:str="id"
 )->Iterable[Dict[str, Any]]:
   """
+  Given a set of records, and a precomputed index object, actually get the KNN.
+  Each record is embedded, and the given index is used to lookup similar
+  records.  The inverted_ids object is also used to coordinate the numerical to
+  string values.  Note that the result will NOT include a self-link, and may
+  include more/less neighbors depending on hash collisions. (Effect should be
+  negligible).
   """
   self = get_neighbors_from_index_per_part
   if not hasattr(self, "index"):
@@ -51,8 +57,11 @@ def get_neighbors_from_index_per_part(
       raise Exception("Error in:" + str(ids))
     _, neighbors = self.index.search(embs, num_neighbors)
     for root_id, neigh_indices in zip(ids, neighbors):
+      root_idx = hash_str_to_int64(root_id)
       neigh_ids = flatten_list(
-          inverted_ids[x] for x in neigh_indices if x in inverted_ids
+          inverted_ids[idx]
+          for idx in neigh_indices
+          if idx in inverted_ids and idx != root_idx
       )
       yield {
           "id": root_id,

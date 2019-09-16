@@ -17,15 +17,12 @@ def flatten_list(list_of_lists:List[List[Any]])->List[Any]:
   return [item for sublist in list_of_lists for item in sublist]
 
 def hash_str_to_int64(s):
-  try:
-    return np.int64(
-        int.from_bytes(
-          hashlib.md5(
-            s.encode("utf-8")
-          ).digest(),
-          byteorder="big",
-          signed=False,
-        ) % np.iinfo(np.int64).max
-    )
-  except:
-    raise(f"Error with: '{s}'")
+  return np.int64(
+      int.from_bytes(
+        hashlib.md5(
+          s.encode("utf-8")
+        ).digest(),
+        byteorder="big",
+        signed=False,
+      ) % np.iinfo(np.int64).max
+  )

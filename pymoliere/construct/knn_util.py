@@ -14,11 +14,16 @@ from pymoliere.util.misc_util import (
     flatten_list,
     hash_str_to_int64
 )
+from pymoliere.util import db_key_util
+from pymoliere.util.misc_util import Record, Edge
+
+# Maps a single hash value to a list of original id str
+InvertedIds = Dict[int, List[str]]
 
 
 def get_neighbors_from_index_per_part(
-    records:Iterable[Dict[str, Any]],
-    inverted_ids: Dict[int, List[str]],
+    records:Iterable[Record],
+    inverted_ids: InvertedIds,
     text_field:str,
     num_neighbors:int,
     scibert_data_dir:Path,
@@ -26,7 +31,7 @@ def get_neighbors_from_index_per_part(
     index:Optional[faiss.Index]=None,
     index_path:Optional[Path]=None,
     id_field:str="id"
-)->Iterable[Dict[str, Any]]:
+)->Iterable[Edge]:
   """
   Given a set of records, and a precomputed index object, actually get the KNN.
   Each record is embedded, and the given index is used to lookup similar
@@ -35,6 +40,7 @@ def get_neighbors_from_index_per_part(
   include more/less neighbors depending on hash collisions. (Effect should be
   negligible).
   """
+  res = []
   self = get_neighbors_from_index_per_part
   if not hasattr(self, "index"):
     if index is not None:
@@ -63,18 +69,25 @@ def get_neighbors_from_index_per_part(
           for idx in neigh_indices
           if idx in inverted_ids and idx != root_idx
       )
-      yield {
-          "id": root_id,
-          "neigh_ids": neigh_ids,
-      }
-
+      root_graph_key = db_key_util.to_graph_key(root_id)
+      for neigh_id in neigh_ids:
+        neigh_graph_key = db_key_util.to_graph_key(neigh_id)
+        res.append(db_key_util.to_edge(
+          source=root_graph_key,
+          target=neigh_graph_key
+        ))
+        res.append(db_key_util.to_edge(
+          target=root_graph_key,
+          source=neigh_graph_key
+        ))
+  return res
 
 def create_inverted_index(
     ids:dbag.Bag,
-)->Dict[int, List[str]]:
+)->InvertedIds:
   def part_to_inv_idx(
       part:Iterable[str],
-  )->Iterable[Dict[int, List[str]]]:
+  )->Iterable[InvertedIds]:
     res = {}
     for str_id in part:
       int_id = hash_str_to_int64(str_id)
@@ -85,9 +98,9 @@ def create_inverted_index(
     return [res]
 
   def merge_inv_idx(
-      d1:Dict[int, List[str]],
-      d2:Dict[int, List[str]]=None,
-  )->Dict[int, List[str]]:
+      d1:InvertedIds,
+      d2:InvertedIds=None,
+  )->InvertedIds:
     if d2 is None:
       return d1
     if len(d2) > len(d1):
@@ -257,7 +270,7 @@ def train_initial_index(
   return index
 
 def rw_embed_and_add_partition_to_idx(
-    records:Iterable[Dict[str, Any]],
+    records:Iterable[Record],
     load_path:Path,
     shared_scratch_dir:Path,
     **kwargs,
@@ -279,7 +292,7 @@ def rw_embed_and_add_partition_to_idx(
   return partial_index_paths
 
 def embed_and_add_partition_to_idx(
-    records:Iterable[Dict[str, Any]],
+    records:Iterable[Record],
     index:faiss.Index,
     scibert_data_dir:Path,
     batch_size:int,
@@ -309,7 +322,7 @@ def embed_and_add_partition_to_idx(
   return index
 
 def add_partition_to_index(
-    records:Iterable[Dict[str, Any]],
+    records:Iterable[Record],
     index:faiss.Index,
     embedding_field:str,
     id_num_field:str,

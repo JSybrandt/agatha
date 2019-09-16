@@ -1,5 +1,5 @@
 from itertools import zip_longest
-from typing import List, Any
+from typing import List, Any, Dict
 import numpy as np
 import hashlib
 
@@ -26,3 +26,6 @@ def hash_str_to_int64(s):
         signed=False,
       ) % np.iinfo(np.int64).max
   )
+
+Record = Dict[str, Any]
+Edge = Dict[str, Any]

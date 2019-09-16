@@ -10,7 +10,7 @@ from pymoliere.construct import (
     knn_util,
     embedding_util,
 )
-from dask.distributed import Client, LocalCluster
+from dask.distributed import Client, LocalCluster, as_completed
 import dask.bag as dbag
 import dask
 from pathlib import Path
@@ -18,6 +18,13 @@ import faiss
 from copy import copy
 from typing import Dict, Any, Callable
 from random import random
+import redis
+import socket
+from pymoliere.construct.write_db import(
+    init_redis_client,
+    write_record,
+    write_edge,
+)
 
 
 if __name__ == "__main__":
@@ -64,6 +71,20 @@ if __name__ == "__main__":
     datasets = dask_client.list_datasets()
     for d in datasets:
       dask_client.unpublish_dataset(d)
+
+  print("Connecting to Redis...")
+  redis_client = redis.Redis(
+      host=config.db.address,
+      port=config.db.port,
+      db=config.db.db_num,
+  )
+  if config.db.clear:
+    print("\t- Wiping existing DB")
+    redis_client.flushdb()
+
+  if config.db.address == "localhost":
+    config.db.address = socket.gethostname()
+    print(f"\t- Renaming localhost to {config.db.address}")
 
   # READY TO GO!
   _, out_sent_w_ent = mk_scratch("pubmed_sent_w_ent")
@@ -154,7 +175,8 @@ if __name__ == "__main__":
   )
   # Get NN Edges
   print("Getting Nearest-Neighbors per-sentence")
-  sentence_nn = pubmed_sent_w_ent.map_partitions(
+  # Bag of Edge
+  nearest_neighbors_edges = pubmed_sent_w_ent.map_partitions(
       knn_util.get_neighbors_from_index_per_part,
       # --
       inverted_ids=inverted_ids,
@@ -164,6 +186,25 @@ if __name__ == "__main__":
       batch_size=config.parser.batch_size,
       index_path=final_index_path,
   )
-  _, sent_nn_dir = mk_scratch("sent_nn")
-  print("Saving...")
-  file_util.save(sentence_nn, sent_nn_dir)
+
+  print("Getting edges per-sentence")
+  # Bag of Edge
+  sentence_meta_edges = pubmed_sent_w_ent.map_partitions(
+      text_util.get_edges_from_sentence_part
+  )
+
+  print("Initializing redis connection per-worker")
+  dask_client.run(
+      init_redis_client,
+      # --
+      host=config.db.address,
+      port=config.db.port,
+      db=config.db.db_num,
+  )
+  write_all_edges = dbag.concat([
+    nearest_neighbors_edges,
+    sentence_meta_edges,
+  ]).map(write_edge)
+  write_all_sents = pubmed_sent_w_ent.map(write_record)
+  print("Running")
+  dask_client.compute(write_all_edges, write_all_sents)

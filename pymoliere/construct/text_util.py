@@ -1,11 +1,13 @@
 from pathlib import Path
 from scispacy.abbreviation import AbbreviationDetector
 from scispacy.umls_linking import UmlsEntityLinker
-from typing import List, Tuple, Any, Optional, Dict, Callable
+from typing import List, Tuple, Any, Optional, Dict, Callable, Iterable
 import spacy
 from copy import copy
 from nltk.tokenize import sent_tokenize
-from pymoliere.util.db_key_util import SENTENCE_TYPE
+from pymoliere.util import db_key_util
+
+from pymoliere.util.misc_util import Record, Edge
 
 GLOBAL_NLP_OBJS = {
     "analyze_sentence": None,
@@ -22,6 +24,7 @@ def setup_scispacy(
     nlp.add_pipe(AbbreviationDetector(nlp))
     nlp.add_pipe(UmlsEntityLinker(resolve_abbreviations=True))
   return nlp
+
 
 def setup_spacy_transformer(
     scibert_dir:Path=None,
@@ -47,13 +50,13 @@ def setup_spacy_transformer(
 
 
 def split_sentences(
-    document_elem:Dict[str, Any],
+    document_elem:Record,
     text_data_field:str="text_data",
     sentence_prefix:str="sent",
     id_field:str="id",
     min_sentence_len:Optional[int]=None,
     max_sentence_len:Optional[int]=None,
-)->List[Dict[str, Any]]:
+)->List[Record]:
   """
   Splits a document into its collection of sentences. In order of text field
   elements, we split sentences and create new elements for the result. All
@@ -130,20 +133,20 @@ def split_sentences(
         continue
       if max_sentence_len is not None and len(sentence_text) > max_sentence_len:
         continue
-      sent_elem = copy(non_text_attr)
-      assert sent_text_key not in sent_elem
-      sent_elem[sent_text_key] = sentence_text
-      assert sent_idx_key not in sent_elem
-      sent_elem[sent_idx_key] = sent_idx
+      sent_rec = copy(non_text_attr)
+      assert sent_text_key not in sent_rec
+      sent_rec[sent_text_key] = sentence_text
+      assert sent_idx_key not in sent_rec
+      sent_rec[sent_idx_key] = sent_idx
       sent_idx += 1
-      res.append(sent_elem)
+      res.append(sent_rec)
 
   # set total
   for r in res:
     assert sent_total_key not in r
     r[sent_total_key] = sent_idx
     r[id_field] = \
-        f"{SENTENCE_TYPE}:{r['pmid']}:{r['version']}:{r[sent_idx_key]}"
+      f"{db_key_util.SENTENCE_TYPE}:{r['pmid']}:{r['version']}:{r[sent_idx_key]}"
   return res
 
 
@@ -156,27 +159,27 @@ def init_analyze_sentence(
       )
 
 def analyze_sentence(
-    sent_elem:Dict[str, Any],
+    sent_rec:Record,
     text_field:str,
     nlp:Any=None,
     token_field:str="tokens",
     entity_field:str="entities",
     #vector_field:str="vector"
-)->Dict[str, Any]:
+)->Record:
   "Splits tokens into useful components"
-  assert text_field in sent_elem
-  assert token_field not in sent_elem
-  assert entity_field not in sent_elem
-  #assert vector_field not in sent_elem
+  assert text_field in sent_rec
+  assert token_field not in sent_rec
+  assert entity_field not in sent_rec
+  #assert vector_field not in sent_rec
 
   if nlp is None:
     nlp = GLOBAL_NLP_OBJS["analyze_sentence"]
 
-  sent_elem = copy(sent_elem)
+  sent_rec = copy(sent_rec)
   try:
-    doc = nlp(sent_elem[text_field])
-    #sent_elem[vector_field] = doc.vector.tolist()
-    sent_elem[entity_field] = [
+    doc = nlp(sent_rec[text_field])
+    #sent_rec[vector_field] = doc.vector.tolist()
+    sent_rec[entity_field] = [
       {
         "tok_start": ent.start,
         "tok_end": ent.end,
@@ -187,7 +190,7 @@ def analyze_sentence(
       }
       for ent in doc.ents
     ]
-    sent_elem[token_field] = [
+    sent_rec[token_field] = [
         {
           "cha_start": tok.idx,
           "cha_end": tok.idx + len(tok),
@@ -201,6 +204,70 @@ def analyze_sentence(
         for tok in doc
     ]
   except Exception as e:
-    sent_elem["ERR"] = str(e)
+    sent_rec["ERR"] = str(e)
     print(e)
-  return sent_elem
+  return sent_rec
+
+def token_to_id(
+    token:Record,
+    graph:bool=False,
+)->str:
+  g = "g:" if graph else ""
+  typ = db_key_util.LEMMA_TYPE
+  lem = token["lemma"]
+  pos = token["pos"]
+  tag = token["tag"]
+  return f"{g}{typ}:{lem}:{pos}:{tag}".lower()
+
+def entity_to_id(
+    entity:Record,
+    sentence:Record,
+    token_field:str="tokens",
+    graph:bool=False,
+)->str:
+  g = "g:" if graph else ""
+  ent = "_".join([
+      sentence[token_field][tok_idx]["lemma"]
+      for tok_idx in range(entity["tok_start"], entity["tok_end"])
+  ])
+  typ = db_key_util.ENTITY_TYPE
+  return f"{g}{typ}:ent".lower()
+
+def mesh_to_id(
+    mesh_code:str,
+    graph:bool=False,
+)->str:
+  g = "g:" if graph else ""
+  typ = db_key_util.MESH_TERM_TYPE
+  return f"{g}{typ}:mesh_code".lower()
+
+def get_edges_from_sentence_part(
+    sentences:Iterable[Record],
+    token_field:str="tokens",
+    entity_field:str="entities",
+    mesh_field:str="mesh_headings",
+    sent_idx_field:str="sent_idx",
+    sent_total_field:str="sent_total",
+    id_field:str="id",
+)->Iterable[Edge]:
+  res = []
+  for sent_rec in sentences:
+    sent_k = db_key_util.to_graph_key(sent_rec[id_field])
+    for token in sent_rec[token_field]:
+      tok_k = token_to_id(token, graph=True)
+      res.append(db_key_util.to_edge(source=sent_k, target=tok_k))
+      res.append(db_key_util.to_edge(target=sent_k, source=tok_k))
+    for entity in sent_rec[entity_field]:
+      ent_k = entity_to_id(
+          entity=entity,
+          sentence=sent_rec,
+          token_field=token_field,
+          graph=True
+      )
+      res.append(db_key_util.to_edge(source=sent_k, target=ent_k))
+      res.append(db_key_util.to_edge(target=sent_k, source=ent_k))
+    for mesh_code in sent_rec[mesh_field]:
+      mesh_k = mesh_to_id(mesh_code, graph=True)
+      res.append(db_key_util.to_edge(source=sent_k, target=mesh_k))
+      res.append(db_key_util.to_edge(target=sent_k, source=mesh_k))
+  return res

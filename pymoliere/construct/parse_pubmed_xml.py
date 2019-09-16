@@ -6,6 +6,7 @@ from pymoliere.util.file_util import copy_to_local_scratch
 from typing import List, Dict, Any
 import dask.bag as dbag
 import gzip
+from pymoliere.util.misc_util import Record
 
 
 
@@ -20,7 +21,7 @@ def xml_obj_to_date(elem)->str:
 
 def pubmed_xml_to_record(
     pubmed_elem:etree._Element,
-)->Dict[str, Any]:
+)->Record:
   """
   Given a PubmedArticle element, parse out all the fields we care about.
   Fields are represented as a dictionary.
@@ -136,7 +137,7 @@ def pubmed_xml_to_record(
 def parse_zipped_pubmed_xml(
     xml_path:Path,
     local_scratch:Path,
-)->List[Dict[str, Any]]:
+)->List[Record]:
   """
   Copies the given xml file to local scratch, and then gets the set of
   articles, represented by a list of dicts.

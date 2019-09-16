@@ -46,6 +46,8 @@ message RedisConfig {
   optional string address = 1 [default="localhost"];
   optional int32 port = 2 [default=6379];
   optional int32 db_num = 3 [default=0];
+  // Only used on construct
+  optional bool clear=4 [default=false];
 }
 
 message LdaConfig {
@@ -67,6 +69,7 @@ message ConstructConfig {
   optional KnnConfig sentence_knn = 5;
   // if set, sample our input by this rate.
   optional float debug_sample_rate = 6;
+  optional RedisConfig db = 7;
 }
 
 // Config used to query the network.

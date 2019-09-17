@@ -13,6 +13,57 @@ GLOBAL_NLP_OBJS = {
     "analyze_sentence": None,
 }
 
+def _op_g_pre(graph:bool)->str:
+  "helper for graph ids"
+  return f"{db_key_util.GRAPH_TYPE}:" if graph else ""
+
+def sentence_to_id(sent:Record, graph:bool=False)->str:
+  return get_sentence_id(
+      pmid=sent["pmid"],
+      version=sent["version"],
+      sent_idx=sent["sent_idx"],
+      graph=graph,
+  )
+
+def get_sentence_id(
+    pmid:int,
+    version:int,
+    sent_idx:int,
+    graph:bool=False
+)->str:
+  typ = db_key_util.SENTENCE_TYPE
+  return f"{_op_g_pre(graph)}{typ}:{pmid}:{version}:{sent_idx}"
+
+def token_to_id(
+    token:Record,
+    graph:bool=False,
+)->str:
+  typ = db_key_util.LEMMA_TYPE
+  lem = token["lemma"]
+  pos = token["pos"]
+  return f"{_op_g_pre(graph)}{typ}:{pos}:{lem}".lower()
+
+def entity_to_id(
+    entity:Record,
+    sentence:Record,
+    token_field:str="tokens",
+    graph:bool=False,
+)->str:
+  ent = "_".join([
+      sentence[token_field][tok_idx]["lemma"]
+      for tok_idx in range(entity["tok_start"], entity["tok_end"])
+  ])
+  typ = db_key_util.ENTITY_TYPE
+  return f"{_op_g_pre(graph)}{typ}:{ent}".lower()
+
+def mesh_to_id(
+    mesh_code:str,
+    graph:bool=False,
+)->str:
+  typ = db_key_util.MESH_TERM_TYPE
+  return f"{_op_g_pre(graph)}{typ}:{mesh_code}".lower()
+
+
 def setup_scispacy(
     scispacy_version:str,
     add_scispacy_parts:bool=False,
@@ -52,7 +103,6 @@ def setup_spacy_transformer(
 def split_sentences(
     document_elem:Record,
     text_data_field:str="text_data",
-    sentence_prefix:str="sent",
     id_field:str="id",
     min_sentence_len:Optional[int]=None,
     max_sentence_len:Optional[int]=None,
@@ -108,9 +158,9 @@ def split_sentences(
   }]
   """
   assert text_data_field in document_elem
-  sent_text_key = f"{sentence_prefix}_text"
-  sent_idx_key = f"{sentence_prefix}_idx"
-  sent_total_key = f"{sentence_prefix}_total"
+  sent_text_key = f"sent_text"
+  sent_idx_key = f"sent_idx"
+  sent_total_key = f"sent_total"
 
   res = []
 
@@ -125,7 +175,7 @@ def split_sentences(
     non_text_attr = copy(doc_non_text_elem)
     for key, val in text_data.items():
       if key != "text":
-        key = f"{sentence_prefix}_{key}"
+        key = f"sent_{key}"
         assert key not in non_text_attr
         non_text_attr[key] = val
     for sentence_text in sent_tokenize(text_data["text"]):
@@ -145,9 +195,9 @@ def split_sentences(
   for r in res:
     assert sent_total_key not in r
     r[sent_total_key] = sent_idx
-    r[id_field] = \
-      f"{db_key_util.SENTENCE_TYPE}:{r['pmid']}:{r['version']}:{r[sent_idx_key]}"
+    r[id_field] = sentence_to_id(r)
   return res
+
 
 
 def init_analyze_sentence(
@@ -208,38 +258,6 @@ def analyze_sentence(
     print(e)
   return sent_rec
 
-def token_to_id(
-    token:Record,
-    graph:bool=False,
-)->str:
-  g = "g:" if graph else ""
-  typ = db_key_util.LEMMA_TYPE
-  lem = token["lemma"]
-  pos = token["pos"]
-  tag = token["tag"]
-  return f"{g}{typ}:{lem}:{pos}:{tag}".lower()
-
-def entity_to_id(
-    entity:Record,
-    sentence:Record,
-    token_field:str="tokens",
-    graph:bool=False,
-)->str:
-  g = "g:" if graph else ""
-  ent = "_".join([
-      sentence[token_field][tok_idx]["lemma"]
-      for tok_idx in range(entity["tok_start"], entity["tok_end"])
-  ])
-  typ = db_key_util.ENTITY_TYPE
-  return f"{g}{typ}:ent".lower()
-
-def mesh_to_id(
-    mesh_code:str,
-    graph:bool=False,
-)->str:
-  g = "g:" if graph else ""
-  typ = db_key_util.MESH_TERM_TYPE
-  return f"{g}{typ}:mesh_code".lower()
 
 def get_edges_from_sentence_part(
     sentences:Iterable[Record],
@@ -254,6 +272,8 @@ def get_edges_from_sentence_part(
   for sent_rec in sentences:
     sent_k = db_key_util.to_graph_key(sent_rec[id_field])
     for token in sent_rec[token_field]:
+      if token["stop"] or token["pos"] in ("PUNCT"):
+        continue
       tok_k = token_to_id(token, graph=True)
       res.append(db_key_util.to_edge(source=sent_k, target=tok_k))
       res.append(db_key_util.to_edge(target=sent_k, source=tok_k))
@@ -270,4 +290,30 @@ def get_edges_from_sentence_part(
       mesh_k = mesh_to_id(mesh_code, graph=True)
       res.append(db_key_util.to_edge(source=sent_k, target=mesh_k))
       res.append(db_key_util.to_edge(target=sent_k, source=mesh_k))
+    # Adj sentence edges. We only need to make edges for "this" sentence,
+    # because the other sentences will get the other sides of each connection.
+    if sent_rec[sent_idx_field] > 0:
+      res.append(
+        db_key_util.to_edge(
+          source=sent_k,
+          target=get_sentence_id(
+            pmid=sent_rec["pmid"],
+            version=sent_rec["version"],
+            sent_idx=sent_rec["sent_idx"]-1,
+            graph=True,
+          )
+        )
+      )
+    if sent_rec[sent_idx_field] < sent_rec[sent_total_field]-1:
+      res.append(
+        db_key_util.to_edge(
+          source=sent_k,
+          target=get_sentence_id(
+            pmid=sent_rec["pmid"],
+            version=sent_rec["version"],
+            sent_idx=sent_rec["sent_idx"]+1,
+            graph=True,
+          )
+        )
+      )
   return res

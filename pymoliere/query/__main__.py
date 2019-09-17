@@ -39,7 +39,7 @@ def assert_db_has_key(client:redis.Redis, key:str)->None:
           client.scan_iter(
             match=f"[^{GRAPH_TYPE}]*{key}*", # don't match graph objs
           ),
-          stop=num_candidates,
+          num_candidates,
         )
       )
     )

@@ -54,6 +54,7 @@ if __name__ == "__main__":
 
   # Configure Dask
   dask_config.set_local_tmp(local_scratch_root)
+  dask_config.set_verbose_worker()
 
   if config.cluster.run_locally:
     print("Running on local machine!")
@@ -146,6 +147,13 @@ if __name__ == "__main__":
     print("\t- Saving...")
     file_util.save(pubmed_sent_w_ent, out_sent_w_ent)
 
+  print("Configuring Scibert Model")
+  dask_client.run(
+      embedding_util.init_model,
+      # --
+      scibert_data_dir=config.parser.scibert_data_dir,
+  )
+
   # Once we have our initial processing complete, its important that we always
   # retrieve these results from storage. Otherwise, we may compute again.
   # Furthermore, we can't actually afford to keep this whole thing persisted.
@@ -158,7 +166,6 @@ if __name__ == "__main__":
     knn_util.train_distributed_knn_from_text_fields(
         text_records=pubmed_sent_w_ent,
         text_field="sent_text",
-        scibert_data_dir=config.parser.scibert_data_dir,
         batch_size=config.parser.batch_size,
         num_centroids=config.sentence_knn.num_centroids,
         num_probes=config.sentence_knn.num_probes,
@@ -182,7 +189,6 @@ if __name__ == "__main__":
       inverted_ids=inverted_ids,
       text_field="sent_text",
       num_neighbors=config.sentence_knn.num_neighbors,
-      scibert_data_dir=config.parser.scibert_data_dir,
       batch_size=config.parser.batch_size,
       index_path=final_index_path,
   )

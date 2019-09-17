@@ -16,6 +16,8 @@ def init_redis_client(
       port=port,
       db=db,
   )
+  # Check that DB is around
+  assert DB_CONN["redis_client"].ping()
 
 def write_edge(edge:Edge, redis_client:Redis=None)->None:
   if redis_client is None:

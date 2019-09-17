@@ -15,4 +15,4 @@ LOG_DIR=/tmp/dask_logs
 mkdir $LOG_DIR
 dask-ssh \
   --hostfile $PBS_NODEFILE \
-  --log-directory $LOG_DIR \
+  --log-directory $LOG_DIR

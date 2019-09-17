@@ -26,7 +26,6 @@ def get_neighbors_from_index_per_part(
     inverted_ids: InvertedIds,
     text_field:str,
     num_neighbors:int,
-    scibert_data_dir:Path,
     batch_size:int,
     index:Optional[faiss.Index]=None,
     index_path:Optional[Path]=None,
@@ -56,7 +55,6 @@ def get_neighbors_from_index_per_part(
     ids = [r[id_field] for r in rec_batch]
     embs = next(embedding_util.embed_texts(
         texts=texts,
-        scibert_data_dir=scibert_data_dir,
         batch_size=batch_size,
     ))
     if embs.shape[0] != len(texts):
@@ -117,7 +115,6 @@ def create_inverted_index(
 def train_distributed_knn_from_text_fields(
     text_records:dbag.Bag,
     text_field:str,
-    scibert_data_dir:Path,
     batch_size:int,
     num_centroids:int,
     num_probes:int,
@@ -138,7 +135,6 @@ def train_distributed_knn_from_text_fields(
   @param text_records: bag of text dicts
   @param text_field: input text field that we embed.
   @param id_num_field: output id field we use to store number ids
-  @param scibert_data_dir: location we can load scibert weights
   @param batch_size: number of sentences per batch
   @param num_centroids: number of voronoi cells in approx nn
   @param num_probes: number of cells to consider when querying
@@ -173,8 +169,7 @@ def train_distributed_knn_from_text_fields(
         generator_to_list,
         gen_fn=embedding_util.embed_texts,
         batch_size=batch_size,
-        scibert_data_dir=scibert_data_dir,
-    ).compute()
+    ).compute()#num_threads=1)
 
     training_data = np.vstack([
       b.astype(dtype=np.float32) for b in training_data
@@ -202,8 +197,7 @@ def train_distributed_knn_from_text_fields(
       load_path=init_index_path,
       shared_scratch_dir=shared_scratch_dir,
       batch_size=batch_size,
-      scibert_data_dir=scibert_data_dir,
-  ).compute()
+  ).compute()#num_threads=1)
 
   print("\t- Merging points")
   for path in tqdm(partial_idx_paths):
@@ -271,8 +265,8 @@ def train_initial_index(
 
 def rw_embed_and_add_partition_to_idx(
     records:Iterable[Record],
-    load_path:Path,
     shared_scratch_dir:Path,
+    load_path:Path,
     **kwargs,
 )->List[Path]:
   partial_index_paths = []
@@ -294,7 +288,6 @@ def rw_embed_and_add_partition_to_idx(
 def embed_and_add_partition_to_idx(
     records:Iterable[Record],
     index:faiss.Index,
-    scibert_data_dir:Path,
     batch_size:int,
     text_field:str="text",
     id_num_field:str="id_num",
@@ -305,7 +298,6 @@ def embed_and_add_partition_to_idx(
         lambda r: r[text_field],
         records,
       )),
-      scibert_data_dir=scibert_data_dir,
       batch_size=batch_size,
   )
   id_idx = 0

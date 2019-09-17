@@ -26,7 +26,7 @@ message ClusterConfig {
 message TextParserConfig {
   optional string scispacy_version = 1;
   optional string scibert_data_dir = 2;
-  optional int32 batch_size = 3 [default=256];
+  optional int32 batch_size = 3 [default=32];
   optional int32 min_sentence_len = 4 [default=10];
   optional int32 max_sentence_len = 5 [default=1000];
 }

@@ -6,6 +6,7 @@ import spacy
 from copy import copy
 from nltk.tokenize import sent_tokenize
 from pymoliere.util import db_key_util
+import logging
 
 from pymoliere.util.misc_util import Record, Edge
 
@@ -68,10 +69,10 @@ def setup_scispacy(
     scispacy_version:str,
     add_scispacy_parts:bool=False,
 )->Any:
-  print("Loading scispacy... Might take a bit.")
+  logging.info("Loading scispacy... Might take a bit.")
   nlp = spacy.load(scispacy_version)
   if add_scispacy_parts:
-    print("\t- And UMLS Component")
+    logging.info("\t- And UMLS Component")
     nlp.add_pipe(AbbreviationDetector(nlp))
     nlp.add_pipe(UmlsEntityLinker(resolve_abbreviations=True))
   return nlp
@@ -81,7 +82,7 @@ def setup_spacy_transformer(
     scibert_dir:Path=None,
     lang:str="en",
 )->Any:
-  print("Setting up spacy transformer... Might take a bit.")
+  logging.info("Setting up spacy transformer... Might take a bit.")
   assert scibert_dir.is_dir()
   nlp = PyTT_Language(pytt_name=scibert_dir.name, meta={"lang": lang})
   nlp.add_pipe(nlp.create_pipe("sentencizer"))
@@ -255,7 +256,7 @@ def analyze_sentence(
     ]
   except Exception as e:
     sent_rec["ERR"] = str(e)
-    print(e)
+    logging.info(e)
   return sent_rec
 
 

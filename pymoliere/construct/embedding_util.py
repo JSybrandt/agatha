@@ -25,12 +25,14 @@ def embed_texts(
   self = embed_texts
 
   if not hasattr(embed_texts, "setup"):
-    print("Conficuting Scibert Model in embed_texts")
+    print("Configuring Scibert Model in embed_texts")
     self.dev = "cuda:0" if torch.cuda.is_available() else "cpu"
     self.tok = BertTokenizer.from_pretrained(scibert_data_dir)
     self.model = BertModel.from_pretrained(scibert_data_dir)
     self.model.eval()
     self.model.to(self.dev)
+    if torch.cuda.device_count() > 1:
+      self.model = torch.nn.DataParallel(self.model)
     self.setup = True
 
   for batch in tqdm(iter_to_batches(texts, batch_size)):

@@ -1,3 +1,6 @@
 #!/bin/bash
-~/software/redis/src/redis-server moliere.redis.conf
+
+CONF=${1:-"moliere.redis.conf"}
+
+~/software/redis/src/redis-server $CONF
 

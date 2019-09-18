@@ -28,6 +28,8 @@ message TextParserConfig {
   optional string scibert_data_dir = 2;
   optional int32 min_sentence_len = 3 [default=10];
   optional int32 max_sentence_len = 4 [default=1000];
+  // Path to stopwords. One word per line.
+  optional string stopword_list = 5;
 }
 
 message KnnConfig {

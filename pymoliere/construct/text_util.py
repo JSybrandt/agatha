@@ -87,6 +87,14 @@ def get_scispacy_initalizer(
     return spacy.load(scispacy_version)
   return "text_util:nlp", _init
 
+def get_stopwordlist_initializer(
+    stopword_path:Path
+)->Tuple[str, dpg.Initializer]:
+  def _init():
+    with open(stopword_path, 'r') as f:
+      return {line.strip().lower() for line in f}
+  return "text_util:stopwords", _init
+
 ################################################################################
 
 def split_sentences(
@@ -203,6 +211,7 @@ def analyze_sentence(
 
   if nlp is None:
     nlp = dpg.get("text_util:nlp")
+  stopwords = dpg.get("text_util:stopwords")
 
   sent_rec = copy(sent_rec)
   try:
@@ -228,7 +237,8 @@ def analyze_sentence(
           "tag": tok.tag_,
           "dep": tok.dep_,
           #"vector": tok.vector.tolist() if not tok.is_stop else None,
-          "stop": tok.is_stop,
+          "stop": \
+              tok.lemma_ in stopwords or tok.text.strip().lower() in stopwords
         }
         for tok in doc
     ]
@@ -251,12 +261,19 @@ def add_bow_to_analyzed_sentence(
     if lemma["pos"] in {"NOUN", "VERB", "ADJ"} and not lemma["stop"]:
       bow.append(lemma["lemma"])
   for entity in record[entity_field]:
-    ent_text = get_entity_text(
-        entity=entity,
-        sentence=record,
-        token_field=token_field
-    )
-    bow.append(ent_text)
+    is_stop_ent = True
+    for t in record[token_field][entity["tok_start"]:entity["tok_end"]]:
+      if not t["stop"]:
+        is_stop_ent = False
+        break
+    # A stop-entity is one comprised of only stopwords such as "et_al."
+    if not is_stop_ent:
+      ent_text = get_entity_text(
+          entity=entity,
+          sentence=record,
+          token_field=token_field
+      )
+      bow.append(ent_text)
   bow += record["mesh_headings"]
   record["bow"] = bow
   return record

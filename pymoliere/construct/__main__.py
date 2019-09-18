@@ -95,6 +95,9 @@ if __name__ == "__main__":
     dpg.register(*text_util.get_scispacy_initalizer(
         scispacy_version=config.parser.scispacy_version,
     ))
+    dpg.register(*text_util.get_stopwordlist_initializer(
+        stopword_path=config.parser.stopword_list
+    ))
     dpg.register(*embedding_util.get_scibert_initializer(
         scibert_data_dir=config.parser.scibert_data_dir,
         disable_gpu=config.sys.disable_gpu,

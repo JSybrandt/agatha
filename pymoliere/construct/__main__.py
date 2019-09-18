@@ -1,29 +1,30 @@
 from pymoliere.config import (
     config_pb2 as cpb,
     proto_util,
-    dask_config,
-)
-from pymoliere.util import (
-    file_util,
-    ftp_util,
-    misc_util,
 )
 from pymoliere.construct import (
+    dask_process_global as dpg,
+    embedding_util,
+    file_util,
+    ftp_util,
+    knn_util,
     parse_pubmed_xml,
     text_util,
-    knn_util,
-    embedding_util,
     write_db,
-    dask_process_global as dpg
 )
-from dask.distributed import Client, LocalCluster
-import dask.bag as dbag
-import dask
-from pathlib import Path
-import faiss
+from pymoliere.util import misc_util
+from dask.distributed import (
+    Client,
+    LocalCluster,
+    config as dask_config,
+)
 from copy import copy
-from typing import Dict, Any, Callable
+from pathlib import Path
 from random import shuffle
+from typing import Dict, Any, Callable
+import dask
+import dask.bag as dbag
+import faiss
 import redis
 import socket
 
@@ -54,8 +55,7 @@ if __name__ == "__main__":
     )
 
   # Configure Dask ################
-  dask_config.set_local_tmp(local_scratch_root)
-  dask_config.set_verbose_worker()
+  dask_config["temporary-directory"] = str(local_scratch_root)
   if config.cluster.run_locally:
     print("Running on local machine!")
     cluster = LocalCluster(n_workers=1, threads_per_worker=1)
@@ -65,13 +65,9 @@ if __name__ == "__main__":
     print("Configuring Dask, attaching to cluster")
     print(f"\t- {cluster_address}")
     dask_client = Client(address=cluster_address)
-
   if config.cluster.restart:
     print("\t- Restarting cluster...")
     dask_client.restart()
-    datasets = dask_client.list_datasets()
-    for d in datasets:
-      dask_client.unpublish_dataset(d)
   print(f"\t- Running on {len(dask_client.nthreads())} machines.")
 
   # Configure Redis ##############

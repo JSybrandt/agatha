@@ -2,7 +2,7 @@ from dask.delayed import delayed
 from dask.distributed import Client
 from lxml import etree
 from pathlib import Path
-from pymoliere.util.file_util import copy_to_local_scratch
+from pymoliere.construct.file_util import copy_to_local_scratch
 from typing import List, Dict, Any
 import dask.bag as dbag
 import gzip

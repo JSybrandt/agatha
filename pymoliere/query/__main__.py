@@ -1,7 +1,6 @@
 from pymoliere.config import (
     config_pb2 as cpb,
     proto_util,
-    dask_config,
 )
 import redis
 import sys

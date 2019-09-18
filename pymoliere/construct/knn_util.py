@@ -5,8 +5,7 @@ import faiss
 from pathlib import Path
 import numpy as np
 from typing import Iterable, List, Dict, Any, Callable, Optional, Tuple
-from pymoliere.construct import embedding_util
-from pymoliere.util import file_util
+from pymoliere.construct import embedding_util, file_util
 from pymoliere.util.misc_util import (
     iter_to_batches,
     generator_to_list,

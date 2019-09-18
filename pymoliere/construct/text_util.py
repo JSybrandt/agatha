@@ -7,12 +7,15 @@ from copy import copy
 from nltk.tokenize import sent_tokenize
 from pymoliere.util import db_key_util
 import logging
+from pymoliere.construct import dask_process_global as dpg
 
 from pymoliere.util.misc_util import Record, Edge
 
 GLOBAL_NLP_OBJS = {
     "analyze_sentence": None,
 }
+
+################################################################################
 
 def _op_g_pre(graph:bool)->str:
   "helper for graph ids"
@@ -75,42 +78,16 @@ def mesh_to_id(
   typ = db_key_util.MESH_TERM_TYPE
   return f"{_op_g_pre(graph)}{typ}:{mesh_code}".lower()
 
+################################################################################
 
-def setup_scispacy(
-    scispacy_version:str,
-    add_scispacy_parts:bool=False,
-)->Any:
-  logging.info("Loading scispacy... Might take a bit.")
-  nlp = spacy.load(scispacy_version)
-  if add_scispacy_parts:
-    logging.info("\t- And UMLS Component")
-    nlp.add_pipe(AbbreviationDetector(nlp))
-    nlp.add_pipe(UmlsEntityLinker(resolve_abbreviations=True))
-  return nlp
+def get_scispacy_initalizer(
+    scispacy_version:Path
+)->Tuple[str, dpg.Initializer]:
+  def _init():
+    return spacy.load(scispacy_version)
+  return "text_util:nlp", _init
 
-
-def setup_spacy_transformer(
-    scibert_dir:Path=None,
-    lang:str="en",
-)->Any:
-  logging.info("Setting up spacy transformer... Might take a bit.")
-  assert scibert_dir.is_dir()
-  nlp = PyTT_Language(pytt_name=scibert_dir.name, meta={"lang": lang})
-  nlp.add_pipe(nlp.create_pipe("sentencizer"))
-  nlp.add_pipe(
-      PyTT_WordPiecer.from_pretrained(
-        nlp.vocab,
-        str(scibert_dir)
-      )
-  )
-  nlp.add_pipe(
-      PyTT_TokenVectorEncoder.from_pretrained(
-        nlp.vocab,
-        str(scibert_dir)
-      )
-  )
-  return nlp
-
+################################################################################
 
 def split_sentences(
     document_elem:Record,
@@ -210,16 +187,6 @@ def split_sentences(
     r[id_field] = sentence_to_id(r)
   return res
 
-
-
-def init_analyze_sentence(
-    scispacy_version:str=None,
-)->None:
-    if GLOBAL_NLP_OBJS["analyze_sentence"] is None:
-      GLOBAL_NLP_OBJS["analyze_sentence"] = setup_scispacy(
-          scispacy_version=scispacy_version,
-      )
-
 def analyze_sentence(
     sent_rec:Record,
     text_field:str,
@@ -235,7 +202,7 @@ def analyze_sentence(
   #assert vector_field not in sent_rec
 
   if nlp is None:
-    nlp = GLOBAL_NLP_OBJS["analyze_sentence"]
+    nlp = dpg.get("text_util:nlp")
 
   sent_rec = copy(sent_rec)
   try:

@@ -5,7 +5,6 @@ import faiss
 from pathlib import Path
 import numpy as np
 from typing import Iterable, List, Dict, Any, Callable, Optional, Tuple
-from tqdm import tqdm
 from pymoliere.construct import embedding_util
 from pymoliere.util import file_util
 from pymoliere.util.misc_util import (
@@ -46,7 +45,6 @@ def get_neighbors_from_index_per_part(
     if index is not None:
       self.index = index
     elif index_path is not None:
-      print("\t- Loading index from path...")
       self.index = faiss.read_index(str(index_path))
     assert hasattr(self, "index")
     assert self.index is not None
@@ -146,8 +144,7 @@ def train_distributed_knn(
   @return The path you can load the resulting FAISS index
   """
   init_index_path = shared_scratch_dir.joinpath("init.index")
-  print("Cleaning up any tmp files...")
-  for f in tqdm(shared_scratch_dir.iterdir()):
+  for f in shared_scratch_dir.iterdir():
     if f.suffix == ".index" and f not in [init_index_path, final_index_path]:
       f.unlink()
 

@@ -13,25 +13,16 @@ import math
 from torch.nn.utils.rnn import pad_sequence
 import pandas as pd
 from pymoliere.util.misc_util import iter_to_batches
-from tqdm import tqdm
 import logging
 from dask.distributed import Lock
 from pymoliere.util.misc_util import Record
+from pymoliere.construct import dask_process_global as dpg
 
-GLOBAL_MODEL = {
-    "embed_texts_tok": None,
-    "embed_texts_model": None,
-    "embed_texts_dev": None,
-    "embed_texts": None
-}
-
-def init_model(scibert_data_dir:Path, disable_gpu:bool):
-  lock = Lock(f"init_model")
-  while(not lock.acquire(timeout=5)):
-    pass
-  # THREADSAFE
-  if GLOBAL_MODEL["embed_texts"] is None:
-    logging.info("Configuring Scibert Model in embed_texts")
+def get_scibert_initializer(
+    scibert_data_dir:Path,
+    disable_gpu:bool,
+)->Tuple[str, dpg.Initializer]:
+  def _init():
     if torch.cuda.is_available() and not disable_gpu:
       dev = torch.device("cuda")
     else:
@@ -39,42 +30,10 @@ def init_model(scibert_data_dir:Path, disable_gpu:bool):
     tok = BertTokenizer.from_pretrained(scibert_data_dir)
     model = BertModel.from_pretrained(scibert_data_dir)
     model.eval()
-    # if torch.cuda.device_count() > 1:
-      # model = torch.nn.DataParallel(model)
-    model = model.to(dev)
-    GLOBAL_MODEL["embed_texts_tok"] = tok
-    GLOBAL_MODEL["embed_texts_model"] = model
-    GLOBAL_MODEL["embed_texts_dev"] = dev
-    GLOBAL_MODEL["embed_texts"] = True
-  else:
-    raise Exception("Ran twice on same machine!!!")
-  # End Threadsafe
-  lock.release()
+    model.to(dev)
+    return (dev, tok, model)
+  return "embedding_util:dev,tok,model", _init
 
-
-def embed_texts(
-    texts:List[str],
-    batch_size:int,
-)->Iterable[np.ndarray]:
-  "A lower-level function to get text embeddings without the bulk of records"
-  "use_gpu uses it if available"
-  tok = GLOBAL_MODEL["embed_texts_tok"]
-  model = GLOBAL_MODEL["embed_texts_model"]
-  dev = GLOBAL_MODEL["embed_texts_dev"]
-  assert tok is not None
-  assert model is not None
-  assert dev is not None
-
-  for batch in tqdm(iter_to_batches(texts, batch_size)):
-    sequs = pad_sequence(
-      sequences=[
-        torch.tensor(tok.encode(t))
-        for t in batch
-      ],
-      batch_first=True,
-    ).to(dev)
-    with torch.no_grad():
-      yield model(sequs)[-1].cpu().detach().numpy()
 
 def embed_records(
     records:Iterable[Record],
@@ -88,15 +47,11 @@ def embed_records(
   Each record must contain text_field and id_field.
   Result are truncated records containing only id_field and out_embedding_field.
   """
-  tok = GLOBAL_MODEL["embed_texts_tok"]
-  model = GLOBAL_MODEL["embed_texts_model"]
-  dev = GLOBAL_MODEL["embed_texts_dev"]
-  assert tok is not None
-  assert model is not None
-  assert dev is not None
+
+  dev, tok, model = dpg.get("embedding_util:dev,tok,model")
 
   res = []
-  for batch in tqdm(iter_to_batches(records, batch_size)):
+  for batch in iter_to_batches(records, batch_size):
     texts = list(map(lambda x: x[text_field], batch))
     ids = list(map(lambda x: x[id_field], batch))
     sequs = pad_sequence(

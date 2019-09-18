@@ -3,14 +3,20 @@ from pymoliere.config import (
     proto_util,
     dask_config,
 )
-from pymoliere.util import file_util, ftp_util
+from pymoliere.util import (
+    file_util,
+    ftp_util,
+    misc_util,
+)
 from pymoliere.construct import (
     parse_pubmed_xml,
     text_util,
     knn_util,
     embedding_util,
+    write_db,
+    dask_process_global as dpg
 )
-from dask.distributed import Client, LocalCluster, as_completed
+from dask.distributed import Client, LocalCluster
 import dask.bag as dbag
 import dask
 from pathlib import Path
@@ -20,12 +26,6 @@ from typing import Dict, Any, Callable
 from random import shuffle
 import redis
 import socket
-from pymoliere.construct.write_db import(
-    init_redis_client,
-    write_record,
-    write_edge,
-)
-from pymoliere.util.misc_util import hash_str_to_int64
 
 
 if __name__ == "__main__":
@@ -53,10 +53,9 @@ if __name__ == "__main__":
       task_name=task_name,
     )
 
-  # Configure Dask
+  # Configure Dask ################
   dask_config.set_local_tmp(local_scratch_root)
   dask_config.set_verbose_worker()
-
   if config.cluster.run_locally:
     print("Running on local machine!")
     cluster = LocalCluster(n_workers=1, threads_per_worker=1)
@@ -73,53 +72,51 @@ if __name__ == "__main__":
     datasets = dask_client.list_datasets()
     for d in datasets:
       dask_client.unpublish_dataset(d)
-
   print(f"\t- Running on {len(dask_client.nthreads())} machines.")
 
+  # Configure Redis ##############
   print("Connecting to Redis...")
   redis_client = redis.Redis(
       host=config.db.address,
       port=config.db.port,
       db=config.db.db_num,
   )
+  try:
+    redis_client.ping()
+  except:
+    raise Exception(f"No redis server running at {config.db.address}")
   if config.db.clear:
     print("\t- Wiping existing DB")
     redis_client.flushdb()
-
   if config.db.address == "localhost":
     config.db.address = socket.gethostname()
     print(f"\t- Renaming localhost to {config.db.address}")
 
-  # Initialize Helper Objects
+  # Initialize Helper Objects ###
   print("Initializing Helper Objects")
-  print(f"\t- scispacy NLP parser")
-  dask_client.run(
-      text_util.init_analyze_sentence,
-      # --
-      scispacy_version=config.parser.scispacy_version,
-  )
-  print(f"\t- scibert transformer")
-  dask_client.run(
-      embedding_util.init_model,
-      # --
-      scibert_data_dir=config.parser.scibert_data_dir,
-      disable_gpu=config.sys.disable_gpu,
-  )
-  print(f"\t- redis client")
-  dask_client.run(
-      init_redis_client,
-      # --
-      host=config.db.address,
-      port=config.db.port,
-      db=config.db.db_num,
-  )
+  def init_all():
+    dpg.clear()
+    dpg.register(*text_util.get_scispacy_initalizer(
+        scispacy_version=config.parser.scispacy_version,
+    ))
+    dpg.register(*embedding_util.get_scibert_initializer(
+        scibert_data_dir=config.parser.scibert_data_dir,
+        disable_gpu=config.sys.disable_gpu,
+    ))
+    dpg.register(*write_db.get_redis_client_initialzizer(
+        host=config.db.address,
+        port=config.db.port,
+        db=config.db.db_num,
+    ))
+    dpg.init()
+  dask_client.run(init_all)
 
-  # Prepping all scratch dirs
+  # Prepping all scratch dirs ###
   print("Prepping scratch directories")
   download_local, download_shared = mk_scratch("download_pubmed")
   _, faiss_index_dir = mk_scratch("faiss_index")
 
-  # Download all of pubmed.
+  # Download all of pubmed. ####
   print("Downloading pubmed XML Files")
   with ftp_util.ftp_connect(
       address=config.ftp.address,
@@ -132,6 +129,8 @@ if __name__ == "__main__":
         directory=download_shared,
         show_progress=True,
     )
+
+  ##############################################################################
 
   # READY TO GO!
   print("Preparing computation graph")
@@ -177,20 +176,20 @@ if __name__ == "__main__":
   write_sent_with_ent = pubmed_sent_w_ent.map(
       text_util.add_bow_to_analyzed_sentence
   ).map(
-      write_record
+      write_db.write_record
   )
 
   # get edges from sentence metadata and store in DB
   write_sentence_meta_edges = pubmed_sent_w_ent.map_partitions(
       text_util.get_edges_from_sentence_part
   ).map(
-      write_edge
+      write_db.write_edge
   )
 
   # Get KNN. To start, we need numeric indices and embeddings
   idx_embedding = pubmed_sentences.map(
       lambda x: {
-        "id": hash_str_to_int64(x["id"]),  # need numeric ids
+        "id": misc_util.hash_str_to_int64(x["id"]),  # need numeric ids
         "sent_text": x["sent_text"],  # keep text
       }
   ).map_partitions(
@@ -227,7 +226,7 @@ if __name__ == "__main__":
       batch_size=config.sys.batch_size,
       index_path=final_index_path,
   ).map(
-      write_edge
+      write_db.write_edge
   )
 
   print("Running!!!")

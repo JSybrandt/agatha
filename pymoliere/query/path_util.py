@@ -7,6 +7,7 @@ from pymoliere.util.db_key_util import (
 from heapdict import heapdict
 from redis import Redis
 
+
 def get_path(db_client:Redis, source:str, target:str)->Optional[List[str]]:
   "Gets the exact shortest path between two nodes in the network."
   assert key_is_type(source, GRAPH_TYPE)

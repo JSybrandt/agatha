@@ -17,7 +17,7 @@ from pymoliere.util.db_key_util import(
 from pymoliere.query import path_util
 import json
 from gensim.corpora import Dictionary
-from gensim.models.ldamodel import LdaModel
+from gensim.models.ldamulticore import LdaMulticore
 from pprint import pprint
 
 def assert_conf_has_field(config:cpb.QueryConfig, field:str)->None:
@@ -102,15 +102,12 @@ if __name__ == "__main__":
   print("\t- Forming Corpus")
   corpus = [word_idx.doc2bow(t) for t in texts]
   print("\t- Training Model")
-  topic_model = LdaModel(
+  topic_model = LdaMulticore(
       corpus=corpus,
       id2word=word_idx,
       num_topics=config.topic_model.num_topics,
       random_state=config.topic_model.random_seed,
-      update_every=1,
-      chunksize=config.topic_model.batch_size,
-      passes=config.topic_model.passes,
-      alpha="auto",
+      iterations=config.topic_model.iterations,
   )
   pprint(topic_model.show_topics(formatted=False))
   # Report Topics

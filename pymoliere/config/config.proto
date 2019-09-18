@@ -52,8 +52,7 @@ message RedisConfig {
 message LdaConfig {
   optional int32 num_topics = 1 [default=20];
   optional int32 random_seed = 2 [default=42];
-  optional int32 passes = 3 [default=20];
-  optional int32 batch_size = 4 [default=128];
+  optional int32 iterations = 3 [default=50];
 }
 
 message MlSysConfig {

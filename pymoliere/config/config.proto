@@ -26,9 +26,8 @@ message ClusterConfig {
 message TextParserConfig {
   optional string scispacy_version = 1;
   optional string scibert_data_dir = 2;
-  optional int32 batch_size = 3 [default=32];
-  optional int32 min_sentence_len = 4 [default=10];
-  optional int32 max_sentence_len = 5 [default=1000];
+  optional int32 min_sentence_len = 3 [default=10];
+  optional int32 max_sentence_len = 4 [default=1000];
 }
 
 message KnnConfig {
@@ -57,6 +56,17 @@ message LdaConfig {
   optional int32 batch_size = 4 [default=128];
 }
 
+message MlSysConfig {
+  optional int32 batch_size = 1 [default=32];
+  optional bool disable_gpu = 2 [default=false];
+}
+
+message ConstructDebugConfig {
+  optional bool enable = 1 [default=false];
+  optional float document_sample_rate = 2 [default=0.1];
+  optional int32 partition_subset_size = 3 [default=50];
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Config used to construct the network.
@@ -68,8 +78,9 @@ message ConstructConfig {
   optional TextParserConfig parser = 4;
   optional KnnConfig sentence_knn = 5;
   // if set, sample our input by this rate.
-  optional float debug_sample_rate = 6;
-  optional RedisConfig db = 7;
+  optional RedisConfig db = 6;
+  optional MlSysConfig sys = 7;
+  optional ConstructDebugConfig debug = 8;
 }
 
 // Config used to query the network.

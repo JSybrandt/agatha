@@ -16,6 +16,7 @@ from pymoliere.util.misc_util import iter_to_batches
 from tqdm import tqdm
 import logging
 from dask.distributed import Lock
+from pymoliere.util.misc_util import Record
 
 GLOBAL_MODEL = {
     "embed_texts_tok": None,
@@ -24,14 +25,17 @@ GLOBAL_MODEL = {
     "embed_texts": None
 }
 
-def init_model(scibert_data_dir:Path):
+def init_model(scibert_data_dir:Path, disable_gpu:bool):
   lock = Lock(f"init_model")
   while(not lock.acquire(timeout=5)):
     pass
   # THREADSAFE
   if GLOBAL_MODEL["embed_texts"] is None:
     logging.info("Configuring Scibert Model in embed_texts")
-    dev = torch.device('cuda') if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available() and not disable_gpu:
+      dev = torch.device("cuda")
+    else:
+      dev = torch.device("cpu")
     tok = BertTokenizer.from_pretrained(scibert_data_dir)
     model = BertModel.from_pretrained(scibert_data_dir)
     model.eval()
@@ -71,3 +75,43 @@ def embed_texts(
     ).to(dev)
     with torch.no_grad():
       yield model(sequs)[-1].cpu().detach().numpy()
+
+def embed_records(
+    records:Iterable[Record],
+    batch_size:int,
+    text_field:str,
+    id_field:str="id",
+    out_embedding_field:str="embedding",
+)->Iterable[Record]:
+  """
+  Analogous to embed_texts, but for a partition of records.
+  Each record must contain text_field and id_field.
+  Result are truncated records containing only id_field and out_embedding_field.
+  """
+  tok = GLOBAL_MODEL["embed_texts_tok"]
+  model = GLOBAL_MODEL["embed_texts_model"]
+  dev = GLOBAL_MODEL["embed_texts_dev"]
+  assert tok is not None
+  assert model is not None
+  assert dev is not None
+
+  res = []
+  for batch in tqdm(iter_to_batches(records, batch_size)):
+    texts = list(map(lambda x: x[text_field], batch))
+    ids = list(map(lambda x: x[id_field], batch))
+    sequs = pad_sequence(
+      sequences=[
+        torch.tensor(tok.encode(t))
+        for t in texts
+      ],
+      batch_first=True,
+    ).to(dev)
+    with torch.no_grad():
+      embs = model(sequs)[-1].cpu().detach().numpy()
+    for _id, emb in zip(ids, embs):
+      res.append({
+        id_field: _id,
+        out_embedding_field: emb,
+      })
+  return res
+

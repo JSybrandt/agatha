@@ -62,13 +62,13 @@ def get_neighbors(
   pq = heapdict()
   visited = set()
   pq[source] = 0
-  matches = []
+  matches = set()
   while len(pq) > 0:
     curr_key, curr_dist = pq.popitem()
     visited.add(curr_key)
     curr_key = curr_key.decode("utf-8")
     if key_type is None or key_contains_type(curr_key, key_type):
-      matches.append(curr_key)
+      matches.add(curr_key)
       if max_count is not None and len(matches) >= max_count:
         break
     for neigh_key, neigh_dist in db_client.zscan_iter(curr_key):

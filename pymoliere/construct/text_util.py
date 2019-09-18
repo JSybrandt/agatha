@@ -50,12 +50,23 @@ def entity_to_id(
     token_field:str="tokens",
     graph:bool=False,
 )->str:
-  ent = "_".join([
+  ent = get_entity_text(
+      entity=entity,
+      sentence=sentence,
+      token_field=token_field
+  )
+  typ = db_key_util.ENTITY_TYPE
+  return f"{_op_g_pre(graph)}{typ}:{ent}".lower()
+
+def get_entity_text(
+    entity:Record,
+    sentence:Record,
+    token_field:str="tokens",
+)->str:
+  return "_".join([
       sentence[token_field][tok_idx]["lemma"]
       for tok_idx in range(entity["tok_start"], entity["tok_end"])
   ])
-  typ = db_key_util.ENTITY_TYPE
-  return f"{_op_g_pre(graph)}{typ}:{ent}".lower()
 
 def mesh_to_id(
     mesh_code:str,
@@ -258,6 +269,30 @@ def analyze_sentence(
     sent_rec["ERR"] = str(e)
     logging.info(e)
   return sent_rec
+
+
+def add_bow_to_analyzed_sentence(
+    record:Record,
+    bow_field="bow",
+    token_field="tokens",
+    entity_field="entities",
+    mesh_heading_field="mesh_headings"
+)->Record:
+  assert bow_field not in record
+  bow = []
+  for lemma in record[token_field]:
+    if lemma["pos"] in {"NOUN", "VERB", "ADJ"} and not lemma["stop"]:
+      bow.append(lemma["lemma"])
+  for entity in record[entity_field]:
+    ent_text = get_entity_text(
+        entity=entity,
+        sentence=record,
+        token_field=token_field
+    )
+    bow.append(ent_text)
+  bow += record["mesh_headings"]
+  record["bow"] = bow
+  return record
 
 
 def get_edges_from_sentence_part(

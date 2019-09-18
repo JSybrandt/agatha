@@ -1,3 +1,5 @@
+from pymoliere.util.misc_util import Record
+
 GRAPH_TYPE="g"
 SENTENCE_TYPE="s"
 LEMMA_TYPE="l"
@@ -18,14 +20,16 @@ def key_contains_type(key:str, key_type:str)->bool:
   return toks[0] == key_type or toks[1] == key_type
 
 def to_graph_key(key:str)->str:
+  assert type(key) == str
   assert not key_is_type(key, GRAPH_TYPE)
   return f"{GRAPH_TYPE}:{key}"
 
 def from_graph_key(key:str)->str:
+  assert type(key) == str
   assert key_is_type(key, GRAPH_TYPE)
   return key[len(GRAPH_TYPE)+1:]
 
-def to_edge(source:str, target:str, weight:float=1):
+def to_edge(source:str, target:str, weight:float=1)->Record:
   "an edge is just a special dict."
   if not key_is_type(source, GRAPH_TYPE):
     raise Exception(f"Invalid source key: '{source}'")
@@ -36,3 +40,12 @@ def to_edge(source:str, target:str, weight:float=1):
       "target": target,
       "weight": weight,
   }
+
+def strip_major_type(key:str)->str:
+  "Removes type. If graph key, removes graph and idx type"
+  assert type(key) == str
+  if key_is_type(key, GRAPH_TYPE):
+    # remove g:x:
+    return key[4:]
+  else:
+    return key[2:]

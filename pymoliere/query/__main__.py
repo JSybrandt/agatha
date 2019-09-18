@@ -12,6 +12,7 @@ from pymoliere.util.db_key_util import(
     key_is_type,
     to_graph_key,
     from_graph_key,
+    strip_major_type,
 )
 from pymoliere.query import path_util
 import json
@@ -23,21 +24,16 @@ def assert_conf_has_field(config:cpb.QueryConfig, field:str)->None:
   if not config.HasField(field):
     raise ValueError(f"Must supply `{field}` term.")
 
-def assert_good_query_type(query:str)->None:
-  if key_is_type(query, GRAPH_TYPE):
-    raise ValueError(
-        f"Query term {query} is invalid. You can't query a graph type."
-    )
-
 def assert_db_has_key(client:redis.Redis, key:str)->None:
   num_candidates = 5
   if not client.exists(key):
+    key = strip_major_type(key)
     candidates = "\n\t".join(
       map(
-        lambda s: s.decode("utf-8"),
+        lambda s: from_graph_key(s.decode("utf-8")),
         itertools.islice(
           client.scan_iter(
-            match=f"[^{GRAPH_TYPE}]*{key}*", # don't match graph objs
+            match=f"{GRAPH_TYPE}:*{key}*", # only match graph objs
           ),
           num_candidates,
         )
@@ -55,9 +51,11 @@ if __name__ == "__main__":
   assert_conf_has_field(config, "source")
   assert_conf_has_field(config, "target")
 
-  # Query are appropriate
-  assert_good_query_type(config.source)
-  assert_good_query_type(config.target)
+  if not key_is_type(config.source, GRAPH_TYPE):
+    config.source = to_graph_key(config.source)
+
+  if not key_is_type(config.target, GRAPH_TYPE):
+    config.target = to_graph_key(config.target)
 
   print("Connecting to DB")
   client = redis.Redis(
@@ -72,30 +70,38 @@ if __name__ == "__main__":
 
   # Get Path
   print("Finding shortest path")
-  source = to_graph_key(config.source)
-  target = to_graph_key(config.target)
-  path = path_util.get_path(client, source, target)
+  path = path_util.get_path(client, config.source, config.target)
+  if path is None:
+    raise ValueError(f"Path is disconnected, {config.source}, {config.target}")
+
+  print(path)
+
   print("Finding nearby text")
   # Get Text Fields
   neighboring_text_keys = path_util.get_neighbors(
       db_client=client,
-      source=source,
+      source=config.source,
       key_type=SENTENCE_TYPE,
       max_count=config.max_sentences_per_path_elem,
   )
-  print("Forming BOW")
-  neighboring_text_keys = [from_graph_key(k) for k in neighboring_text_keys]
-  texts = list(filter(
-      lambda bow: len(bow) > 1,
-      [
-        json.loads(client.hget(tk, "bow"))
-        for tk in neighboring_text_keys
-      ],
-  ))
+  texts = [
+      json.loads(
+        client.hget(
+          from_graph_key(tk),
+          "bow",
+        )
+      )
+      for tk in neighboring_text_keys
+  ]
+  print(f"Identified {len(texts)} sentences.")
+
   print("Computing topics")
   # Run Topic Modeling
+  print("\t- Forming Dictionary")
   word_idx = Dictionary(texts)
+  print("\t- Forming Corpus")
   corpus = [word_idx.doc2bow(t) for t in texts]
+  print("\t- Training Model")
   topic_model = LdaModel(
       corpus=corpus,
       id2word=word_idx,

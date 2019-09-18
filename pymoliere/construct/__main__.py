@@ -154,7 +154,7 @@ if __name__ == "__main__":
   )
 
   if config.debug.enable:
-    print("\t- Downsampling documents by"
+    print("\t- Downsampling documents by "
           f"{config.debug.document_sample_rate}")
     pubmed_documents = pubmed_documents.random_sample(
         config.debug.document_sample_rate,
@@ -174,7 +174,11 @@ if __name__ == "__main__":
       text_field="sent_text",
   )
   # Store result in redis db
-  write_sent_with_ent = pubmed_sent_w_ent.map(write_record)
+  write_sent_with_ent = pubmed_sent_w_ent.map(
+      text_util.add_bow_to_analyzed_sentence
+  ).map(
+      write_record
+  )
 
   # get edges from sentence metadata and store in DB
   write_sentence_meta_edges = pubmed_sent_w_ent.map_partitions(

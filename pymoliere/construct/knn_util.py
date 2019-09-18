@@ -65,18 +65,20 @@ def get_neighbors_from_index_per_part(
           for idx in neigh_indices
           if idx in inverted_ids and idx != root_idx
       )
-      root_graph_key = db_key_util.to_graph_key(inverted_ids[root_idx])
-      # for each text id
-      for neigh_id in neigh_ids:
-        neigh_graph_key = db_key_util.to_graph_key(neigh_id)
-        res.append(db_key_util.to_edge(
-          source=root_graph_key,
-          target=neigh_graph_key
-        ))
-        res.append(db_key_util.to_edge(
-          target=root_graph_key,
-          source=neigh_graph_key
-        ))
+      # Potential for hash collosions
+      for root_key in inverted_ids[root_idx]:
+        root_graph_key = db_key_util.to_graph_key(root_key)
+        # for each text id
+        for neigh_id in neigh_ids:
+          neigh_graph_key = db_key_util.to_graph_key(neigh_id)
+          res.append(db_key_util.to_edge(
+            source=root_graph_key,
+            target=neigh_graph_key
+          ))
+          res.append(db_key_util.to_edge(
+            target=root_graph_key,
+            source=neigh_graph_key
+          ))
   return res
 
 def create_inverted_index(

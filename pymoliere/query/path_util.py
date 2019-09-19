@@ -11,7 +11,13 @@ import heapq
 
 
 
-def get_path(db_client:redis.Redis, source:str, target:str, batch_size:int)->Optional[List[str]]:
+def get_path(
+    db_client:redis.Redis,
+    source:str,
+    target:str,
+    batch_size:int,
+    use_batch_ratio:float=2,
+)->Optional[List[str]]:
   "Gets the exact shortest path between two nodes in the network."
   assert key_is_type(source, GRAPH_TYPE)
   assert key_is_type(target, GRAPH_TYPE)
@@ -33,7 +39,7 @@ def get_path(db_client:redis.Redis, source:str, target:str, batch_size:int)->Opt
       close_novel_nodes = _lowest_k_dists(
           graph=graph,
           exclude=visited,
-          max_res_size=batch_size,
+          k=batch_size if len(graph.nodes) > use_batch_ratio*batch_size else 1,
       )
       if len(close_novel_nodes) == 0:
         return None
@@ -49,6 +55,7 @@ def get_neighbors(
     batch_size:int,
     max_count:int,
     key_type:Optional[str]=None,
+    use_batch_ratio:float=2,
 )->List[str]:
   """
   Returns a collection of entity names corresponding to the nearest neighbors
@@ -57,6 +64,10 @@ def get_neighbors(
   @param source: Source node, must be of graph type.
   @param max_count: only return the closest X neighbors.
   @param key_type: If supplied, only return nodes of the given type.
+  @param use_batch_ratio: when the graph is small, the batch
+         approximation is going to be a problem, but at some point the graph
+         is large enough that we don't care. We start batching when the #
+         nodes is greater than this ratio times batch size
   @return list of graph keys, closest to furthest
   """
   assert key_is_type(source, GRAPH_TYPE)
@@ -86,7 +97,7 @@ def get_neighbors(
       close_novel_nodes = _lowest_k_dists(
           graph=graph,
           exclude=visited,
-          max_res_size=batch_size,
+          k=batch_size if len(graph.nodes) > use_batch_ratio*batch_size else 1,
       )
       if len(close_novel_nodes) == 0:
         # explored the whole graph
@@ -130,14 +141,14 @@ def _get_batch(
 def _lowest_k_dists(
     graph:nx.Graph,
     exclude:Set[str],
-    max_res_size:int,
+    k:int,
 )->List[str]:
   """
   Returns the nodes with the smallest attr_name value that are not present in
   exclude
   """
   return heapq.nsmallest(
-      max_res_size,
+      k,
       filter(
         lambda x: x not in exclude,
         graph.nodes,

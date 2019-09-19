@@ -84,6 +84,7 @@ setup(
       "gensim",
       "heapdict",
       "lxml",
+      "networkx",
       "nltk",
       "numpy",
       "pandas",

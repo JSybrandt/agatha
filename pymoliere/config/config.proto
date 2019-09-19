@@ -72,6 +72,11 @@ message ConstructDebugConfig {
   optional int32 partition_subset_size = 3 [default=50];
 }
 
+message ShortestPathConfig {
+  // Number of nodes to download at a time.
+  optional int32 node_batch = 1 [default=10];
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Config used to construct the network.
@@ -95,4 +100,5 @@ message QueryConfig {
   optional RedisConfig db = 3;
   optional int32 max_sentences_per_path_elem = 4 [default=5000];
   optional LdaConfig topic_model = 5;
+  optional ShortestPathConfig path = 6;
 }

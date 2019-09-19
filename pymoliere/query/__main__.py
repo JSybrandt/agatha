@@ -69,7 +69,12 @@ if __name__ == "__main__":
 
   # Get Path
   print("Finding shortest path")
-  path = path_util.get_path(client, config.source, config.target)
+  path = path_util.get_path(
+      db_client=client,
+      source=config.source,
+      target=config.target,
+      node_batch=config.path.node_batch
+  )
   if path is None:
     raise ValueError(f"Path is disconnected, {config.source}, {config.target}")
 

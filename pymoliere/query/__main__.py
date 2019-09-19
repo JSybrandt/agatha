@@ -73,30 +73,32 @@ if __name__ == "__main__":
       db_client=client,
       source=config.source,
       target=config.target,
-      node_batch=config.path.node_batch
+      batch_size=config.path.node_batch
   )
   if path is None:
     raise ValueError(f"Path is disconnected, {config.source}, {config.target}")
 
   print(path)
 
-  print("Finding nearby text")
+  print("Finding nearby text nodes")
   # Get Text Fields
-  neighboring_text_keys = path_util.get_neighbors(
-      db_client=client,
-      source=config.source,
-      key_type=SENTENCE_TYPE,
-      max_count=config.max_sentences_per_path_elem,
-  )
-  texts = [
-      json.loads(
-        client.hget(
-          from_graph_key(tk),
-          "bow",
-        )
+  neighboring_text_keys = set()
+  for path_node in path:
+    neighboring_text_keys.update(
+      path_util.get_neighbors(
+        db_client=client,
+        source=path_node,
+        key_type=SENTENCE_TYPE,
+        max_count=config.max_sentences_per_path_elem,
+        batch_size=config.path.node_batch,
       )
-      for tk in neighboring_text_keys
-  ]
+    )
+  print("Retrieving text")
+  with client.pipeline() as pipe:
+    for key in neighboring_text_keys:
+      key = from_graph_key(key)
+      pipe.hget(key, "bow")
+    texts = [json.loads(bow) for bow in pipe.execute()]
   print(f"Identified {len(texts)} sentences.")
 
   print("Computing topics")

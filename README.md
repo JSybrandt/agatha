@@ -16,4 +16,4 @@ python3 -m pymoliere.construct
 python3 -m pymoliere.query
 
 
-[pymoliere_logo]:https://github.com/JSybrandt/PyMoliere/raw/master/pymoliere_logo.png
+[pymoliere_logo]:https://github.com/JSybrandt/PyMoliere/raw/master/pymoliere_header.png

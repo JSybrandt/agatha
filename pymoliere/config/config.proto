@@ -26,10 +26,14 @@ message ClusterConfig {
 message TextParserConfig {
   optional string scispacy_version = 1;
   optional string scibert_data_dir = 2;
+  // Discard sentences that are too long/short
   optional int32 min_sentence_len = 3 [default=10];
   optional int32 max_sentence_len = 4 [default=1000];
   // Path to stopwords. One word per line.
   optional string stopword_list = 5;
+  // The BERT model will error out if given a too-long sequence.
+  // Long sequences will be truncated.
+  optional int32 max_sequence_length = 6 [default=500];
 }
 
 message KnnConfig {

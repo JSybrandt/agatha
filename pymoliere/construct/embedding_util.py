@@ -38,6 +38,7 @@ def embed_records(
     records:Iterable[Record],
     batch_size:int,
     text_field:str,
+    max_sequence_length,
     id_field:str="id",
     out_embedding_field:str="embedding",
 )->Iterable[Record]:
@@ -55,28 +56,17 @@ def embed_records(
     ids = list(map(lambda x: x[id_field], batch))
     sequs = pad_sequence(
       sequences=[
-        torch.tensor(tok.encode(t))
+        torch.tensor(tok.encode(t)[:max_sequence_length])
         for t in texts
       ],
       batch_first=True,
     ).to(dev)
-    try:
-      with torch.no_grad():
-        embs = model(sequs)[-1].cpu().detach().numpy()
-      for _id, emb in zip(ids, embs):
-        res.append({
-          id_field: _id,
-          out_embedding_field: emb,
-        })
-    except:
-      import pickle
-      from pymoliere.construct.file_util import touch_random_unused_file
-      out_file = touch_random_unused_file(
-          Path("/zfs/safrolab/users/jsybran/pymoliere/data/err_reports"),
-          ".err.pkl",
-      )
-      with open(out_file, "wb") as f:
-        f.write(pickle.dumps(batch))
-      print("Encountered Error")
+    with torch.no_grad():
+      embs = model(sequs)[-1].cpu().detach().numpy()
+    for _id, emb in zip(ids, embs):
+      res.append({
+        id_field: _id,
+        out_embedding_field: emb,
+      })
   return res
 

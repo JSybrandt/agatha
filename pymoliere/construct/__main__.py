@@ -196,6 +196,7 @@ if __name__ == "__main__":
       # --
       batch_size=config.sys.batch_size,
       text_field="sent_text",
+      max_sequence_length=config.parser.max_sequence_length,
   )
 
   # need map from numeric id to hash val

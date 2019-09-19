@@ -11,7 +11,6 @@ import numpy as np
 from pathlib import Path
 import math
 from torch.nn.utils.rnn import pad_sequence
-import pandas as pd
 from pymoliere.util.misc_util import iter_to_batches
 import logging
 from dask.distributed import Lock
@@ -61,12 +60,23 @@ def embed_records(
       ],
       batch_first=True,
     ).to(dev)
-    with torch.no_grad():
-      embs = model(sequs)[-1].cpu().detach().numpy()
-    for _id, emb in zip(ids, embs):
-      res.append({
-        id_field: _id,
-        out_embedding_field: emb,
-      })
+    try:
+      with torch.no_grad():
+        embs = model(sequs)[-1].cpu().detach().numpy()
+      for _id, emb in zip(ids, embs):
+        res.append({
+          id_field: _id,
+          out_embedding_field: emb,
+        })
+    except:
+      import pickle
+      from pymoliere.construct.file_util import touch_random_unused_file
+      out_file = touch_random_unused_file(
+          Path("/zfs/safrolab/users/jsybran/pymoliere/data/err_reports"),
+          ".err.pkl",
+      )
+      with open(out_file, "wb") as f:
+        f.write(pickle.dumps(batch))
+      print("Encountered Error")
   return res
 

@@ -1,6 +1,4 @@
 from pathlib import Path
-from scispacy.abbreviation import AbbreviationDetector
-from scispacy.umls_linking import UmlsEntityLinker
 from typing import List, Tuple, Any, Optional, Dict, Callable, Iterable
 import spacy
 from copy import copy

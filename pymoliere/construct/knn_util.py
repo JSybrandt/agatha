@@ -1,5 +1,4 @@
 # https://github.com/facebookresearch/faiss/wiki/FAQ#how-can-i-distribute-index-building-on-several-machines
-import pandas as pd
 import dask.bag as dbag
 import faiss
 from pathlib import Path

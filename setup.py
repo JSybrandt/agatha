@@ -71,9 +71,28 @@ class build_py(_build_py):
 
 setup(
     name='PyMoliere',
-    version='0.1dev',
+    version='19.09.1dev',
     packages=['pymoliere',],
     license='Creative Commons Attribution-Noncommercial-Share Alike license',
     long_description=open('README.md').read(),
-    cmdclass = { 'clean': clean, 'build_py': build_py }
+    cmdclass={ 'clean': clean, 'build_py': build_py },
+    install_requires=[
+      "dask",
+      "distributed",
+      "faiss-gpu",
+      "fsspec",
+      "gensim",
+      "heapdict",
+      "lxml",
+      "nltk",
+      "numpy",
+      "pandas",
+      "protobuf",
+      "pytorch-transformers",
+      "redis",
+      "spacy",
+      "torch",
+      "torchvision",
+      "tqdm",
+    ],
 )

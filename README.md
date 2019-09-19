@@ -58,6 +58,16 @@ stopword list that came along with this module. It can be found at:
 .../pymoliere/data/stopwords/stopword_list.txt
 ```
 
+Lastly, you're going to need to get a large datafile for [ScispaCy][scispacy].
+This is as easy as:
+```bash
+pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.2.3/en_core_sci_lg-0.2.3.tar.gz
+```
+
+Note that this large datafile corresponds to the `en_core_sci_lg` distribution.
+If you would like to use a different distribution, download the corresponding
+data file (specified on the ScispaCy website) and change the config accordingly.
+
 # Prepare System
 
 In order to run PyMoliere, you will need to setup a [Dask][dask] cluster and a
@@ -215,3 +225,4 @@ Now you are free to run pymoliere!
 [redis]:https://redis.io/
 [bioarxiv_paper]:https://www.biorxiv.org/content/10.1101/591438v3
 [config_path]:https://github.com/JSybrandt/PyMoliere/blob/master/pymoliere/config/config.proto
+[scispacy]:https://github.com/allenai/scispacy

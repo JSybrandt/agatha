@@ -83,7 +83,6 @@ setup(
       "fsspec",
       "gensim",
       "heapdict",
-      "https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.2.3/en_core_sci_lg-0.2.3.tar.gz",
       "lxml",
       "nltk",
       "numpy",

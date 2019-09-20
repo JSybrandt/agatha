@@ -68,6 +68,14 @@ Note that this large datafile corresponds to the `en_core_sci_lg` distribution.
 If you would like to use a different distribution, download the corresponding
 data file (specified on the ScispaCy website) and change the config accordingly.
 
+Lastly, to split sentences with NLTK, we need to download some helper data.
+Run this in python.
+
+```python
+import nltk
+nltk.download("punkt")
+```
+
 # Prepare System
 
 In order to run PyMoliere, you will need to setup a [Dask][dask] cluster and a

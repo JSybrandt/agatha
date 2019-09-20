@@ -77,6 +77,7 @@ setup(
     long_description=open('README.md').read(),
     cmdclass={ 'clean': clean, 'build_py': build_py },
     install_requires=[
+      "bokeh",
       "dask",
       "distributed",
       "faiss-gpu",

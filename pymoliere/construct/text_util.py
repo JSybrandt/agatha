@@ -188,7 +188,6 @@ def split_sentences(
 
   # set total
   for r in res:
-    assert sent_total_key not in r
     r[sent_total_key] = sent_idx
     r[id_field] = sentence_to_id(r)
   return res
@@ -203,9 +202,6 @@ def analyze_sentence(
 )->Record:
   "Splits tokens into useful components"
   assert text_field in sent_rec
-  assert token_field not in sent_rec
-  assert entity_field not in sent_rec
-  #assert vector_field not in sent_rec
 
   if nlp is None:
     nlp = dpg.get("text_util:nlp")
@@ -253,7 +249,6 @@ def add_bow_to_analyzed_sentence(
     entity_field="entities",
     mesh_heading_field="mesh_headings"
 )->Record:
-  assert bow_field not in record
   bow = []
   for lemma in record[token_field]:
     if lemma["pos"] in {"NOUN", "VERB", "ADJ"} and not lemma["stop"]:
@@ -273,7 +268,7 @@ def add_bow_to_analyzed_sentence(
       )
       bow.append(ent_text)
   bow += record["mesh_headings"]
-  record["bow"] = bow
+  record[bow_field] = bow
   return record
 
 

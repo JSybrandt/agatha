@@ -180,7 +180,10 @@ if __name__ == "__main__":
 
   # get edges from sentence metadata and store in DB
   write_sentence_meta_edges = pubmed_sent_w_ent.map_partitions(
-      text_util.get_edges_from_sentence_part
+      text_util.get_edges_from_sentence_part,
+      # --
+      document_freqs=text_util.get_document_frequencies(pubmed_sent_w_ent),
+      total_documents=pubmed_sent_w_ent.count(),
   ).map(
       write_db.write_edge
   )

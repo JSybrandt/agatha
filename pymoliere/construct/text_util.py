@@ -1,19 +1,15 @@
-from pathlib import Path
-from typing import List, Tuple, Any, Optional, Dict, Callable, Iterable
-import spacy
 from copy import copy
 from nltk.tokenize import sent_tokenize
-from pymoliere.util import db_key_util
-import logging
+from pathlib import Path
 from pymoliere.construct import dask_process_global as dpg
-
+from pymoliere.util import db_key_util
 from pymoliere.util.misc_util import Record, Edge
+from typing import List, Tuple, Any, Optional, Dict, Callable, Iterable
+import dask.bag as dbag
+import logging
+import math
+import spacy
 
-GLOBAL_NLP_OBJS = {
-    "analyze_sentence": None,
-}
-
-################################################################################
 
 def _op_g_pre(graph:bool)->str:
   "helper for graph ids"
@@ -210,15 +206,12 @@ def analyze_sentence(
   sent_rec = copy(sent_rec)
   try:
     doc = nlp(sent_rec[text_field])
-    #sent_rec[vector_field] = doc.vector.tolist()
     sent_rec[entity_field] = [
       {
         "tok_start": ent.start,
         "tok_end": ent.end,
         "cha_start": ent.start_char,
         "cha_end": ent.end_char,
-        #"umls": ent._.umls_ents[0][0] if len(ent._.umls_ents) > 0 else None,
-        #"vector": ent.vector.tolist(),
       }
       for ent in doc.ents
     ]
@@ -230,7 +223,6 @@ def analyze_sentence(
           "pos": tok.pos_,
           "tag": tok.tag_,
           "dep": tok.dep_,
-          #"vector": tok.vector.tolist() if not tok.is_stop else None,
           "stop": \
               tok.lemma_ in stopwords or tok.text.strip().lower() in stopwords
         }
@@ -267,13 +259,77 @@ def add_bow_to_analyzed_sentence(
           token_field=token_field
       )
       bow.append(ent_text)
-  bow += record["mesh_headings"]
+  bow += record[mesh_heading_field]
   record[bow_field] = bow
   return record
+
+def get_document_frequencies(
+    analyzed_sentences:dbag.Bag,
+    token_field:str="tokens",
+    entity_field:str="entities",
+    mesh_field:str="mesh_headings"
+)->Record:  # delayed counts
+  def record_to_init_counts(
+      record:Record,
+  )->Record:
+    res = {}
+    for field, to_key in [
+        (token_field, lambda x:token_to_id(x, graph=True)),
+        (entity_field, lambda x: entity_to_id(x,
+                                              sentence=record,
+                                              token_field=token_field,
+                                              graph=True)
+        ),
+        (mesh_field, lambda x:mesh_to_id(x, graph=True)),
+    ]:
+      for val in record[field]:
+        key = to_key(val)
+        res[key] = 1
+    return res
+  def merge_counts(
+    key_to_doc_count_1:Record,
+    key_to_doc_count_2:Record,
+  )->Record:
+    if len(key_to_doc_count_1) > len(key_to_doc_count_2):
+      larger, smaller = key_to_doc_count_1, key_to_doc_count_2
+    else:
+      larger, smaller = key_to_doc_count_2, key_to_doc_count_1
+    for key, count in smaller.items():
+      if key in larger:
+        larger[key] += count
+      else:
+        larger[key] = count
+    return larger
+  return analyzed_sentences.map(
+      record_to_init_counts
+  ).fold(
+      merge_counts,
+      initial={}
+  )
+
+
+def calc_tf_idf(
+    terms:List[str],
+    document_freqs:Dict[str, int],
+    total_documents:int,
+)->Dict[str, float]:
+  tfs = {}
+  for t in terms:
+    if t in tfs:
+      tfs[t] += 1
+    else:
+      tfs[t] = 1
+  return {
+      t: (f/len(terms))*(math.log(total_documents/document_freqs[t]))
+      for t, f in tfs.items()
+      if t in document_freqs
+  }
 
 
 def get_edges_from_sentence_part(
     sentences:Iterable[Record],
+    document_freqs:Dict[str,int],
+    total_documents:int,
     token_field:str="tokens",
     entity_field:str="entities",
     mesh_field:str="mesh_headings",
@@ -284,12 +340,13 @@ def get_edges_from_sentence_part(
   res = []
   for sent_rec in sentences:
     sent_k = db_key_util.to_graph_key(sent_rec[id_field])
+    # Calculate
+    keys = []
     for token in sent_rec[token_field]:
       if token["stop"] or token["pos"] in ("PUNCT"):
         continue
       tok_k = token_to_id(token, graph=True)
-      res.append(db_key_util.to_edge(source=sent_k, target=tok_k))
-      res.append(db_key_util.to_edge(target=sent_k, source=tok_k))
+      keys.append(tok_k)
     for entity in sent_rec[entity_field]:
       ent_k = entity_to_id(
           entity=entity,
@@ -297,12 +354,26 @@ def get_edges_from_sentence_part(
           token_field=token_field,
           graph=True
       )
-      res.append(db_key_util.to_edge(source=sent_k, target=ent_k))
-      res.append(db_key_util.to_edge(target=sent_k, source=ent_k))
+      keys.append(ent_k)
     for mesh_code in sent_rec[mesh_field]:
-      mesh_k = mesh_to_id(mesh_code, graph=True)
-      res.append(db_key_util.to_edge(source=sent_k, target=mesh_k))
-      res.append(db_key_util.to_edge(target=sent_k, source=mesh_k))
+      keys.append(mesh_to_id(mesh_code, graph=True))
+
+    for tok_k, tf_idf in calc_tf_idf(
+        terms=keys,
+        document_freqs=document_freqs,
+        total_documents=total_documents
+    ).items():
+      weight = 1/tf_idf
+      res.append(db_key_util.to_edge(
+        source=sent_k,
+        target=tok_k,
+        weight=weight
+      ))
+      res.append(db_key_util.to_edge(
+        target=sent_k,
+        source=tok_k,
+        weight=weight
+      ))
     # Adj sentence edges. We only need to make edges for "this" sentence,
     # because the other sentences will get the other sides of each connection.
     if sent_rec[sent_idx_field] > 0:

@@ -88,6 +88,7 @@ setup(
       "nltk",
       "numpy",
       "pandas",
+      "paramiko",
       "protobuf",
       "pytorch-transformers",
       "redis",

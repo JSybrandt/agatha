@@ -13,9 +13,10 @@ from pymoliere.util.db_key_util import(
     from_graph_key,
     strip_major_type,
 )
-from pymoliere.query import path_util
+from pymoliere.query import path_util, bow_util
 import json
 from gensim.corpora import Dictionary
+from gensim.models.phrases import Phrases, Phraser
 from gensim.models.ldamulticore import LdaMulticore
 from pprint import pprint
 
@@ -98,15 +99,45 @@ if __name__ == "__main__":
     for key in neighboring_text_keys:
       key = from_graph_key(key)
       pipe.hget(key, "bow")
-    texts = [json.loads(bow) for bow in pipe.execute()]
-  print(f"Identified {len(texts)} sentences.")
+    text_documents = [json.loads(bow) for bow in pipe.execute()]
+  print(f"Identified {len(text_documents)} sentences.")
+
+  # print("Identifying query-specific n-grams.")
+  # for _ in range(config.phrases.max_ngram_length):
+    # phrases = Phrases(
+        # text_documents,
+        # min_count=config.phrases.min_ngram_support,
+        # threshold=1,
+    # )
+    # bigram_model = Phraser(phrases)
+    # text_documents = bigram_model[text_documents]
+
+  print("Identifying potential query-specific stopwords")
+  min_support = config.topic_model.min_support_count
+  max_support = int(config.topic_model.max_support_fraction*len(text_documents))
+  print(f"\t- Filtering words that occur in less than {min_support} or more "
+        f"than {max_support} sentences.")
+  term2doc_freq = bow_util.get_document_frequencies(text_documents)
+  stopwords = {
+      t for t, c in term2doc_freq.items()
+      if c < min_support or c > max_support
+  }
+  text_documents = bow_util.filter_words(
+      text_documents=text_documents,
+      stopwords=stopwords,
+  )
+
+  # most_freq_terms = list(term2doc_freq.items())
+  # most_freq_terms.sort(key=lambda x:x[1], reverse=True)
+  # pprint(most_freq_terms[:20])
+
 
   print("Computing topics")
   # Run Topic Modeling
   print("\t- Forming Dictionary")
-  word_idx = Dictionary(texts)
+  word_idx = Dictionary(text_documents)
   print("\t- Forming Corpus")
-  corpus = [word_idx.doc2bow(t) for t in texts]
+  corpus = [word_idx.doc2bow(t) for t in text_documents]
   print("\t- Training Model")
   topic_model = LdaMulticore(
       corpus=corpus,

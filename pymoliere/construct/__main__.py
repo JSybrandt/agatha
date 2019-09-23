@@ -143,7 +143,6 @@ if __name__ == "__main__":
   pubmed_documents = dbag.from_delayed([
     dask.delayed(parse_pubmed_xml.parse_zipped_pubmed_xml)(
       xml_path=p,
-      local_scratch=download_local
     )
     for p in xml_paths
   ]).filter(

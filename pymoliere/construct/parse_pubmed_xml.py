@@ -136,7 +136,7 @@ def pubmed_xml_to_record(
 
 def parse_zipped_pubmed_xml(
     xml_path:Path,
-    local_scratch:Path,
+    local_scratch:Path=None,
 )->List[Record]:
   """
   Copies the given xml file to local scratch, and then gets the set of
@@ -145,11 +145,12 @@ def parse_zipped_pubmed_xml(
   if not xml_path.is_file():
     raise ValueError(f"Cannot find {xml_path}") 
   assert str(xml_path).endswith(".xml.gz")
-  local_xml_gz_path = copy_to_local_scratch(
-      src=xml_path,
-      local_scratch_dir=local_scratch,
-  )
-  with gzip.open(str(local_xml_gz_path), "rb") as xml_file:
+  if local_scratch is not None:
+    xml_path = copy_to_local_scratch(
+        src=xml_path,
+        local_scratch_dir=local_scratch,
+    )
+  with gzip.open(str(xml_path), "rb") as xml_file:
     return [
       pubmed_xml_to_record(elem)
       for _, elem in

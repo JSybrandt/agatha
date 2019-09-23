@@ -1,5 +1,8 @@
 #!/bin/bash
 
+NTHREADS=${1:-16}
+echo "Starting Dask cluster with $NTHREADS threads per-node"
+
 MODULE_NAME="pymoliere"
 
 CONDA_START=~/anaconda3/etc/profile.d/conda.sh
@@ -11,8 +14,6 @@ echo $MODULE_NAME > ~/.default_module
 source $CONDA_START
 source $MODULE_GROUP
 
-LOG_DIR=/tmp/dask_logs
-mkdir $LOG_DIR
 dask-ssh \
   --hostfile $PBS_NODEFILE \
-  --log-directory $LOG_DIR
+  --nthreads $NTHREADS

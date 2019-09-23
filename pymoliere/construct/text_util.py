@@ -320,8 +320,13 @@ def calc_tf_idf(
     else:
       tfs[t] = 1
   return {
-      # By taking log of terms, we reduce the effect of small doc length diffs
-      t: (f/math.log(len(terms)))*(math.log(total_documents/document_freqs[t]))
+      t: (
+        # tf. Log of document length reduces variance of small docs
+        f/(math.log(len(terms))+1)
+      )*(
+        # idf
+        math.log(total_documents/document_freqs[t])
+      )
       for t, f in tfs.items()
       if t in document_freqs
   }

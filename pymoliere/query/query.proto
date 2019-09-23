@@ -1,0 +1,28 @@
+syntax = "proto2";
+package pymoliere;
+
+message Topic {
+  message TermWeight {
+    optional string term = 1;
+    optional float weight = 2;
+  }
+  repeated TermWeight term_weights = 1;
+  optional int32 index = 2;
+}
+
+message Document {
+  message TopicWeight {
+    optional int32 topic = 1;
+    optional float weight = 2;
+  }
+  optional string key = 1;
+  repeated TopicWeight topic_weights = 2;
+}
+
+message MoliereResult {
+  repeated string path = 1;
+  repeated Document documents = 2;
+  repeated Topic topics = 3;
+  optional string source = 4;
+  optional string target = 5;
+}

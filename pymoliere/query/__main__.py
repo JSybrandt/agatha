@@ -1,10 +1,11 @@
-from pymoliere.config import (
-    config_pb2 as cpb,
-    proto_util,
-)
-import redis
-import sys
-import itertools
+from gensim.corpora import Dictionary
+from gensim.models.ldamulticore import LdaMulticore, LdaModel
+from gensim.models.phrases import Phrases, Phraser
+from pathlib import Path
+from pprint import pprint
+from pymoliere.config import config_pb2 as cpb, proto_util
+from pymoliere.query import path_util, bow_util
+from pymoliere.query import query_pb2 as qpb
 from pymoliere.util.db_key_util import(
     GRAPH_TYPE,
     SENTENCE_TYPE,
@@ -13,16 +14,17 @@ from pymoliere.util.db_key_util import(
     from_graph_key,
     strip_major_type,
 )
-from pymoliere.query import path_util, bow_util
+from typing import List, Set, Tuple
+import itertools
 import json
-from gensim.corpora import Dictionary
-from gensim.models.phrases import Phrases, Phraser
-from gensim.models.ldamulticore import LdaMulticore
-from pprint import pprint
+import redis
+import sys
+
 
 def assert_conf_has_field(config:cpb.QueryConfig, field:str)->None:
   if not config.HasField(field):
     raise ValueError(f"Must supply `{field}` term.")
+
 
 def assert_db_has_key(client:redis.Redis, key:str)->None:
   num_candidates = 5
@@ -41,6 +43,7 @@ def assert_db_has_key(client:redis.Redis, key:str)->None:
     )
     raise ValueError(f"Failed to find {key}. Did you mean:\n\t{candidates}")
 
+
 if __name__ == "__main__":
   config = cpb.QueryConfig()
   proto_util.parse_args_to_config_proto(config)
@@ -50,12 +53,20 @@ if __name__ == "__main__":
   # Query specified
   assert_conf_has_field(config, "source")
   assert_conf_has_field(config, "target")
+  assert_conf_has_field(config, "result_path")
 
   if not key_is_type(config.source, GRAPH_TYPE):
     config.source = to_graph_key(config.source)
 
   if not key_is_type(config.target, GRAPH_TYPE):
     config.target = to_graph_key(config.target)
+
+  result_path = Path(config.result_path)
+  if result_path.is_file():
+    assert config.override
+  else:
+    assert not result_path.exists()
+    assert result_path.parent.is_dir()
 
   print("Connecting to DB")
   client = redis.Redis(
@@ -78,14 +89,9 @@ if __name__ == "__main__":
   )
   if path is None:
     raise ValueError(f"Path is disconnected, {config.source}, {config.target}")
-
-  print(path)
-
-  print("Finding nearby text nodes")
-  # Get Text Fields
-  neighboring_text_keys = set()
+  text_keys = set()
   for path_node in path:
-    neighboring_text_keys.update(
+    text_keys.update(
       path_util.get_neighbors(
         db_client=client,
         source=path_node,
@@ -94,57 +100,83 @@ if __name__ == "__main__":
         batch_size=config.path.node_batch,
       )
     )
+  text_keys = list(text_keys)
   print("Retrieving text")
   with client.pipeline() as pipe:
-    for key in neighboring_text_keys:
+    for key in text_keys:
       key = from_graph_key(key)
       pipe.hget(key, "bow")
-    text_documents = [json.loads(bow) for bow in pipe.execute()]
-  print(f"Identified {len(text_documents)} sentences.")
-
-  # print("Identifying query-specific n-grams.")
-  # for _ in range(config.phrases.max_ngram_length):
-    # phrases = Phrases(
-        # text_documents,
-        # min_count=config.phrases.min_ngram_support,
-        # threshold=1,
-    # )
-    # bigram_model = Phraser(phrases)
-    # text_documents = bigram_model[text_documents]
+    text_corpus = [json.loads(bow) for bow in pipe.execute()]
+  print(f"Identified {len(text_corpus)} sentences.")
 
   print("Identifying potential query-specific stopwords")
   min_support = config.topic_model.min_support_count
-  max_support = int(config.topic_model.max_support_fraction*len(text_documents))
-  print(f"\t- Filtering words that occur in less than {min_support} or more "
-        f"than {max_support} sentences.")
-  term2doc_freq = bow_util.get_document_frequencies(text_documents)
-  stopwords = {
+  max_support = int(config.topic_model.max_support_fraction*len(text_corpus))
+  term2doc_freq = bow_util.get_document_frequencies(text_corpus)
+  stopwords_under = {
       t for t, c in term2doc_freq.items()
-      if c < min_support or c > max_support
+      if c < min_support
   }
-  text_documents = bow_util.filter_words(
-      text_documents=text_documents,
+  stopwords_over = {
+      t for t, c in term2doc_freq.items()
+      if c > max_support
+  }
+  print(f"\t- {len(stopwords_under)} words occur less than {min_support} times")
+  print(f"\t- {len(stopwords_over)} words occur more than {max_support} times")
+  stopwords = stopwords_under.union(stopwords_over)
+  text_keys, text_corpus = bow_util.filter_words(
+      keys=text_keys,
+      text_corpus=text_corpus,
       stopwords=stopwords,
   )
-
-  # most_freq_terms = list(term2doc_freq.items())
-  # most_freq_terms.sort(key=lambda x:x[1], reverse=True)
-  # pprint(most_freq_terms[:20])
-
+  print(f"\t- Reduced to {len(text_corpus)} documents")
+  assert len(text_keys) == len(text_corpus)
 
   print("Computing topics")
-  # Run Topic Modeling
-  print("\t- Forming Dictionary")
-  word_idx = Dictionary(text_documents)
-  print("\t- Forming Corpus")
-  corpus = [word_idx.doc2bow(t) for t in text_documents]
-  print("\t- Training Model")
+  word_idx = Dictionary(text_corpus)
+  int_corpus = [word_idx.doc2bow(t) for t in text_corpus]
   topic_model = LdaMulticore(
-      corpus=corpus,
+      corpus=int_corpus,
       id2word=word_idx,
       num_topics=config.topic_model.num_topics,
       random_state=config.topic_model.random_seed,
       iterations=config.topic_model.iterations,
   )
-  pprint(topic_model.show_topics(formatted=False))
-  # Report Topics
+
+  #####################################################
+  # Store results
+  print("Interpreting")
+  result = qpb.MoliereResult()
+  result.source = config.source
+  result.target = config.target
+
+  # Add path
+  for p in path:
+    result.path.append(p)
+
+  # Add documents from topic model
+  print("\t- Topics per-document")
+  for key, bow in zip(text_keys, int_corpus):
+    for topic_idx, weight in topic_model[bow]:
+      doc = result.documents.add()
+      doc.key = key
+      topic_weight = doc.topic_weights.add()
+      topic_weight.topic = topic_idx
+      topic_weight.weight = weight
+
+  # Add topics from topic model
+  print("\t- Words per-topic")
+  for topic_idx in range(topic_model.num_topics):
+    topic = result.topics.add()
+    topic.index = topic_idx
+    for word_idx, weight in topic_model.get_topic_terms(
+        topic_idx,
+        config.topic_model.truncate_size,
+    ):
+      term_weight = topic.term_weights.add()
+      term_weight.term = topic_model.id2word[word_idx]
+      term_weight.weight = weight
+
+  with open(result_path, "wb") as proto_file:
+    proto_file.write(result.SerializeToString())
+  print("Wrote result to", result_path)

@@ -72,9 +72,11 @@ message LdaConfig {
   optional int32 random_seed = 2 [default=42];
   optional int32 iterations = 3 [default=50];
   // Remove any word that does not occur at least X times
-  optional int32 min_support_count = 4 [default=5];
+  optional int32 min_support_count = 4 [default=2];
   // Remove any word that occurs in X proportion of docs.
-  optional float max_support_fraction = 5 [default=0.03];
+  optional float max_support_fraction = 5 [default=0.1];
+  // Take the top X words per-topic
+  optional int32 truncate_size = 7 [default=250];
 }
 
 message MlSysConfig {
@@ -119,4 +121,7 @@ message QueryConfig {
   optional LdaConfig topic_model = 5;
   optional ShortestPathConfig path = 6;
   // optional NGramConfig phrases = 7;
+  // Where to store result proto
+  optional string result_path = 8;
+  optional bool override = 9 [default=false];
 }

@@ -8,6 +8,7 @@ import sys
 
 proto_src_files = [
     "pymoliere/config/config.proto",
+    "pymoliere/query/query.proto",
 ]
 
 

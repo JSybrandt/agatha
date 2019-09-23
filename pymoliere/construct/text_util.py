@@ -320,7 +320,8 @@ def calc_tf_idf(
     else:
       tfs[t] = 1
   return {
-      t: (f/len(terms))*(math.log(total_documents/document_freqs[t]))
+      # By taking log of terms, we reduce the effect of small doc length diffs
+      t: (f/math.log(len(terms)))*(math.log(total_documents/document_freqs[t]))
       for t, f in tfs.items()
       if t in document_freqs
   }

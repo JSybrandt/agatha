@@ -6,9 +6,8 @@ from pymoliere.util.db_key_util import GRAPH_TYPE, key_is_type, to_graph_key
 
 if __name__ == "__main__":
   parser = ArgumentParser()
-  parser.add_argument("node_name")
+  parser.add_argument("record_name")
   args = parser.parse_args()
   r = Redis()
-  if not key_is_type(args.node_name, GRAPH_TYPE):
-    args.node_name = to_graph_key(args.node_name)
-  pprint(r.zscan(args.node_name)[1])
+  assert not key_is_type(args.record_name, GRAPH_TYPE)
+  pprint(r.hgetall(args.record_name))

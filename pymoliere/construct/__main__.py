@@ -58,7 +58,7 @@ if __name__ == "__main__":
   dask_config["temporary-directory"] = str(local_scratch_root)
   if config.cluster.run_locally:
     print("Running on local machine!")
-    cluster = LocalCluster(n_workers=1, threads_per_worker=1)
+    cluster = LocalCluster()
     dask_client = Client(cluster)
   else:
     cluster_address = f"{config.cluster.address}:{config.cluster.port}"

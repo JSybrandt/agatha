@@ -170,6 +170,16 @@ if __name__ == "__main__":
       # --
       text_field="sent_text",
   )
+
+  # Perform n-gram mining, introduces a new field "ngrams"
+  pubmed_sent_w_ent = text_util.get_frequent_ngrams(
+      analyzed_sentences=pubmed_sent_w_ent,
+      max_ngram_length=config.parser.max_ngram_length,
+      min_ngram_support=config.parser.min_ngram_support,
+      min_ngram_support_per_partition=\
+          config.parser.min_ngram_support_per_partition,
+  )
+
   # Store result in redis db
   write_sent_with_ent = pubmed_sent_w_ent.map(
       text_util.add_bow_to_analyzed_sentence

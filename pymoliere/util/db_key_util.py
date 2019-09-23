@@ -6,6 +6,7 @@ LEMMA_TYPE="l"
 ENTITY_TYPE="e"
 MESH_TERM_TYPE="m"
 DATA_BANK_TYPE="d"
+NGRAM_TYPE="n"
 
 
 def key_is_type(key:str, key_type:str)->bool:

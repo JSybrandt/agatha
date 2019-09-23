@@ -2,13 +2,14 @@ from copy import copy
 from nltk.tokenize import sent_tokenize
 from pathlib import Path
 from pymoliere.construct import dask_process_global as dpg
-from pymoliere.util import db_key_util
+from pymoliere.util import db_key_util, misc_util
 from pymoliere.util.misc_util import Record, Edge
-from typing import List, Tuple, Any, Optional, Dict, Callable, Iterable
+from typing import List, Tuple, Any, Optional, Dict, Callable, Iterable, Set
 import dask.bag as dbag
 import logging
 import math
 import spacy
+from dask import delayed
 
 
 def _op_g_pre(graph:bool)->str:
@@ -71,6 +72,13 @@ def mesh_to_id(
 )->str:
   typ = db_key_util.MESH_TERM_TYPE
   return f"{_op_g_pre(graph)}{typ}:{mesh_code}".lower()
+
+def ngram_to_id(
+    ngram_text:str,
+    graph:bool=False,
+)->str:
+  typ = db_key_util.NGRAM_TYPE
+  return f"{_op_g_pre(graph)}{typ}:{ngram_text}".lower()
 
 ################################################################################
 
@@ -188,6 +196,91 @@ def split_sentences(
     r[id_field] = sentence_to_id(r)
   return res
 
+def get_frequent_ngrams(
+    analyzed_sentences:dbag.Bag,
+    max_ngram_length:int,
+    min_ngram_support:int,
+    min_ngram_support_per_partition:int,
+    token_field:str="tokens",
+    ngram_field:str="ngrams"
+)->dbag.Bag:
+  """
+  Adds a new field containing a list of all mined n-grams.  N-grams are tuples
+  of strings such that at least one string is not a stopword.  Strings are
+  collected from the lemmas of sentences.  To be counted, an ngram must occur
+  in at least `min_ngram_support` sentences.
+  """
+  def part_to_ngram_counts(
+      records:Iterable[Record]
+  )->Iterable[Dict[Tuple[str], int]]:
+    ngram2count = {}
+    for rec in records:
+      for start_tok_idx in range(len(rec[token_field])):
+        for ngram_len in range(2, max_ngram_length):
+          end_tok_idx = start_tok_idx + ngram_len
+          if end_tok_idx > len(rec[token_field]):
+            continue
+          relevant_words = 0
+          for tok_idx in range(start_tok_idx, end_tok_idx):
+            if not rec[token_field][tok_idx]["stop"] and \
+                rec[token_field][tok_idx]["pos"] in {"NOUN", "ADJ", "VERB"}:
+              relevant_words += 1
+          if relevant_words >= 2:
+            ngram = tuple(
+                rec[token_field][tok_idx]["lemma"]
+                for tok_idx
+                in range(start_tok_idx, end_tok_idx)
+            )
+            if ngram in ngram2count:
+              ngram2count[ngram] += 1
+            else:
+              ngram2count[ngram] = 1
+    # filter out all low-occurrence ngrams in this partition
+    return [{
+        n: c for n, c in ngram2count.items()
+        if c >= min_ngram_support_per_partition
+    }]
+
+  def valid_ngrams(ngram2count:Dict[str,int])->Set[Tuple[str]]:
+    ngrams =  {
+        n for n, c in ngram2count.items()
+        if c >= min_ngram_support
+    }
+    print("FOUND NGRAMS:", ngrams)
+    return ngrams
+
+  def parse_ngrams(record:Record, ngram_model:Set[Tuple[str]]):
+    record[ngram_field] = []
+    for start_tok_idx in range(len(record[token_field])):
+      for ngram_len in range(2, max_ngram_length):
+        end_tok_idx = start_tok_idx + ngram_len
+        if end_tok_idx > len(record[token_field]):
+          continue
+        ngram = tuple(
+            record[token_field][tok_idx]["lemma"]
+            for tok_idx in range(start_tok_idx, end_tok_idx)
+        )
+        if ngram in ngram_model:
+          record[ngram_field].append("_".join(ngram))
+    return record
+
+  if max_ngram_length < 1:
+    # disable, record empty field for all ngrams
+    def init_nothing(rec:Record)->Record:
+      rec[ngram_field]=[]
+      return rec
+    return analyzed_sentences.map(init_nothing)
+  else:
+    ngram2count = analyzed_sentences.map_partitions(
+        part_to_ngram_counts
+    ).fold(
+        misc_util.merge_counts,
+        initial={}
+    )
+    ngram_model = delayed(valid_ngrams)(ngram2count)
+    return analyzed_sentences.map(parse_ngrams, ngram_model=ngram_model)
+
+
 def analyze_sentence(
     sent_rec:Record,
     text_field:str,
@@ -204,33 +297,30 @@ def analyze_sentence(
   stopwords = dpg.get("text_util:stopwords")
 
   sent_rec = copy(sent_rec)
-  try:
-    doc = nlp(sent_rec[text_field])
-    sent_rec[entity_field] = [
+  doc = nlp(sent_rec[text_field])
+  sent_rec[entity_field] = [
+    {
+      "tok_start": ent.start,
+      "tok_end": ent.end,
+      "cha_start": ent.start_char,
+      "cha_end": ent.end_char,
+    }
+    for ent in doc.ents
+    if ent.end - ent.start > 1  # don't want 1-gram ents
+  ]
+  sent_rec[token_field] = [
       {
-        "tok_start": ent.start,
-        "tok_end": ent.end,
-        "cha_start": ent.start_char,
-        "cha_end": ent.end_char,
+        "cha_start": tok.idx,
+        "cha_end": tok.idx + len(tok),
+        "lemma": tok.lemma_,
+        "pos": tok.pos_,
+        "tag": tok.tag_,
+        "dep": tok.dep_,
+        "stop": \
+            tok.lemma_ in stopwords or tok.text.strip().lower() in stopwords
       }
-      for ent in doc.ents
-    ]
-    sent_rec[token_field] = [
-        {
-          "cha_start": tok.idx,
-          "cha_end": tok.idx + len(tok),
-          "lemma": tok.lemma_,
-          "pos": tok.pos_,
-          "tag": tok.tag_,
-          "dep": tok.dep_,
-          "stop": \
-              tok.lemma_ in stopwords or tok.text.strip().lower() in stopwords
-        }
-        for tok in doc
-    ]
-  except Exception as e:
-    sent_rec["ERR"] = str(e)
-    logging.info(e)
+      for tok in doc
+  ]
   return sent_rec
 
 
@@ -239,7 +329,8 @@ def add_bow_to_analyzed_sentence(
     bow_field="bow",
     token_field="tokens",
     entity_field="entities",
-    mesh_heading_field="mesh_headings"
+    mesh_heading_field="mesh_headings",
+    ngram_field="ngrams",
 )->Record:
   bow = []
   for lemma in record[token_field]:
@@ -259,6 +350,7 @@ def add_bow_to_analyzed_sentence(
           token_field=token_field
       )
       bow.append(ent_text)
+  bow += record[ngram_field]
   bow += record[mesh_heading_field]
   record[bow_field] = bow
   return record
@@ -286,24 +378,10 @@ def get_document_frequencies(
         key = to_key(val)
         res[key] = 1
     return res
-  def merge_counts(
-    key_to_doc_count_1:Record,
-    key_to_doc_count_2:Record,
-  )->Record:
-    if len(key_to_doc_count_1) > len(key_to_doc_count_2):
-      larger, smaller = key_to_doc_count_1, key_to_doc_count_2
-    else:
-      larger, smaller = key_to_doc_count_2, key_to_doc_count_1
-    for key, count in smaller.items():
-      if key in larger:
-        larger[key] += count
-      else:
-        larger[key] = count
-    return larger
   return analyzed_sentences.map(
       record_to_init_counts
   ).fold(
-      merge_counts,
+      misc_util.merge_counts,
       initial={}
   )
 
@@ -341,6 +419,7 @@ def get_edges_from_sentence_part(
     mesh_field:str="mesh_headings",
     sent_idx_field:str="sent_idx",
     sent_total_field:str="sent_total",
+    ngram_field:str="ngrams",
     id_field:str="id",
 )->Iterable[Edge]:
   res = []
@@ -363,6 +442,8 @@ def get_edges_from_sentence_part(
       keys.append(ent_k)
     for mesh_code in sent_rec[mesh_field]:
       keys.append(mesh_to_id(mesh_code, graph=True))
+    for ngram in sent_rec[ngram_field]:
+      keys.append(ngram_to_id(ngram, graph=True))
 
     for tok_k, tf_idf in calc_tf_idf(
         terms=keys,

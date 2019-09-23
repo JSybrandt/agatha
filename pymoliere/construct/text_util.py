@@ -246,7 +246,6 @@ def get_frequent_ngrams(
         n for n, c in ngram2count.items()
         if c >= min_ngram_support
     }
-    print("FOUND NGRAMS:", ngrams)
     return ngrams
 
   def parse_ngrams(record:Record, ngram_model:Set[Tuple[str]]):

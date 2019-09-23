@@ -250,8 +250,12 @@ def get_frequent_ngrams(
 
   def parse_ngrams(record:Record, ngram_model:Set[Tuple[str]]):
     record[ngram_field] = []
-    for start_tok_idx in range(len(record[token_field])):
-      for ngram_len in range(2, max_ngram_length):
+    start_tok_idx = 0
+    while start_tok_idx < len(record[token_field]):
+      incr = 1  # amount to move start_tok_idx
+      # from max -> 2. Match longest
+      for ngram_len in range(max_ngram_length, 1, -1):
+        # get bounds of ngram and make sure its within sentence
         end_tok_idx = start_tok_idx + ngram_len
         if end_tok_idx > len(record[token_field]):
           continue
@@ -259,10 +263,16 @@ def get_frequent_ngrams(
             record[token_field][tok_idx]["lemma"]
             for tok_idx in range(start_tok_idx, end_tok_idx)
         )
+        # if match
         if ngram in ngram_model:
           record[ngram_field].append("_".join(ngram))
+          # skip over matched terms
+          incr = ngram_len
+          break
+      start_tok_idx += incr
     return record
 
+  # Begin the actual function
   if max_ngram_length < 1:
     # disable, record empty field for all ngrams
     def init_nothing(rec:Record)->Record:
@@ -358,7 +368,8 @@ def get_document_frequencies(
     analyzed_sentences:dbag.Bag,
     token_field:str="tokens",
     entity_field:str="entities",
-    mesh_field:str="mesh_headings"
+    mesh_field:str="mesh_headings",
+    ngram_field:str="ngrams"
 )->Record:  # delayed counts
   def record_to_init_counts(
       record:Record,
@@ -372,6 +383,7 @@ def get_document_frequencies(
                                               graph=True)
         ),
         (mesh_field, lambda x:mesh_to_id(x, graph=True)),
+        (ngram_field, lambda x:ngram_to_id(x, graph=True)),
     ]:
       for val in record[field]:
         key = to_key(val)

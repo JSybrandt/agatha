@@ -11,6 +11,18 @@ import math
 import spacy
 from dask import delayed
 
+# More details : https://spacy.io/api/annotation
+INTERESTING_POS_TAGS = {
+    "NOUN",
+    "VERB",
+    "ADJ",
+    "PROPN",  # proper noun
+    "ADV", # adverb
+    "INTJ", # interjection
+    "X", # other
+}
+
+#####################
 
 def _op_g_pre(graph:bool)->str:
   "helper for graph ids"
@@ -223,7 +235,7 @@ def get_frequent_ngrams(
           relevant_words = 0
           for tok_idx in range(start_tok_idx, end_tok_idx):
             if not rec[token_field][tok_idx]["stop"] and \
-                rec[token_field][tok_idx]["pos"] in {"NOUN", "ADJ", "VERB"}:
+                rec[token_field][tok_idx]["pos"] in INTERESTING_POS_TAGS:
               relevant_words += 1
           if relevant_words >= 2:
             ngram = tuple(
@@ -343,7 +355,7 @@ def add_bow_to_analyzed_sentence(
 )->Record:
   bow = []
   for lemma in record[token_field]:
-    if lemma["pos"] in {"NOUN", "VERB", "ADJ"} and not lemma["stop"]:
+    if lemma["pos"] in INTERESTING_POS_TAGS and not lemma["stop"]:
       bow.append(lemma["lemma"])
   for entity in record[entity_field]:
     is_stop_ent = True
@@ -439,10 +451,9 @@ def get_edges_from_sentence_part(
     # Calculate
     keys = []
     for token in sent_rec[token_field]:
-      if token["stop"] or token["pos"] in ("PUNCT"):
-        continue
-      tok_k = token_to_id(token, graph=True)
-      keys.append(tok_k)
+      if not token["stop"] and token["pos"] in INTERESTING_POS_TAGS:
+        tok_k = token_to_id(token, graph=True)
+        keys.append(tok_k)
     for entity in sent_rec[entity_field]:
       ent_k = entity_to_id(
           entity=entity,

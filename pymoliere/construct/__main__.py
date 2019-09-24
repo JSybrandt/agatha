@@ -57,7 +57,18 @@ if __name__ == "__main__":
     )
 
   # Configure Dask ################
-  dask_config["temporary-directory"] = str(local_scratch_root)
+  dask_local_scratch, _ = mk_scratch("_dask_tmp")
+  dask_config["temporary-directory"] = str(dask_local_scratch)
+  dask_config["distributed"]["comm"]["timeouts"]["connect"] = 30
+  dask_config["distributed"]["comm"]["timeouts"]["tcp"] = 60
+  dask_config["distributed"]["worker"]["memory"]["target"] = 0.5
+  dask_config["distributed"]["worker"]["memory"]["spill"] = 0.6
+  dask_config["distributed"]["worker"]["memory"]["pause"] = False
+  dask_config["distributed"]["worker"]["memory"]["terminate"] = False
+  dask_config["distributed"]["worker"]["use-file-locking"] = False
+  dask_config["distributed"]["admin"]["tick"]=500
+
+  # Connect
   if config.cluster.run_locally:
     print("Running on local machine!")
     cluster = LocalCluster()

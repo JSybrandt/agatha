@@ -130,6 +130,8 @@ if __name__ == "__main__":
         directory=download_shared,
         show_progress=True,
     )
+  # an attempt to keep partitions the same each call
+  xml_paths.sort()
 
   ##############################################################################
 
@@ -138,8 +140,8 @@ if __name__ == "__main__":
   if config.debug.enable:
     print(f"\t- Downsampling {len(xml_paths)} xml files to only "
           f"{config.debug.partition_subset_size}.")
-    shuffle(xml_paths)
-    xml_paths = xml_paths[:config.debug.partition_subset_size]
+    # Takes the top x (typically larger)
+    xml_paths = xml_paths[-config.debug.partition_subset_size:]
 
   # Parse xml-files per-partition
   pubmed_documents = dbag.from_delayed([
@@ -268,7 +270,4 @@ if __name__ == "__main__":
       write_sent_with_ent,
   ] + dask_checkpoint.get_checkpoint_tasks()
   tasks = dask.optimize(tasks)
-  dask_client.compute(
-    tasks,
-    sync=True,
-  )
+  dask_client.compute(tasks, sync=True)

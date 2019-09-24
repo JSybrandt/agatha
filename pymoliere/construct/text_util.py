@@ -302,14 +302,13 @@ def get_frequent_ngrams(
     return analyzed_sentences.map(parse_ngrams, ngram_model=ngram_model)
 
 
-def analyze_sentence(
-    sent_rec:Record,
+def analyze_sentences(
+    records:Iterable[Record],
     text_field:str,
     nlp:Any=None,
     token_field:str="tokens",
     entity_field:str="entities",
-    #vector_field:str="vector"
-)->Record:
+)->Iterable[Record]:
   "Splits tokens into useful components"
   assert text_field in sent_rec
 
@@ -317,32 +316,41 @@ def analyze_sentence(
     nlp = dpg.get("text_util:nlp")
   stopwords = dpg.get("text_util:stopwords")
 
-  sent_rec = copy(sent_rec)
-  doc = nlp(sent_rec[text_field])
-  sent_rec[entity_field] = [
-    {
-      "tok_start": ent.start,
-      "tok_end": ent.end,
-      "cha_start": ent.start_char,
-      "cha_end": ent.end_char,
-    }
-    for ent in doc.ents
-    if ent.end - ent.start > 1  # don't want 1-gram ents
-  ]
-  sent_rec[token_field] = [
+  res = []
+  for sent_rec, doc in zip(
+      records,
+      nlp.pipe(
+        map(
+          lambda x:x[text_field],
+          records
+        ),
+      batch_size=10000)
+  ):
+    sent_rec[entity_field] = [
       {
-        "cha_start": tok.idx,
-        "cha_end": tok.idx + len(tok),
-        "lemma": tok.lemma_,
-        "pos": tok.pos_,
-        "tag": tok.tag_,
-        "dep": tok.dep_,
-        "stop": \
-            tok.lemma_ in stopwords or tok.text.strip().lower() in stopwords
+        "tok_start": ent.start,
+        "tok_end": ent.end,
+        "cha_start": ent.start_char,
+        "cha_end": ent.end_char,
       }
-      for tok in doc
-  ]
-  return sent_rec
+      for ent in doc.ents
+      if ent.end - ent.start > 1  # don't want 1-gram ents
+    ]
+    sent_rec[token_field] = [
+        {
+          "cha_start": tok.idx,
+          "cha_end": tok.idx + len(tok),
+          "lemma": tok.lemma_,
+          "pos": tok.pos_,
+          "tag": tok.tag_,
+          "dep": tok.dep_,
+          "stop": \
+              tok.lemma_ in stopwords or tok.text.strip().lower() in stopwords
+        }
+        for tok in doc
+    ]
+    res.append(sent_rec)
+  return res
 
 
 def add_bow_to_analyzed_sentence(

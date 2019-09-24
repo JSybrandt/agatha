@@ -190,8 +190,8 @@ if __name__ == "__main__":
   ).flatten()
 
   # Add POS tagging, lemmas, entitites, and additional data to each sent
-  pubmed_sent_w_ent = pubmed_sentences.map(
-      text_util.analyze_sentence,
+  pubmed_sent_w_ent = pubmed_sentences.map_partitions(
+      text_util.analyze_sentences,
       # --
       text_field="sent_text",
   )

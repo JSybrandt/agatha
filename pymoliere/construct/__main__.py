@@ -4,6 +4,7 @@ from pymoliere.config import (
 )
 from pymoliere.construct import (
     dask_process_global as dpg,
+    dask_checkpoint,
     embedding_util,
     file_util,
     ftp_util,
@@ -114,6 +115,7 @@ if __name__ == "__main__":
   print("Prepping scratch directories")
   download_local, download_shared = mk_scratch("download_pubmed")
   _, faiss_index_dir = mk_scratch("faiss_index")
+  _, checkpoint_dir = mk_scratch("dask_checkpoints")
 
   # Download all of pubmed. ####
   print("Downloading pubmed XML Files")
@@ -171,8 +173,14 @@ if __name__ == "__main__":
       text_field="sent_text",
   )
 
+  pubmed_sent_w_ent = dask_checkpoint.checkpoint(
+      pubmed_sent_w_ent,
+      name="pubmed_sent_w_ent",
+      checkpoint_dir=checkpoint_dir,
+  )
+
   # Perform n-gram mining, introduces a new field "ngrams"
-  pubmed_sent_w_ent = text_util.get_frequent_ngrams(
+  pubmed_sent_w_ngrams = text_util.get_frequent_ngrams(
       analyzed_sentences=pubmed_sent_w_ent,
       max_ngram_length=config.phrases.max_ngram_length,
       min_ngram_support=config.phrases.min_ngram_support,
@@ -180,19 +188,25 @@ if __name__ == "__main__":
           config.phrases.min_ngram_support_per_partition,
   )
 
+  pubmed_sent_w_ngrams = dask_checkpoint.checkpoint(
+      pubmed_sent_w_ngrams,
+      name="pubmed_sent_w_ngrams",
+      checkpoint_dir=checkpoint_dir,
+  )
+
   # Store result in redis db
-  write_sent_with_ent = pubmed_sent_w_ent.map(
+  write_sent_with_ent = pubmed_sent_w_ngrams.map(
       text_util.add_bow_to_analyzed_sentence
   ).map(
       write_db.write_record
   )
 
   # get edges from sentence metadata and store in DB
-  write_sentence_meta_edges = pubmed_sent_w_ent.map_partitions(
+  write_sentence_meta_edges = pubmed_sent_w_ngrams.map_partitions(
       text_util.get_edges_from_sentence_part,
       # --
-      document_freqs=text_util.get_document_frequencies(pubmed_sent_w_ent),
-      total_documents=pubmed_sent_w_ent.count(),
+      document_freqs=text_util.get_document_frequencies(pubmed_sent_w_ngrams),
+      total_documents=pubmed_sent_w_ngrams.count(),
   ).map(
       write_db.write_edge
   )
@@ -211,9 +225,15 @@ if __name__ == "__main__":
       max_sequence_length=config.parser.max_sequence_length,
   )
 
+  idx_embedding = dask_checkpoint.checkpoint(
+      idx_embedding,
+      name="idx_embedding",
+      checkpoint_dir=checkpoint_dir,
+  )
+
   # need map from numeric id to hash val
   inverted_ids = knn_util.create_inverted_index(
-      ids=pubmed_sent_w_ent.pluck("id")
+      ids=pubmed_sent_w_ngrams.pluck("id")
   )
 
   # Now we can distribute the knn training
@@ -242,11 +262,13 @@ if __name__ == "__main__":
   )
 
   print("Running!!!")
-  dask_client.compute(
-    [
+  tasks = [
       write_nearest_neighbors_edges,
       write_sentence_meta_edges,
       write_sent_with_ent,
-    ],
+  ] + dask_checkpoint.get_checkpoint_tasks()
+  tasks = dask.optimize(tasks)
+  dask_client.compute(
+    tasks,
     sync=True,
   )

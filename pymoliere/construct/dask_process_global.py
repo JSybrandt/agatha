@@ -29,12 +29,12 @@ def register(
 def init():
   "Runs all of the registered initializers. Each initializer is threadsafe."
   for key, initializer in _INITIALIZERS.items():
-    lock = Lock(f"init:{key}")
-    while(not lock.acquire(timeout=5)):
-      pass
+    # lock = Lock(f"init:{key}")
+    # while(not lock.acquire(timeout=5)):
+      # pass
     assert key not in _PROCESS_GLOBAL_DATA
     _PROCESS_GLOBAL_DATA[key] = initializer()
-    lock.release()
+    # lock.release()
 
 def clear():
   "Deletes all of the process global data."

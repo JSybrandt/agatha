@@ -305,15 +305,23 @@ def get_frequent_ngrams(
 def analyze_sentences(
     records:Iterable[Record],
     text_field:str,
-    nlp:Any=None,
     token_field:str="tokens",
     entity_field:str="entities",
 )->Iterable[Record]:
-  "Splits tokens into useful components"
-  assert text_field in sent_rec
+  """
+  Parses the text fields of all records using SciSpacy.
+  Requires that text_util:nlp and text_util:stopwords have both been loaded into
+  dask_process_global.
 
-  if nlp is None:
-    nlp = dpg.get("text_util:nlp")
+  @param records: A partition of records to parse, each must contain `text_field`
+  @param text_field: The name of the field we wish to parse.
+  @param token_field: The output field for all basic tokens. These are
+  sub-records containing information such as POS tag and lemma.
+  @param entity_field: The output field for all entities, which are multi-token
+  phrases.
+  @return a list of records with token and entity fields
+  """
+  nlp = dpg.get("text_util:nlp")
   stopwords = dpg.get("text_util:stopwords")
 
   res = []

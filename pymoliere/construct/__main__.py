@@ -15,9 +15,9 @@ from pymoliere.construct import (
 )
 from pymoliere.util import misc_util
 from dask.distributed import (
-    Client,
-    LocalCluster,
-    config as dask_config,
+  Client,
+  LocalCluster,
+  config as dask_config,
 )
 from copy import copy
 from pathlib import Path
@@ -68,6 +68,8 @@ if __name__ == "__main__":
   dask_config["distributed"]["worker"]["use-file-locking"] = False
   dask_config["distributed"]["admin"]["tick"]=500
 
+  # Must be called AFTER config changes
+
   # Connect
   if config.cluster.run_locally:
     print("Running on local machine!")
@@ -77,7 +79,7 @@ if __name__ == "__main__":
     cluster_address = f"{config.cluster.address}:{config.cluster.port}"
     print("Configuring Dask, attaching to cluster")
     print(f"\t- {cluster_address}")
-    dask_client = Client(address=cluster_address)
+    dask_client = Client(address=cluster_address, heartbeat_interval=500)
   if config.cluster.restart:
     print("\t- Restarting cluster...")
     dask_client.restart()

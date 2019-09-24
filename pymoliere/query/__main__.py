@@ -89,6 +89,8 @@ if __name__ == "__main__":
   )
   if path is None:
     raise ValueError(f"Path is disconnected, {config.source}, {config.target}")
+  pprint(path)
+
   text_keys = set()
   for path_node in path:
     text_keys.update(

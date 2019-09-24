@@ -7,8 +7,8 @@ from pymoliere.util.db_key_util import (
 from heapdict import heapdict
 import redis
 import networkx as nx
+import numpy as np
 import heapq
-
 
 
 def get_path(
@@ -16,9 +16,15 @@ def get_path(
     source:str,
     target:str,
     batch_size:int,
-    use_batch_ratio:float=2,
 )->Optional[List[str]]:
-  "Gets the exact shortest path between two nodes in the network."
+  """
+  Gets the exact shortest path between two nodes in the network. This method
+  runs a bidirectional search with an amortized download. At a high level, we
+  are storing each node's distance to both the source and target at the same
+  time. Each visit of a node leads us to identify any neighbors with shorter
+  source / target distances. We know we're done when we uncover a node with a
+  tightened path to both source and target.
+  """
   assert key_is_type(source, GRAPH_TYPE)
   assert key_is_type(target, GRAPH_TYPE)
   source = source.encode()
@@ -26,26 +32,82 @@ def get_path(
 
   graph = nx.Graph()
   # dist is going to be a node-attr that indicates distance from the query terms
-  graph.add_node(source, dist=0)
-  graph.add_node(target, dist=0)
+  # downloaded indicates whether we've pulled their values from the database
+  graph.add_node(
+      source,
+      downloaded=False,
+      dists=np.array([0, np.inf]),
+      visited=False
+  )
+  graph.add_node(
+      target,
+      downloaded=False,
+      dists=np.array([np.inf, 0]),
+      visited=False
+  )
+  priority = [source, target]
+  # for now, we're just going to sort a list based on their graph dists
 
   with db_client.pipeline() as pipe:
-    #setup graph
-    for root_key, neigh_key_weights in _get_batch(pipe, [source, target]):
-      _add_neighbors(graph, root_key, neigh_key_weights)
-    visited = {source, target}
+    def get_top_undownloaded(curr_key):
+      #finds the top batch that have not been downloaded yet.
+      #Must download curr_key
+      res = [curr_key]
+      for key in priority:
+        if not graph.node[key]["downloaded"]:
+          res.append(key)
+          if len(key) >= batch_size:
+            break
+      return res
 
-    while not nx.has_path(graph, source, target):
-      close_novel_nodes = _lowest_k_dists(
-          graph=graph,
-          exclude=visited,
-          k=batch_size if len(graph.nodes) > use_batch_ratio*batch_size else 1,
-      )
-      if len(close_novel_nodes) == 0:
-        return None
-      for root_idx, neigh_key_weights in _get_batch(pipe, close_novel_nodes):
-        _add_neighbors(graph, root_idx, neigh_key_weights)
-        visited.add(root_idx)
+    def add_batch(batch):
+      # Loops through the batch and adds new nodes / edges
+      # new nodes come in uninitialized
+      for root_key, neigh_key_weights in _get_batch(pipe, batch):
+        graph.nodes[root_key]["downloaded"] = True
+        for neigh_key, neigh_weight in neigh_key_weights:
+          if neigh_key not in graph:
+            graph.add_node(
+                neigh_key,
+                #dists=graph.nodes[root_key]["dists"]+neigh_weight,
+                dists=[np.inf, np.inf],
+                downloaded=False,
+                visited=False,
+            )
+          graph.add_edge(root_key, neigh_key, weight=neigh_weight)
+
+    def get_total_dist(key):
+      return np.sum(graph.nodes[key]["dists"])
+
+    def get_min_dist(key):
+      return np.min(graph.nodes[key]["dists"])
+
+    while len(priority) > 0:
+      curr_key = priority.pop(0)
+      graph.nodes[curr_key]["visited"] = True
+      # if we've made a connection from s to t
+      if get_total_dist(curr_key) < np.inf:
+        break
+
+      # download the top x nodes in the pqueue
+      if not graph.nodes[curr_key]["downloaded"]:
+        add_batch(get_top_undownloaded(curr_key))
+      assert graph.nodes[curr_key]["downloaded"]
+
+      for neigh_key, edge_attr in graph[curr_key].items():
+        neigh_weight = edge_attr["weight"]
+        graph.nodes[neigh_key]["dists"] = np.min([
+            graph.nodes[neigh_key]["dists"],
+            graph.nodes[curr_key]["dists"] + neigh_weight,
+          ],
+          axis=1,
+        )
+        if not graph.nodes[neigh_key]["visited"]:
+          priority.append(neigh_key)
+
+      # update priorities
+      priority = list(set(priority))
+      priority.sort(key=get_min_dist)
     return [b.decode("utf-8") for b in nx.dijkstra_path(graph, source, target)]
 
 

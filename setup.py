@@ -5,6 +5,7 @@ from setuptools import setup, Extension
 import os
 import subprocess
 import sys
+from pymoliere import __VERSION__
 
 proto_src_files = [
     "pymoliere/config/config.proto",
@@ -72,7 +73,7 @@ class build_py(_build_py):
 
 setup(
     name='PyMoliere',
-    version='19.09.1dev',
+    version=__VERSION__,
     packages=['pymoliere',],
     license='Creative Commons Attribution-Noncommercial-Share Alike license',
     long_description=open('README.md').read(),

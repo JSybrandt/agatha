@@ -28,6 +28,7 @@ import dask.bag as dbag
 import faiss
 import redis
 import socket
+from pprint import pprint
 
 
 if __name__ == "__main__":
@@ -88,6 +89,15 @@ if __name__ == "__main__":
   if config.db.address == "localhost":
     config.db.address = socket.gethostname()
     print(f"\t- Renaming localhost to {config.db.address}")
+
+  # Versioning info
+  meta_data = write_db.get_meta_record(config)
+  write_db.write_record(
+      rec=meta_data,
+      redis_client=redis_client
+  )
+  print("Metadata:")
+  pprint(meta_data)
 
   # Initialize Helper Objects ###
   print("Initializing Helper Objects")

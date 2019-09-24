@@ -3,6 +3,10 @@ from pymoliere.util.misc_util import Record, Edge
 import json
 from pymoliere.construct import dask_process_global as dpg
 from typing import Tuple
+from datetime import datetime
+import pymoliere
+from pymoliere.config import config_pb2 as cpb
+from google.protobuf.json_format import MessageToDict
 
 
 def get_redis_client_initialzizer(
@@ -19,6 +23,7 @@ def get_redis_client_initialzizer(
     assert r.ping()
     return r
   return "write_db:redis_client", _init
+
 
 def write_edge(edge:Edge, redis_client:Redis=None)->None:
   if redis_client is None:
@@ -39,5 +44,18 @@ def write_record(rec:Record, id_field:str="id", redis_client:Redis=None)->None:
     if type(value) not in (int, float, str):
       value = json.dumps(value)
     redis_client.hset(id_, field_name, value)
+
+
+def get_meta_record(config:cpb.ConstructConfig)->Record:
+  """
+  These are things we would want to store that indicate the properties of the
+  system
+  """
+  metadata = MessageToDict(config)
+  metadata["__date__"] = str(datetime.now())
+  metadata["__version__"] = pymoliere.__VERSION__
+  metadata["__git_head__"] = pymoliere.__GIT_HEAD__
+  metadata["id"] = "__meta__"
+  return metadata
 
 

@@ -99,24 +99,23 @@ if __name__ == "__main__":
 
   # Initialize Helper Objects ###
   print("Registering Helper Objects")
-  def prepare_dask_process_global():
-    dpg.clear()
-    dpg.register(*text_util.get_scispacy_initalizer(
-        scispacy_version=config.parser.scispacy_version,
-    ))
-    dpg.register(*text_util.get_stopwordlist_initializer(
-        stopword_path=config.parser.stopword_list
-    ))
-    dpg.register(*embedding_util.get_scibert_initializer(
-        scibert_data_dir=config.parser.scibert_data_dir,
-        disable_gpu=config.sys.disable_gpu,
-    ))
-    dpg.register(*write_db.get_redis_client_initialzizer(
-        host=config.db.address,
-        port=config.db.port,
-        db=config.db.db_num,
-    ))
-  dask_client.run(prepare_dask_process_global)
+  preloader = dpg.WorkerPreloader()
+  preloader.register(*text_util.get_scispacy_initalizer(
+      scispacy_version=config.parser.scispacy_version,
+  ))
+  preloader.register(*text_util.get_stopwordlist_initializer(
+      stopword_path=config.parser.stopword_list
+  ))
+  preloader.register(*embedding_util.get_scibert_initializer(
+      scibert_data_dir=config.parser.scibert_data_dir,
+      disable_gpu=config.sys.disable_gpu,
+  ))
+  preloader.register(*write_db.get_redis_client_initialzizer(
+      host=config.db.address,
+      port=config.db.port,
+      db=config.db.db_num,
+  ))
+  dpg.add_global_preloader(client=dask_client, preloader=preloader)
 
   # Prepping all scratch dirs ###
   print("Prepping scratch directories")

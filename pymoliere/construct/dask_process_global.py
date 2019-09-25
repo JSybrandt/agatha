@@ -6,7 +6,7 @@ startup, and we don't want to reload each function call.
 """
 
 from typing import Callable, Any
-from dask.distributed import Lock
+from dask.distributed import Lock, Worker, Client, get_worker
 # An initialize is a function that does not take arguments, and produces an
 # expensive-to-load piece of data.
 
@@ -17,39 +17,48 @@ _PROCESS_GLOBAL_DATA = {}
 _INITIALIZERS = {}
 
 
-def register(
-    key:str,
-    init:Callable,
-)->None:
-  """
-  Adds the given initializer to the set.
-  """
-  assert key not in _INITIALIZERS
-  _INITIALIZERS[key] = init
+class WorkerPreloader(object):
+  def __init__(self):
+    self.initializers = {}
+    self.worker_data = {}
 
-
-def _init(key:str)->None:
-  assert key in _INITIALIZERS
-  lock = Lock(f"init:{key}")
-  while(not lock.acquire(timeout=5)):
+  def setup(self, worker:Worker):
     pass
-  _PROCESS_GLOBAL_DATA[key] = _INITIALIZERS[key]()
-  print("Initialized", key)
-  lock.release()
 
+  def teardown(self, worker:Worker):
+    self.clear()
 
-def clear():
-  "Deletes all of the process global data."
-  _INITIALIZERS.clear()
-  _PROCESS_GLOBAL_DATA.clear()
+  def register(self, key:str, init:Callable)->None:
+    "Adds a global object to the preloader"
+    assert key not in self.initializers
+    self.initializers[key] = init
 
+  def initialize(self, key:str)->None:
+    assert key in self.initializers
+    lock = Lock(f"init:{key}")
+    while(not lock.acquire(timeout=5)):
+      pass
+    self.worker_data[key] = self.initializers[key]()
+    print("Initialized", key)
+    lock.release()
 
-def get(key:str):
-  if key not in _INITIALIZERS:
-    raise Exception(f"Attempted to get unregistered key {key}")
-  if key not in _PROCESS_GLOBAL_DATA:
-    _init(key)
-  # 2nd try
-  if key not in _PROCESS_GLOBAL_DATA:
-    raise Exception(f"Failed to initialize {key}")
-  return _PROCESS_GLOBAL_DATA[key]
+  def clear(self)->None:
+    self.worker_data.clear()
+    self.initializers.clear()
+
+  def get(self, key:str)->Any:
+    if key not in self.initializers:
+      raise Exception(f"Attempted to get unregistered key {key}")
+    if key not in self.worker_data:
+      self.initialize(key)
+    # 2nd try
+    if key not in self.worker_data:
+      raise Exception(f"Failed to initialize {key}")
+    return self.worker_data[key]
+
+def add_global_preloader(client:Client, preloader:WorkerPreloader)->None:
+  client.register_worker_plugin(preloader, name="global_preloader")
+
+def get(key:str)->Any:
+  "Gets a value from the global preloader"
+  return get_worker().plugins["global_preloader"].get(key)

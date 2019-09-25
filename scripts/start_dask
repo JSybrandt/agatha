@@ -1,26 +1,49 @@
 #!/bin/bash
 
 NTHREADS=${1:-16}
-echo "Starting Dask cluster with $NTHREADS threads per-node"
+MEM=${2:-60GB}
+echo "Starting Dask cluster with $NTHREADS threads and $MEM per-node"
 
+echo "Overwritting dask config at ~/.dask/config.yaml"
 mkdir -p ~/.dask
 cp dask.config.yaml ~/.dask/config.yaml
 
-DASK_TMP_DIR=/scratch2/$USER/__dask__
-mkdir -p $DASK_TMP_DIR
-echo "temporary-directory: $DASK_TMP_DIR" >> ~/.dask/config.yaml
+
+DASK_WORKER_LOCAL=/tmp/__dask__
+DASK_WORKER_SHARED=/scratch2/$USER/__dask__
+echo "Setting worker local directory to $DASK_WORKER_LOCAL"
+echo "Setting worker shared directory to $DASK_WORKER_SHARED"
+
 
 MODULE_NAME="pymoliere"
-
 CONDA_START=~/anaconda3/etc/profile.d/conda.sh
 MODULE_GROUP=~/module_groups/$MODULE_NAME
-
 echo $MODULE_NAME > ~/.default_module
-
-
 source $CONDA_START
 source $MODULE_GROUP
 
-dask-ssh \
-  --hostfile $PBS_NODEFILE \
-  --nthreads $NTHREADS
+DASK_PORT=8786
+
+# Starting scheduler
+dask-scheduler \
+  --host $HOSTNAME \
+  --port $DASK_PORT \
+  --local-directory $DASK_WORKER_LOCAL \
+  --scheduler-file $DASK_WORKER_SHARED/scheduler.json \
+  &
+
+while read worker_addr; do
+  ssh $worker_addr \
+    dask-worker \
+      $HOSTNAME:$DASK_PORT \
+      --host $worker_addr \
+      --nthreads $NTHREADS \
+      --memory-limit $MEM \
+      --local-directory $DASK_WORKER_LOCAL \
+      --scheduler-file $DASK_WORKER_SHARED/scheduler.json \
+  >& /dev/null \
+  &
+done < $PBS_NODEFILE
+
+
+wait

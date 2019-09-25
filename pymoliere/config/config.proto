@@ -125,3 +125,14 @@ message QueryConfig {
   optional string result_path = 8;
   optional bool override = 9 [default=false];
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+message SentenceClassifierConfig {
+  optional ClusterConfig cluster = 1;
+  optional FtpSource ftp = 2;
+  optional TextParserConfig parser = 3;
+  optional MlSysConfig sys = 4;
+  // Path to store model
+  optional string output = 5;
+}

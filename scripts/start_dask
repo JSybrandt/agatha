@@ -6,7 +6,7 @@ echo "Starting Dask cluster with $NTHREADS threads and $MEM per-node"
 
 echo "Overwritting dask config at ~/.dask/config.yaml"
 mkdir -p ~/.dask
-cp dask.config.yaml ~/.dask/config.yaml
+ln -sf $(readlink -f dask.config.yaml) ~/.dask/config.yaml
 
 
 DASK_WORKER_LOCAL=/tmp/__dask__

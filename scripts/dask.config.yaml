@@ -57,16 +57,16 @@ distributed:
     # Fractions of worker memory at which we take action to avoid memory blowup
     # Set any of the lower three values to False to turn off the behavior entirely
     memory:
-      target: 0.60  # target fraction to stay below
-      spill: 0.70  # fraction at which we spill to disk
-      pause: 0.80  # fraction at which we pause worker threads
-      terminate: 0.95  # fraction at which we terminate the worker
+      target: 0.75  # target fraction to stay below
+      spill: 0.85  # fraction at which we spill to disk
+      pause: False  # fraction at which we pause worker threads
+      terminate: False  # fraction at which we terminate the worker
 
   client:
     heartbeat: 5s  # time between client heartbeats
 
   deploy:
-    lost-worker-timeout: 15s  # Interval after which to hard-close a lost worker job
+    lost-worker-timeout: 60s  # Interval after which to hard-close a lost worker job
 
   comm:
     compression: auto
@@ -79,8 +79,8 @@ distributed:
       threads: 0    # Threads to use. 0 for single-threaded, -1 to infer from cpu count.
 
     timeouts:
-      connect: 10s          # time before connecting fails
-      tcp: 30s              # time before calling an unresponsive connection dead
+      connect: 30s          # time before connecting fails
+      tcp: 60s              # time before calling an unresponsive connection dead
 
     require-encryption: False   # Whether to require encryption on non-local comms
 
@@ -114,8 +114,8 @@ distributed:
 
   admin:
     tick:
-      interval: 20ms  # time between event loop health checks
-      limit: 3s       # time allowed before triggering a warning
+      interval: 1s  # time between event loop health checks
+      limit: 60s       # time allowed before triggering a warning
 
     log-length: 10000  # default length of logs to keep in memory
     log-format: '%(name)s - %(levelname)s - %(message)s'

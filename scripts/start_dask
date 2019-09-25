@@ -32,18 +32,19 @@ dask-scheduler \
   --scheduler-file $DASK_WORKER_SHARED/scheduler.json \
   &
 
-while read worker_addr; do
-  ssh $worker_addr \
+while read WORKER; do
+  echo Starting worker at $WORKER
+  ssh $WORKER """
     dask-worker \
       $HOSTNAME:$DASK_PORT \
-      --host $worker_addr \
+      --host $WORKER \
       --nthreads $NTHREADS \
       --memory-limit $MEM \
       --local-directory $DASK_WORKER_LOCAL \
-      --scheduler-file $DASK_WORKER_SHARED/scheduler.json \
+      --scheduler-file $DASK_WORKER_SHARED/scheduler.json
+  """ \
   >& /dev/null \
   &
 done < $PBS_NODEFILE
-
 
 wait

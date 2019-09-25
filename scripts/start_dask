@@ -41,7 +41,8 @@ while read WORKER; do
       --nthreads $NTHREADS \
       --memory-limit $MEM \
       --local-directory $DASK_WORKER_LOCAL \
-      --scheduler-file $DASK_WORKER_SHARED/scheduler.json
+      --scheduler-file $DASK_WORKER_SHARED/scheduler.json \
+      --no-reconnect
   """ \
   >& /dev/null \
   &

@@ -143,7 +143,7 @@ if __name__ == "__main__":
       max_sequence_length=config.parser.max_sequence_length,
   )
   embedded_sentences = dask_checkpoint.checkpoint(
-      labeled_sentences,
+      embedded_sentences,
       name="embedded_sentences",
       checkpoint_dir=checkpoint_dir,
   )

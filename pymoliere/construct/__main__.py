@@ -175,6 +175,12 @@ if __name__ == "__main__":
       max_sentence_len=config.parser.max_sentence_len,
   ).flatten()
 
+  pubmed_sentences = dask_checkpoint.checkpoint(
+      pubmed_sentences,
+      name="pubmed_sentences",
+      checkpoint_dir=checkpoint_dir,
+  )
+
   # Add POS tagging, lemmas, entitites, and additional data to each sent
   pubmed_sent_w_ent = pubmed_sentences.map_partitions(
       text_util.analyze_sentences,

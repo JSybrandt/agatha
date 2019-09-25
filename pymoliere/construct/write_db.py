@@ -1,12 +1,13 @@
-from redis import Redis
-from pymoliere.util.misc_util import Record, Edge
-import json
-from pymoliere.construct import dask_process_global as dpg
-from typing import Tuple
 from datetime import datetime
-import pymoliere
-from pymoliere.config import config_pb2 as cpb
 from google.protobuf.json_format import MessageToDict
+from pymoliere.config import config_pb2 as cpb
+from pymoliere.construct import dask_process_global as dpg
+from pymoliere.util.misc_util import Record, Edge
+from pymoliere.util.misc_util import iter_to_batches
+from redis import Redis
+from typing import Tuple, Iterable
+import json
+import pymoliere
 
 
 def get_redis_client_initialzizer(
@@ -25,26 +26,48 @@ def get_redis_client_initialzizer(
   return "write_db:redis_client", _init
 
 
-def write_edge(edge:Edge, redis_client:Redis=None)->None:
+def write_edges(
+    edges:Iterable[Edge],
+    redis_client:Redis=None,
+    batch_size:int=500,
+)->Iterable[int]:
   if redis_client is None:
     redis_client = dpg.get("write_db:redis_client")
-  redis_client.zadd(
-    edge["source"],
-    {edge["target"]: edge["weight"]},
-  )
+  count = 0
+  with redis_client.pipeline() as pipe:
+    for edge_batch in iter_to_batches(edges, batch_size):
+      for edge in edge_batch:
+        pipe.zadd(
+          edge["source"],
+          {edge["target"]: edge["weight"]},
+        )
+        count += 1
+      pipe.execute()
+  return [count]
 
 
-def write_record(rec:Record, id_field:str="id", redis_client:Redis=None)->None:
+def write_records(
+    records:Iterable[Record],
+    id_field:str="id",
+    redis_client:Redis=None,
+    batch_size:int=100,
+)->Iterable[int]:
   if redis_client is None:
     redis_client = dpg.get("write_db:redis_client")
-  id_ = rec[id_field]
-  for field_name, value in rec.items():
-    if field_name == id_field:
-      continue
-    if type(value) not in (int, float, str):
-      value = json.dumps(value)
-    redis_client.hset(id_, field_name, value)
-
+  count = 0
+  with redis_client.pipeline() as pipe:
+    for rec_batch in iter_to_batches(records, batch_size):
+      for rec in rec_batch:
+        id_ = rec[id_field]
+        for field_name, value in rec.items():
+          if field_name == id_field:
+            continue
+          if type(value) not in (int, float, str):
+            value = json.dumps(value)
+          pipe.hset(id_, field_name, value)
+        count += 1
+      pipe.execute()
+  return [count]
 
 def get_meta_record(config:cpb.ConstructConfig)->Record:
   """

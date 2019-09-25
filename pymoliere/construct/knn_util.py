@@ -79,12 +79,14 @@ def get_neighbors_from_index_per_part(
 
 def create_inverted_index(
     ids:dbag.Bag,
+    id_field:str="id",
 )->InvertedIds:
   def part_to_inv_idx(
-      part:Iterable[str],
+      part:Iterable[Record],
   )->Iterable[InvertedIds]:
     res = {}
-    for str_id in part:
+    for record in part:
+      str_id = record[id_field]
       int_id = hash_str_to_int64(str_id)
       if int_id not in res:
         res[int_id] = [str_id]

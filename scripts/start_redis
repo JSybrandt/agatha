@@ -6,7 +6,9 @@
 #PBS -N redis
 #PBS -m be
 
-cd $PBS_O_WORKDIR
+if [[ -n $PBS_O_WORKDIR ]]; then
+  cd $PBS_O_WORKDIR
+fi
 
 CONF=${1:-"moliere.redis.conf"}
 

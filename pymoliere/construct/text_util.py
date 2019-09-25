@@ -112,7 +112,7 @@ def get_stopwordlist_initializer(
 ################################################################################
 
 def split_sentences(
-    document_elem:Record,
+    records:Iterable[Record],
     text_data_field:str="text_data",
     id_field:str="id",
     min_sentence_len:Optional[int]=None,
@@ -168,44 +168,46 @@ def split_sentences(
     "sent_total": 3,
   }]
   """
-  assert text_data_field in document_elem
   sent_text_key = f"sent_text"
   sent_idx_key = f"sent_idx"
   sent_total_key = f"sent_total"
 
   res = []
+  for document_elem in records:
+    assert text_data_field in document_elem
+    doc_sents = []
+    # Get all non-textual data
+    doc_non_text_elem = copy(document_elem)
+    doc_non_text_elem.pop(text_data_field)
 
-  # Get all non-textual data
-  doc_non_text_elem = copy(document_elem)
-  doc_non_text_elem.pop(text_data_field)
+    sent_idx = 0
+    for text_data in document_elem[text_data_field]:
+      assert "text" in text_data
+      # Holds all additional text features per-sentence in this field
+      non_text_attr = copy(doc_non_text_elem)
+      for key, val in text_data.items():
+        if key != "text":
+          key = f"sent_{key}"
+          assert key not in non_text_attr
+          non_text_attr[key] = val
+      for sentence_text in sent_tokenize(text_data["text"]):
+        if min_sentence_len is not None and len(sentence_text) < min_sentence_len:
+          continue
+        if max_sentence_len is not None and len(sentence_text) > max_sentence_len:
+          continue
+        sent_rec = copy(non_text_attr)
+        assert sent_text_key not in sent_rec
+        sent_rec[sent_text_key] = sentence_text
+        assert sent_idx_key not in sent_rec
+        sent_rec[sent_idx_key] = sent_idx
+        sent_idx += 1
+        doc_sents.append(sent_rec)
 
-  sent_idx = 0
-  for text_data in document_elem[text_data_field]:
-    assert "text" in text_data
-    # Holds all additional text features per-sentence in this field
-    non_text_attr = copy(doc_non_text_elem)
-    for key, val in text_data.items():
-      if key != "text":
-        key = f"sent_{key}"
-        assert key not in non_text_attr
-        non_text_attr[key] = val
-    for sentence_text in sent_tokenize(text_data["text"]):
-      if min_sentence_len is not None and len(sentence_text) < min_sentence_len:
-        continue
-      if max_sentence_len is not None and len(sentence_text) > max_sentence_len:
-        continue
-      sent_rec = copy(non_text_attr)
-      assert sent_text_key not in sent_rec
-      sent_rec[sent_text_key] = sentence_text
-      assert sent_idx_key not in sent_rec
-      sent_rec[sent_idx_key] = sent_idx
-      sent_idx += 1
-      res.append(sent_rec)
-
-  # set total
-  for r in res:
-    r[sent_total_key] = sent_idx
-    r[id_field] = sentence_to_id(r)
+    # set total
+    for r in doc_sents:
+      r[sent_total_key] = sent_idx
+      r[id_field] = sentence_to_id(r)
+    res += doc_sents
   return res
 
 def get_frequent_ngrams(
@@ -362,35 +364,36 @@ def analyze_sentences(
 
 
 def add_bow_to_analyzed_sentence(
-    record:Record,
+    records:Iterable[Record],
     bow_field="bow",
     token_field="tokens",
     entity_field="entities",
     mesh_heading_field="mesh_headings",
     ngram_field="ngrams",
 )->Record:
-  bow = []
-  for lemma in record[token_field]:
-    if lemma["pos"] in INTERESTING_POS_TAGS and not lemma["stop"]:
-      bow.append(lemma["lemma"])
-  for entity in record[entity_field]:
-    is_stop_ent = True
-    for t in record[token_field][entity["tok_start"]:entity["tok_end"]]:
-      if not t["stop"]:
-        is_stop_ent = False
-        break
-    # A stop-entity is one comprised of only stopwords such as "et_al."
-    if not is_stop_ent:
-      ent_text = get_entity_text(
-          entity=entity,
-          sentence=record,
-          token_field=token_field
-      )
-      bow.append(ent_text)
-  bow += record[ngram_field]
-  bow += record[mesh_heading_field]
-  record[bow_field] = bow
-  return record
+  for record in records:
+    bow = []
+    for lemma in record[token_field]:
+      if lemma["pos"] in INTERESTING_POS_TAGS and not lemma["stop"]:
+        bow.append(lemma["lemma"])
+    for entity in record[entity_field]:
+      is_stop_ent = True
+      for t in record[token_field][entity["tok_start"]:entity["tok_end"]]:
+        if not t["stop"]:
+          is_stop_ent = False
+          break
+      # A stop-entity is one comprised of only stopwords such as "et_al."
+      if not is_stop_ent:
+        ent_text = get_entity_text(
+            entity=entity,
+            sentence=record,
+            token_field=token_field
+        )
+        bow.append(ent_text)
+    bow += record[ngram_field]
+    bow += record[mesh_heading_field]
+    record[bow_field] = bow
+  return records
 
 def get_document_frequencies(
     analyzed_sentences:dbag.Bag,

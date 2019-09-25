@@ -5,7 +5,9 @@
 #PBS -N dask
 #PBS -m be
 
-cd $PBS_O_WORKDIR
+if [[ -n $PBS_O_WORKDIR ]]; then
+  cd $PBS_O_WORKDIR
+fi
 
 echo "Overwritting dask config at ~/.dask/config.yaml"
 mkdir -p ~/.dask

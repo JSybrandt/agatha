@@ -110,6 +110,7 @@ message ConstructConfig {
   optional MlSysConfig sys = 7;
   optional ConstructDebugConfig debug = 8;
   optional NGramConfig phrases = 9;
+  optional bool clear_checkpoints = 10 [default=false];
 }
 
 // Config used to query the network.

@@ -28,6 +28,7 @@ import faiss
 import redis
 import socket
 from pprint import pprint
+import shutil
 
 
 if __name__ == "__main__":
@@ -138,6 +139,11 @@ if __name__ == "__main__":
     )
   # an attempt to keep partitions the same each call
   xml_paths.sort()
+
+  if config.clear_checkpoints:
+    print("Clearing checkpoint dir")
+    shutil.rmtree(checkpoint_dir)
+    checkpoint_dir.mkdir()
 
   ##############################################################################
 

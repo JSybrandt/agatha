@@ -1,15 +1,3 @@
-from pymoliere.config import (
-    config_pb2 as cpb,
-    proto_util,
-)
-from pymoliere.construct import (
-    dask_process_global as dpg,
-    dask_checkpoint,
-    embedding_util,
-    file_util,
-    ftp_util,
-    knn_util,
-    parse_pubmed_xml,
     text_util,
     write_db,
 )
@@ -17,7 +5,6 @@ from pymoliere.util import misc_util
 from dask.distributed import (
   Client,
   LocalCluster,
-  config as dask_config,
 )
 from copy import copy
 from pathlib import Path
@@ -55,20 +42,6 @@ if __name__ == "__main__":
       shared_scratch_root=shared_scratch_root,
       task_name=task_name,
     )
-
-  # Configure Dask ################
-  dask_local_scratch, _ = mk_scratch("_dask_tmp")
-  dask_config["temporary-directory"] = str(dask_local_scratch)
-  dask_config["distributed"]["comm"]["timeouts"]["connect"] = 30
-  dask_config["distributed"]["comm"]["timeouts"]["tcp"] = 60
-  dask_config["distributed"]["worker"]["memory"]["target"] = 0.5
-  dask_config["distributed"]["worker"]["memory"]["spill"] = 0.6
-  dask_config["distributed"]["worker"]["memory"]["pause"] = False
-  dask_config["distributed"]["worker"]["memory"]["terminate"] = False
-  dask_config["distributed"]["worker"]["use-file-locking"] = False
-  dask_config["distributed"]["admin"]["tick"]=500
-
-  # Must be called AFTER config changes
 
   # Connect
   if config.cluster.run_locally:

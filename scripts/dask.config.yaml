@@ -1,0 +1,67 @@
+# This is the default dask config to be used on palmetto.  When running
+# start_dask, this is going to be copied to ~/.dask/config.yaml We will then
+# append user-specific properties, such as a path to your scratch tmp dir.
+
+
+logging:
+  distributed: info
+  distributed.client: info
+  bokeh: critical
+  tornado: critical
+  tornado.application: error
+
+compression: auto
+
+# Scheduler options
+bandwidth: 100000000    # 100 MB/s estimated worker-worker bandwidth
+allowed-failures: 3     # number of retries before a task is considered bad
+pdb-on-err: False       # enter debug mode on scheduling error
+transition-log-length: 100000
+work-stealing: True     # workers should steal tasks from each other
+
+# Worker options
+multiprocessing-method: forkserver
+use-file-locking: True
+
+# Communication options
+connect-timeout: 3      # seconds delay before connecting fails
+tcp-timeout: 60         # seconds delay before calling an unresponsive connection dead
+default-scheme: tcp
+require-encryption: False   # whether to require encryption on non-local comms
+socket-backlog: 2048
+#tls:
+    #ca-file: xxx.pem
+    #scheduler:
+        #key: xxx.pem
+        #cert: xxx.pem
+    #worker:
+        #key: xxx.pem
+        #cert: xxx.pem
+    #client:
+        #key: xxx.pem
+        #cert: xxx.pem
+    #ciphers:
+        #ECDHE-ECDSA-AES128-GCM-SHA256
+
+# Bokeh web dashboard
+bokeh-export-tool: False
+
+tick-time: 500             # milliseconds between event loop health checks
+tick-maximum-delay: 10000  # milliseconds allowed before triggering a warning
+
+profile-interval: 100  # milliseconds in between statistical profiling queries
+profile-cycle-interval: 10000  # milliseconds between starting new profile
+
+# Fractions of worker memory at which we take action to avoid memory blowup
+# Set any of the lower three values to False to turn off the behavior entirely
+worker-memory-target: 0.50  # target fraction to stay below
+worker-memory-spill: 0.60  # fraction at which we spill to disk
+worker-memory-pause: False  # fraction at which we pause worker threads
+worker-memory-terminate: False  # fraction at which we terminate the worker
+
+
+log-length: 10000  # default length of logs to keep in memory
+log-format: '%(name)s - %(levelname)s - %(message)s'
+
+# AUTO_GENERATED CONFIG STARTS HERE:
+

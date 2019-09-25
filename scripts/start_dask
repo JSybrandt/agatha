@@ -1,9 +1,5 @@
 #!/bin/bash
 
-NTHREADS=${1:-16}
-MEM=${2:-60GB}
-echo "Starting Dask cluster with $NTHREADS threads and $MEM per-node"
-
 echo "Overwritting dask config at ~/.dask/config.yaml"
 mkdir -p ~/.dask
 ln -sf $(readlink -f dask.config.yaml) ~/.dask/config.yaml
@@ -38,8 +34,10 @@ while read WORKER; do
     dask-worker \
       $HOSTNAME:$DASK_PORT \
       --host $WORKER \
-      --nthreads $NTHREADS \
-      --memory-limit $MEM \
+      --nprocs 2 \
+      --nthreads 12 \
+      --memory-limit 'auto' \
+      --resources 'GPU=1' \
       --local-directory $DASK_WORKER_LOCAL \
       --scheduler-file $DASK_WORKER_SHARED/scheduler.json
   """ \

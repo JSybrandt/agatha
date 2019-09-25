@@ -36,7 +36,7 @@ def checkpoint(
   assert part_dir.is_dir()
 
   data_parts = []
-  for part_idx, part_data in enumerate(data.to_delayed(optimize_graph=False)):
+  for part_idx, part_data in enumerate(data.to_delayed()):
     part_name = f"part-{part_idx}.pkl"
     part_path = part_dir.joinpath(part_name)
     if part_path.is_file():

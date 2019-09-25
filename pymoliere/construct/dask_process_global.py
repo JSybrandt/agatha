@@ -16,6 +16,7 @@ _PROCESS_GLOBAL_DATA = {}
 
 _INITIALIZERS = {}
 
+
 def register(
     key:str,
     init:Callable,
@@ -26,22 +27,29 @@ def register(
   assert key not in _INITIALIZERS
   _INITIALIZERS[key] = init
 
-def init():
-  "Runs all of the registered initializers. Each initializer is threadsafe."
-  for key, initializer in _INITIALIZERS.items():
-    # lock = Lock(f"init:{key}")
-    # while(not lock.acquire(timeout=5)):
-      # pass
-    assert key not in _PROCESS_GLOBAL_DATA
-    _PROCESS_GLOBAL_DATA[key] = initializer()
-    # lock.release()
+
+def _init(key:str)->None:
+  assert key in _INITIALIZERS
+  lock = Lock(f"init:{key}")
+  while(not lock.acquire(timeout=5)):
+    pass
+  _PROCESS_GLOBAL_DATA[key] = _INITIALIZERS[key]()
+  print("Initialized", key)
+  lock.release()
+
 
 def clear():
   "Deletes all of the process global data."
   _INITIALIZERS.clear()
   _PROCESS_GLOBAL_DATA.clear()
 
+
 def get(key:str):
+  if key not in _INITIALIZERS:
+    raise Exception(f"Attempted to get unregistered key {key}")
+  if key not in _PROCESS_GLOBAL_DATA:
+    _init(key)
+  # 2nd try
   if key not in _PROCESS_GLOBAL_DATA:
     raise Exception(f"Failed to initialize {key}")
   return _PROCESS_GLOBAL_DATA[key]

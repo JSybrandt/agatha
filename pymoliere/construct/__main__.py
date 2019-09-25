@@ -113,8 +113,8 @@ if __name__ == "__main__":
   pprint(meta_data)
 
   # Initialize Helper Objects ###
-  print("Initializing Helper Objects")
-  def init_all():
+  print("Registering Helper Objects")
+  def prepare_dask_process_global():
     dpg.clear()
     dpg.register(*text_util.get_scispacy_initalizer(
         scispacy_version=config.parser.scispacy_version,
@@ -131,8 +131,7 @@ if __name__ == "__main__":
         port=config.db.port,
         db=config.db.db_num,
     ))
-    dpg.init()
-  dask_client.run(init_all)
+  dask_client.run(prepare_dask_process_global)
 
   # Prepping all scratch dirs ###
   print("Prepping scratch directories")

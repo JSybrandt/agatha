@@ -38,7 +38,7 @@ distributed:
     multiprocessing-method: forkserver
     use-file-locking: True
     connections:            # Maximum concurrent connections for data
-      outgoing: 100          # This helps to control network saturation
+      outgoing: 50          # This helps to control network saturation
       incoming: 10
     preload: []
     preload-argv: []
@@ -63,10 +63,10 @@ distributed:
       terminate: False  # fraction at which we terminate the worker
 
   client:
-    heartbeat: 10s  # time between client heartbeats
+    heartbeat: 5s  # time between client heartbeats
 
   deploy:
-    lost-worker-timeout: 60s  # Interval after which to hard-close a lost worker job
+    lost-worker-timeout: 15s  # Interval after which to hard-close a lost worker job
 
   comm:
     compression: auto
@@ -79,8 +79,8 @@ distributed:
       threads: 0    # Threads to use. 0 for single-threaded, -1 to infer from cpu count.
 
     timeouts:
-      connect: 60s          # time before connecting fails
-      tcp: 120s              # time before calling an unresponsive connection dead
+      connect: 10s          # time before connecting fails
+      tcp: 30s              # time before calling an unresponsive connection dead
 
     require-encryption: False   # Whether to require encryption on non-local comms
 
@@ -114,8 +114,8 @@ distributed:
 
   admin:
     tick:
-      interval: 5s  # time between event loop health checks
-      limit: 120s       # time allowed before triggering a warning
+      interval: 20ms  # time between event loop health checks
+      limit: 3s       # time allowed before triggering a warning
 
     log-length: 10000  # default length of logs to keep in memory
     log-format: '%(name)s - %(levelname)s - %(message)s'

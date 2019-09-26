@@ -37,7 +37,7 @@ def load(path:Path)->dbag.Bag:
       str(path.joinpath(f"*{EXT}")),
   ).map(json.loads)
 
-def save(bag:dbag.Bag, path:Path, **kwargs)->None:
+def save(bag:dbag.Bag, path:Path, **kwargs)->Optional[dbag.Bag]:
   assert path.is_dir()
   return bag.map(json.dumps).to_textfiles(
     path=str(path.joinpath(f"*{EXT}")),

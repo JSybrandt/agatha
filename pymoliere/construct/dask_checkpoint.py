@@ -5,6 +5,7 @@ import pickle
 from typing import List
 from pymoliere.util.misc_util import Record
 from pathlib import Path
+from pymoliere.construct import file_util
 
 _CHECKPOINT_NAMES = set()
 
@@ -19,6 +20,7 @@ def checkpoint(
   partition is given a checkpoint task, and then the bag is recombined. Any
   partition that has been previously checkpointed will be restored.
   """
+
   # Assure ourselves that we have a unique name
   assert name not in _CHECKPOINT_NAMES
   _CHECKPOINT_NAMES.add(name)
@@ -29,26 +31,6 @@ def checkpoint(
   part_dir.mkdir(parents=True, exist_ok=True)
   assert part_dir.is_dir()
 
-  data_parts = []
-  for part_idx, part_data in enumerate(data.to_delayed(optimize_graph=False)):
-    part_name = f"part-{part_idx}.pkl"
-    part_path = part_dir.joinpath(part_name)
-    if part_path.is_file():
-      data_parts.append(dask.delayed(read_checkpoint)(part_path))
-    else:
-      data_parts.append(dask.delayed(write_checkpoint)(
-        part=part_data,
-        part_path=part_path
-      ))
-  return dbag.from_delayed(data_parts)
-
-
-def write_checkpoint(part:List[Record], part_path:Path)->None:
-  with open(part_path, 'wb') as f:
-    pickle.dump(part, f)
-  return part
-
-
-def read_checkpoint(part_path:Path)->List[Record]:
-  with open(part_path, 'rb') as f:
-    return pickle.load(f)
+  if not file_util.is_result_saved(part_dir):
+    file_util.save(data, part_dir)
+  return file_util.load(part_dir)

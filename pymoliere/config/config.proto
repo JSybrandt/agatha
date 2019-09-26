@@ -22,6 +22,7 @@ message ClusterConfig {
   optional bool restart = 5 [default=false];
   optional bool run_locally = 6 [default=false];
   optional bool clear_checkpoints = 7 [default=false];
+  optional bool disable_checkpoints = 8 [default=false];
 }
 
 message TextParserConfig {

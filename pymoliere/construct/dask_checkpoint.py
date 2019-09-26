@@ -6,13 +6,7 @@ from typing import List
 from pymoliere.util.misc_util import Record
 from pathlib import Path
 
-_CHECKPOINT_TASKS = []
-
 _CHECKPOINT_NAMES = set()
-
-
-def get_checkpoint_tasks():
-  return _CHECKPOINT_TASKS
 
 
 def checkpoint(
@@ -36,14 +30,13 @@ def checkpoint(
   assert part_dir.is_dir()
 
   data_parts = []
-  for part_idx, part_data in enumerate(data.to_delayed()):
+  for part_idx, part_data in enumerate(data.to_delayed(optimize_graph=False)):
     part_name = f"part-{part_idx}.pkl"
     part_path = part_dir.joinpath(part_name)
     if part_path.is_file():
       data_parts.append(dask.delayed(read_checkpoint)(part_path))
     else:
-      data_parts.append(part_data)
-      _CHECKPOINT_TASKS.append(dask.delayed(write_checkpoint)(
+      data_parts.append(dask.delayed(write_checkpoint)(
         part=part_data,
         part_path=part_path
       ))
@@ -53,6 +46,7 @@ def checkpoint(
 def write_checkpoint(part:List[Record], part_path:Path)->None:
   with open(part_path, 'wb') as f:
     pickle.dump(part, f)
+  return part
 
 
 def read_checkpoint(part_path:Path)->List[Record]:

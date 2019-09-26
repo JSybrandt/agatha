@@ -145,13 +145,14 @@ if __name__ == "__main__":
 
   def ckpt(name:str)->None:
     "Applies checkpointing to the given bag"
-    assert name in globals()
-    assert type(globals()[name]) == dbag.Bag
-    globals()[name] = dask_checkpoint.checkpoint(
-        globals()[name],
-        name=name,
-        checkpoint_dir=checkpoint_dir,
-    )
+    if not config.cluster.disable_checkpoints:
+      assert name in globals()
+      assert type(globals()[name]) == dbag.Bag
+      globals()[name] = dask_checkpoint.checkpoint(
+          globals()[name],
+          name=name,
+          checkpoint_dir=checkpoint_dir,
+      )
 
   ##############################################################################
 
@@ -273,6 +274,4 @@ if __name__ == "__main__":
   )
 
   print("Running!")
-  final_tasks += dask_checkpoint.get_checkpoint_tasks()
-  final_tasks = dask.optimize(final_tasks)
   dask_client.compute(final_tasks, sync=True)

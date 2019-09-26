@@ -122,22 +122,6 @@ if __name__ == "__main__":
   _, faiss_index_dir = scratch("faiss_index")
   _, checkpoint_dir = scratch("dask_checkpoints")
 
-  # Download all of pubmed. ####
-  print("Downloading pubmed XML Files")
-  with ftp_util.ftp_connect(
-      address=config.ftp.address,
-      workdir=config.ftp.workdir,
-  ) as conn:
-    # Downloads new files if not already present in shared
-    xml_paths = ftp_util.ftp_retreive_all(
-        conn=conn,
-        pattern="^.*\.xml\.gz$",
-        directory=download_shared,
-        show_progress=True,
-    )
-  # an attempt to keep partitions the same each call
-  xml_paths.sort()
-
   if config.cluster.clear_checkpoints:
     print("Clearing checkpoint dir")
     shutil.rmtree(checkpoint_dir)
@@ -153,6 +137,20 @@ if __name__ == "__main__":
           name=name,
           checkpoint_dir=checkpoint_dir,
       )
+
+  # Download all of pubmed. ####
+  print("Downloading pubmed XML Files")
+  with ftp_util.ftp_connect(
+      address=config.ftp.address,
+      workdir=config.ftp.workdir,
+  ) as conn:
+    # Downloads new files if not already present in shared
+    xml_paths = ftp_util.ftp_retreive_all(
+        conn=conn,
+        pattern="^.*\.xml\.gz$",
+        directory=download_shared,
+        show_progress=True,
+    )
 
   ##############################################################################
 

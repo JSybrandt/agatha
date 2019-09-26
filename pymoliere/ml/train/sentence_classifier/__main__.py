@@ -1,14 +1,10 @@
+# TRAIN SENTENCE CLASSIFIER
 # Train a sentence classifier to apply to pymoliere construction
 from pymoliere.config import (
     config_pb2 as cpb,
     proto_util,
 )
-from pymoliere.construct import (
-    file_util,
-    ftp_util,
-    parse_pubmed_xml,
-    text_util,
-)
+from pymoliere.construct import file_util
 from pathlib import Path
 from dask.distributed import Client, LocalCluster
 import dask
@@ -17,22 +13,18 @@ from pytorch_transformers import BertModel, BertTokenizer
 import torch
 from torch import nn
 from torch.nn import functional as F
-from pymoliere.construct.models import train_model
+from pymoliere.ml.train import train_model
 import gzip
 import json
 from tqdm import tqdm
 from torch.nn.utils.rnn import pad_sequence
+from pymoliere.ml.util.sentence_classifier import (
+    IDX2LABEL,
+    LABEL2IDX,
+    NUM_LABELS,
+    SCIBERT_OUTPUT_DIM,
+)
 
-IDX2LABEL = [
-  'abstract:background',
-  'abstract:conclusions',
-  'abstract:methods',
-  'abstract:objective',
-  'abstract:results',
-]
-LABEL2IDX = {l: i for i, l in enumerate(IDX2LABEL)}
-NUM_LABELS = len(IDX2LABEL)
-SCIBERT_OUTPUT_DIM = 768
 
 class SentenceClassifier(torch.nn.Module):
   def __init__(self, scibert_data_dir:Path):
@@ -74,85 +66,21 @@ if __name__ == "__main__":
   print("Running pymoliere sentence_classifier with the following parameters:")
   print(config)
 
-  # Checks
-  print("Performing config checks")
-  shared_scratch_root = Path(config.cluster.shared_scratch)
-  shared_scratch_root.mkdir(parents=True, exist_ok=True)
-  assert shared_scratch_root.is_dir()
-  local_scratch_root = Path(config.cluster.local_scratch)
-  local_scratch_root.mkdir(parents=True, exist_ok=True)
-  assert local_scratch_root.is_dir()
+  labeled_sentence_dir = Path(
+      config.cluster.shared_scratch
+  ).joinpath(
+      "dask_checkpoints"
+  ).joinpath(
+      "labeled_sentences"
+  )
 
-  # Connect
-  if config.cluster.run_locally:
-    print("Running on local machine!")
-    cluster = LocalCluster(n_workers=1)
-    dask_client = Client(cluster)
-  else:
-    cluster_address = f"{config.cluster.address}:{config.cluster.port}"
-    print("Configuring Dask, attaching to cluster")
-    print(f"\t- {cluster_address}")
-    dask_client = Client(address=cluster_address, heartbeat_interval=500)
-  if config.cluster.restart:
-    print("\t- Restarting cluster...")
-    dask_client.restart()
-  print(f"\t- Running on {len(dask_client.nthreads())} machines.")
-
-  # Prepping all scratch dirs ###
-  def scratch(task_name):
-    "Creates a local / global scratch dir with the give name"
-    return file_util.prep_scratches(
-      local_scratch_root=local_scratch_root,
-      shared_scratch_root=shared_scratch_root,
-      task_name=task_name,
-    )
-  print("Prepping scratch directories")
-  _, download_shared = scratch("download_pubmed")
-  _, labeled_sentence_shared = scratch("labeled_sentences")
-
-  # Download all of pubmed. ####
-  print("Downloading pubmed XML Files")
-  with ftp_util.ftp_connect(
-      address=config.ftp.address,
-      workdir=config.ftp.workdir,
-  ) as conn:
-    # Downloads new files if not already present in shared
-    xml_paths = ftp_util.ftp_retreive_all(
-        conn=conn,
-        pattern="^.*\.xml\.gz$",
-        directory=download_shared,
-        show_progress=True,
-    )
-
-  ##############################################################################
-  # READY TO GO!
-
-  # Parse xml-files per-partition
-  if False and not file_util.is_result_saved(labeled_sentence_shared):
-    labeled_sentences = dbag.from_delayed([
-        dask.delayed(parse_pubmed_xml.parse_zipped_pubmed_xml)(
-            xml_path=p,
-        )
-        for p in xml_paths
-    ]).filter(
-        lambda r: r["language"]=="eng"
-    ).map_partitions(
-        text_util.split_sentences,
-        # --
-        min_sentence_len=config.parser.min_sentence_len,
-        max_sentence_len=config.parser.max_sentence_len,
-    ).filter(
-        lambda r: r["sent_type"] in LABEL2IDX
-    )
-    print("Saving parsed sentences")
-    file_util.save(labeled_sentences, labeled_sentence_shared)
-  else:
-    print("Using pre-split sentences")
+  if not file_util.is_result_saved(labeled_sentence_dir):
+    raise Exception(f"Could not find prepared data in {labeled_sentence_dir}")
 
   print("Loading")
   sentences = []
   labels = []
-  for file_path in tqdm(list(labeled_sentence_shared.iterdir())[:10]):
+  for file_path in tqdm(list(labeled_sentence_dir.iterdir())[:10]):
     if file_path.suffix == ".gz":
       with gzip.open(str(file_path)) as f:
         for line in f:
@@ -166,7 +94,7 @@ if __name__ == "__main__":
 
   print("Prepping model")
   if torch.cuda.is_available() and not config.ml.disable_gpu:
-    device = torch.device("cuda")
+    device = torch.device("cuda:0")
   else:
     device = torch.device("cpu")
 
@@ -179,6 +107,11 @@ if __name__ == "__main__":
       filter(lambda x: x.requires_grad, model.parameters()),
       lr=0.002,
   )
+
+  # if torch.cuda.device_count() > 1:
+    # print("Enabling  mutli-gpu training")
+    # model = nn.DataParallel(model)
+    # config.ml.batch_size *= torch.cuda.device_count()
 
   print("Beginning Training")
   train_model.train_classifier(

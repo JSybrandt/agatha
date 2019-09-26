@@ -31,10 +31,10 @@ DASK_PORT=8786
 
 # Starting scheduler
 dask-scheduler \
-  --host $HOSTNAME \
   --port $DASK_PORT \
   --local-directory $DASK_WORKER_LOCAL \
-  --scheduler-file $DASK_WORKER_SHARED/scheduler.json \
+  --scheduler-file $DASK_WORKER_SHARED/scheduler_50gpu.json \
+  --interface ib0 \
   &
 
 while read WORKER; do
@@ -47,7 +47,7 @@ while read WORKER; do
       --memory-limit 'auto' \
       --resources 'GPU=1' \
       --local-directory $DASK_WORKER_LOCAL \
-      --scheduler-file $DASK_WORKER_SHARED/scheduler.json \
+      --scheduler-file $DASK_WORKER_SHARED/scheduler_50gpu.json \
       --interface ib0
   """ >& /dev/null \
   &

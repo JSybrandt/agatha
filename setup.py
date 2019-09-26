@@ -96,6 +96,7 @@ setup(
       "pytorch-transformers",
       "redis",
       "scispacy",
+      "sklearn",
       "spacy",
       "torch",
       "torchvision",

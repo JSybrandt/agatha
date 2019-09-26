@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -l select=100:ncpus=16:mem=60gb:interconnect=fdr,walltime=72:00:00
+#PBS -l select=10:ncpus=16:mem=60gb:interconnect=fdr,walltime=72:00:00
 #PBS -o /dev/null
 #PBS -e /dev/null
 #PBS -N dask
@@ -33,7 +33,7 @@ DASK_PORT=8786
 dask-scheduler \
   --port $DASK_PORT \
   --local-directory $DASK_WORKER_LOCAL \
-  --scheduler-file $DASK_WORKER_SHARED/scheduler_100.json \
+  --scheduler-file $DASK_WORKER_SHARED/scheduler_10.json \
   --interface ib0 \
   &
 
@@ -46,7 +46,7 @@ while read WORKER; do
       --nthreads 16 \
       --memory-limit 60GB \
       --local-directory $DASK_WORKER_LOCAL \
-      --scheduler-file $DASK_WORKER_SHARED/scheduler_100.json \
+      --scheduler-file $DASK_WORKER_SHARED/scheduler_10.json \
       --interface ib0
   """ >& /dev/null \
   &

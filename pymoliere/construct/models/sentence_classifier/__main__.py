@@ -4,22 +4,66 @@ from pymoliere.config import (
     proto_util,
 )
 from pymoliere.construct import (
-    dask_checkpoint,
-    dask_process_global as dpg,
     file_util,
     ftp_util,
     parse_pubmed_xml,
     text_util,
-    embedding_util,
 )
-from pymoliere.util.misc_util import Record
 from pathlib import Path
-from dask.distributed import (
-  Client,
-  LocalCluster,
-)
+from dask.distributed import Client, LocalCluster
 import dask
 import dask.bag as dbag
+from pytorch_transformers import BertModel, BertTokenizer
+import torch
+from torch import nn
+from torch.nn import functional as F
+from pymoliere.construct.models import train_model
+import gzip
+import json
+from tqdm import tqdm
+from torch.nn.utils.rnn import pad_sequence
+
+IDX2LABEL = [
+  'abstract:background',
+  'abstract:conclusions',
+  'abstract:methods',
+  'abstract:objective',
+  'abstract:results',
+]
+LABEL2IDX = {l: i for i, l in enumerate(IDX2LABEL)}
+NUM_LABELS = len(IDX2LABEL)
+SCIBERT_OUTPUT_DIM = 768
+
+class SentenceClassifier(torch.nn.Module):
+  def __init__(self, scibert_data_dir:Path):
+    super(SentenceClassifier, self).__init__()
+    self.bert = BertModel.from_pretrained(scibert_data_dir)
+    self.l1 = torch.nn.Linear(SCIBERT_OUTPUT_DIM, 256)
+    self.l2 = torch.nn.Linear(256, NUM_LABELS)
+    self.linear = [
+        self.l1, self.l2,
+    ]
+    # freeze bert layers
+    for param in self.bert.parameters():
+      param.requires_grad = False
+
+  def forward(self, x):
+    x = self.bert(x)[-1]
+    # for all but the last
+    for l in self.linear[:-1]:
+      x = F.relu(l(x))
+    # for the last
+    return self.linear[-1](x)
+
+
+def get_batch_to_tensors(scibert_data_dir:Path)->train_model.ToTensorFn:
+  tok = BertTokenizer.from_pretrained(scibert_data_dir)
+  def batch_to_tensors(sents, labels):
+      x = [torch.tensor(tok.encode(s)) for s in sents]
+      x = pad_sequence(x, batch_first=True)
+      y = torch.LongTensor(labels)
+      return x, y
+  return batch_to_tensors
 
 
 if __name__ == "__main__":
@@ -39,14 +83,6 @@ if __name__ == "__main__":
   local_scratch_root.mkdir(parents=True, exist_ok=True)
   assert local_scratch_root.is_dir()
 
-  def mk_scratch(task_name):
-    "returns local, shared"
-    return file_util.prep_scratches(
-      local_scratch_root=local_scratch_root,
-      shared_scratch_root=shared_scratch_root,
-      task_name=task_name,
-    )
-
   # Connect
   if config.cluster.run_locally:
     print("Running on local machine!")
@@ -62,22 +98,17 @@ if __name__ == "__main__":
     dask_client.restart()
   print(f"\t- Running on {len(dask_client.nthreads())} machines.")
 
-  print("Registering Helper Objects")
-  def prepare_dask_process_global():
-    dpg.clear()
-    dpg.register(*text_util.get_stopwordlist_initializer(
-        stopword_path=config.parser.stopword_list
-    ))
-    dpg.register(*embedding_util.get_scibert_initializer(
-        scibert_data_dir=config.parser.scibert_data_dir,
-        disable_gpu=config.sys.disable_gpu,
-    ))
-  dask_client.run(prepare_dask_process_global)
-
   # Prepping all scratch dirs ###
+  def scratch(task_name):
+    "Creates a local / global scratch dir with the give name"
+    return file_util.prep_scratches(
+      local_scratch_root=local_scratch_root,
+      shared_scratch_root=shared_scratch_root,
+      task_name=task_name,
+    )
   print("Prepping scratch directories")
-  _, download_shared = mk_scratch("download_pubmed")
-  _, checkpoint_dir = mk_scratch("sent_classifier_checkpoints")
+  _, download_shared = scratch("download_pubmed")
+  _, labeled_sentence_shared = scratch("labeled_sentences")
 
   # Download all of pubmed. ####
   print("Downloading pubmed XML Files")
@@ -96,61 +127,72 @@ if __name__ == "__main__":
   ##############################################################################
   # READY TO GO!
 
-  def pluck_relevant_sentence_fields(sent_rec:Record)->Record:
-    fields = [
-        "sent_text",
-        "sent_type",
-        "sent_idx",
-        "id"
-    ]
-    return {k:sent_rec[k] for k in fields}
-
   # Parse xml-files per-partition
-  labeled_sentences = dbag.from_delayed([
-      dask.delayed(parse_pubmed_xml.parse_zipped_pubmed_xml)(
-          xml_path=p,
-      )
-      for p in xml_paths
-  ]).filter(
-      lambda r: r["language"]=="eng"
-  ).map(
-      text_util.split_sentences,
-      # --
-      min_sentence_len=config.parser.min_sentence_len,
-      max_sentence_len=config.parser.max_sentence_len,
-  ).flatten(
-  ).filter(
-      lambda r: r["sent_type"] in {
-        "abstract:background",
-        "abstract:conclusions",
-        "abstract:methods",
-        "abstract:objective",
-        "abstract:results",
-      }
-  ).map(pluck_relevant_sentence_fields)
+  if False and not file_util.is_result_saved(labeled_sentence_shared):
+    labeled_sentences = dbag.from_delayed([
+        dask.delayed(parse_pubmed_xml.parse_zipped_pubmed_xml)(
+            xml_path=p,
+        )
+        for p in xml_paths
+    ]).filter(
+        lambda r: r["language"]=="eng"
+    ).map_partitions(
+        text_util.split_sentences,
+        # --
+        min_sentence_len=config.parser.min_sentence_len,
+        max_sentence_len=config.parser.max_sentence_len,
+    ).filter(
+        lambda r: r["sent_type"] in LABEL2IDX
+    )
+    print("Saving parsed sentences")
+    file_util.save(labeled_sentences, labeled_sentence_shared)
+  else:
+    print("Using pre-split sentences")
 
-  labeled_sentences = dask_checkpoint.checkpoint(
-      labeled_sentences,
-      name="labeled_sentences",
-      checkpoint_dir=checkpoint_dir,
+  print("Loading")
+  sentences = []
+  labels = []
+  for file_path in tqdm(list(labeled_sentence_shared.iterdir())[:10]):
+    if file_path.suffix == ".gz":
+      with gzip.open(str(file_path)) as f:
+        for line in f:
+          record = json.loads(line)
+          if record["sent_type"] in LABEL2IDX:
+            sentences.append(record["sent_text"])
+            labels.append(LABEL2IDX[record["sent_type"]])
+
+  assert len(sentences) == len(labels)
+  print(f"Loaded {len(sentences)} sentences.")
+
+  print("Prepping model")
+  if torch.cuda.is_available() and not config.ml.disable_gpu:
+    device = torch.device("cuda")
+  else:
+    device = torch.device("cpu")
+
+  model = SentenceClassifier(scibert_data_dir=config.parser.scibert_data_dir)
+  batch_to_tensor_fn = get_batch_to_tensors(
+      scibert_data_dir=config.parser.scibert_data_dir
+  )
+  loss_fn = nn.CrossEntropyLoss()
+  optimizer = torch.optim.Adam(
+      filter(lambda x: x.requires_grad, model.parameters()),
+      lr=0.002,
   )
 
-  embedded_sentences = labeled_sentences.map_partitions(
-      embedding_util.embed_records,
-      # --
-      batch_size=config.sys.batch_size,
-      text_field="sent_text",
-      max_sequence_length=config.parser.max_sequence_length,
-  )
-  embedded_sentences = dask_checkpoint.checkpoint(
-      embedded_sentences,
-      name="embedded_sentences",
-      checkpoint_dir=checkpoint_dir,
+  print("Beginning Training")
+  train_model.train_classifier(
+      model=model,
+      device=device,
+      loss_fn=loss_fn,
+      optimizer=optimizer,
+      num_epochs=config.ml.num_epochs,
+      batch_size=config.ml.batch_size,
+      data=sentences,
+      labels=labels,
+      validation_ratio=config.ml.validation_ratio,
+      batch_to_tensor_fn=batch_to_tensor_fn,
   )
 
-  print("Running!!!")
-  tasks = [
-      embedded_sentences,
-  ] + dask_checkpoint.get_checkpoint_tasks()
-  tasks = dask.optimize(tasks)
-  dask_client.compute(tasks, sync=True)
+  torch.save(model.state_dict(), config.output)
+

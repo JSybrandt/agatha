@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='pymoliere',
   syntax='proto2',
   serialized_options=None,
-  serialized_pb=_b('\n\x1dpymoliere/config/config.proto\x12\tpymoliere\"T\n\tFtpSource\x12%\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\x14\x66tp.ncbi.nlm.nih.gov\x12 \n\x07workdir\x18\x02 \x01(\t:\x0fpubmed/baseline\"\x9d\x01\n\rClusterConfig\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\t\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x38\x37\x38\x36\x12\x1b\n\rlocal_scratch\x18\x03 \x01(\t:\x04/tmp\x12\x16\n\x0eshared_scratch\x18\x04 \x01(\t\x12\x16\n\x07restart\x18\x05 \x01(\x08:\x05\x66\x61lse\x12\x1a\n\x0brun_locally\x18\x06 \x01(\x08:\x05\x66\x61lse\"\xbd\x01\n\x10TextParserConfig\x12\x18\n\x10scispacy_version\x18\x01 \x01(\t\x12\x18\n\x10scibert_data_dir\x18\x02 \x01(\t\x12\x1c\n\x10min_sentence_len\x18\x03 \x01(\x05:\x02\x31\x30\x12\x1e\n\x10max_sentence_len\x18\x04 \x01(\x05:\x04\x31\x30\x30\x30\x12\x15\n\rstopword_list\x18\x05 \x01(\t\x12 \n\x13max_sequence_length\x18\x06 \x01(\x05:\x03\x35\x30\x30\"v\n\x0bNGramConfig\x12\x1b\n\x10max_ngram_length\x18\x01 \x01(\x05:\x01\x33\x12\x1e\n\x11min_ngram_support\x18\x02 \x01(\x05:\x03\x31\x30\x30\x12*\n\x1fmin_ngram_support_per_partition\x18\x03 \x01(\x05:\x01\x32\"\xba\x01\n\tKnnConfig\x12\x1a\n\rnum_neighbors\x18\x01 \x01(\x05:\x03\x31\x30\x30\x12\x1b\n\rnum_centroids\x18\x02 \x01(\x05:\x04\x34\x30\x39\x36\x12\x15\n\nnum_probes\x18\x03 \x01(\x05:\x01\x38\x12\x1a\n\x0enum_quantizers\x18\x04 \x01(\x05:\x02\x33\x32\x12\x1d\n\x12\x62its_per_quantizer\x18\x05 \x01(\x05:\x01\x38\x12\"\n\x14training_probability\x18\x06 \x01(\x02:\x04\x30.01\"f\n\x0bRedisConfig\x12\x1a\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\tlocalhost\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x36\x33\x37\x39\x12\x11\n\x06\x64\x62_num\x18\x03 \x01(\x05:\x01\x30\x12\x14\n\x05\x63lear\x18\x04 \x01(\x08:\x05\x66\x61lse\"\xb1\x01\n\tLdaConfig\x12\x16\n\nnum_topics\x18\x01 \x01(\x05:\x02\x32\x30\x12\x17\n\x0brandom_seed\x18\x02 \x01(\x05:\x02\x34\x32\x12\x16\n\niterations\x18\x03 \x01(\x05:\x02\x35\x30\x12\x1c\n\x11min_support_count\x18\x04 \x01(\x05:\x01\x32\x12!\n\x14max_support_fraction\x18\x05 \x01(\x02:\x03\x30.1\x12\x1a\n\rtruncate_size\x18\x07 \x01(\x05:\x03\x32\x35\x30\"A\n\x0bMlSysConfig\x12\x16\n\nbatch_size\x18\x01 \x01(\x05:\x02\x33\x32\x12\x1a\n\x0b\x64isable_gpu\x18\x02 \x01(\x08:\x05\x66\x61lse\"s\n\x14\x43onstructDebugConfig\x12\x15\n\x06\x65nable\x18\x01 \x01(\x08:\x05\x66\x61lse\x12!\n\x14\x64ocument_sample_rate\x18\x02 \x01(\x02:\x03\x30.1\x12!\n\x15partition_subset_size\x18\x03 \x01(\x05:\x02\x35\x30\",\n\x12ShortestPathConfig\x12\x16\n\nnode_batch\x18\x01 \x01(\x05:\x02\x31\x30\"\xfc\x02\n\x0f\x43onstructConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12!\n\x03\x66tp\x18\x03 \x01(\x0b\x32\x14.pymoliere.FtpSource\x12+\n\x06parser\x18\x04 \x01(\x0b\x32\x1b.pymoliere.TextParserConfig\x12*\n\x0csentence_knn\x18\x05 \x01(\x0b\x32\x14.pymoliere.KnnConfig\x12\"\n\x02\x64\x62\x18\x06 \x01(\x0b\x32\x16.pymoliere.RedisConfig\x12#\n\x03sys\x18\x07 \x01(\x0b\x32\x16.pymoliere.MlSysConfig\x12.\n\x05\x64\x65\x62ug\x18\x08 \x01(\x0b\x32\x1f.pymoliere.ConstructDebugConfig\x12\'\n\x07phrases\x18\t \x01(\x0b\x32\x16.pymoliere.NGramConfig\x12 \n\x11\x63lear_checkpoints\x18\n \x01(\x08:\x05\x66\x61lse\"\x82\x02\n\x0bQueryConfig\x12\x0e\n\x06source\x18\x01 \x01(\t\x12\x0e\n\x06target\x18\x02 \x01(\t\x12\"\n\x02\x64\x62\x18\x03 \x01(\x0b\x32\x16.pymoliere.RedisConfig\x12)\n\x1bmax_sentences_per_path_elem\x18\x04 \x01(\x05:\x04\x35\x30\x30\x30\x12)\n\x0btopic_model\x18\x05 \x01(\x0b\x32\x14.pymoliere.LdaConfig\x12+\n\x04path\x18\x06 \x01(\x0b\x32\x1d.pymoliere.ShortestPathConfig\x12\x13\n\x0bresult_path\x18\x08 \x01(\t\x12\x17\n\x08override\x18\t \x01(\x08:\x05\x66\x61lse\"\xca\x01\n\x18SentenceClassifierConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12!\n\x03\x66tp\x18\x02 \x01(\x0b\x32\x14.pymoliere.FtpSource\x12+\n\x06parser\x18\x03 \x01(\x0b\x32\x1b.pymoliere.TextParserConfig\x12#\n\x03sys\x18\x04 \x01(\x0b\x32\x16.pymoliere.MlSysConfig\x12\x0e\n\x06output\x18\x05 \x01(\t')
+  serialized_pb=_b('\n\x1dpymoliere/config/config.proto\x12\tpymoliere\"T\n\tFtpSource\x12%\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\x14\x66tp.ncbi.nlm.nih.gov\x12 \n\x07workdir\x18\x02 \x01(\t:\x0fpubmed/baseline\"\xbf\x01\n\rClusterConfig\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\t\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x38\x37\x38\x36\x12\x1b\n\rlocal_scratch\x18\x03 \x01(\t:\x04/tmp\x12\x16\n\x0eshared_scratch\x18\x04 \x01(\t\x12\x16\n\x07restart\x18\x05 \x01(\x08:\x05\x66\x61lse\x12\x1a\n\x0brun_locally\x18\x06 \x01(\x08:\x05\x66\x61lse\x12 \n\x11\x63lear_checkpoints\x18\x07 \x01(\x08:\x05\x66\x61lse\"\xbd\x01\n\x10TextParserConfig\x12\x18\n\x10scispacy_version\x18\x01 \x01(\t\x12\x18\n\x10scibert_data_dir\x18\x02 \x01(\t\x12\x1c\n\x10min_sentence_len\x18\x03 \x01(\x05:\x02\x31\x30\x12\x1e\n\x10max_sentence_len\x18\x04 \x01(\x05:\x04\x31\x30\x30\x30\x12\x15\n\rstopword_list\x18\x05 \x01(\t\x12 \n\x13max_sequence_length\x18\x06 \x01(\x05:\x03\x35\x30\x30\"v\n\x0bNGramConfig\x12\x1b\n\x10max_ngram_length\x18\x01 \x01(\x05:\x01\x33\x12\x1e\n\x11min_ngram_support\x18\x02 \x01(\x05:\x03\x31\x30\x30\x12*\n\x1fmin_ngram_support_per_partition\x18\x03 \x01(\x05:\x01\x32\"\xba\x01\n\tKnnConfig\x12\x1a\n\rnum_neighbors\x18\x01 \x01(\x05:\x03\x31\x30\x30\x12\x1b\n\rnum_centroids\x18\x02 \x01(\x05:\x04\x34\x30\x39\x36\x12\x15\n\nnum_probes\x18\x03 \x01(\x05:\x01\x38\x12\x1a\n\x0enum_quantizers\x18\x04 \x01(\x05:\x02\x33\x32\x12\x1d\n\x12\x62its_per_quantizer\x18\x05 \x01(\x05:\x01\x38\x12\"\n\x14training_probability\x18\x06 \x01(\x02:\x04\x30.01\"f\n\x0bRedisConfig\x12\x1a\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\tlocalhost\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x36\x33\x37\x39\x12\x11\n\x06\x64\x62_num\x18\x03 \x01(\x05:\x01\x30\x12\x14\n\x05\x63lear\x18\x04 \x01(\x08:\x05\x66\x61lse\"\xb1\x01\n\tLdaConfig\x12\x16\n\nnum_topics\x18\x01 \x01(\x05:\x02\x32\x30\x12\x17\n\x0brandom_seed\x18\x02 \x01(\x05:\x02\x34\x32\x12\x16\n\niterations\x18\x03 \x01(\x05:\x02\x35\x30\x12\x1c\n\x11min_support_count\x18\x04 \x01(\x05:\x01\x32\x12!\n\x14max_support_fraction\x18\x05 \x01(\x02:\x03\x30.1\x12\x1a\n\rtruncate_size\x18\x07 \x01(\x05:\x03\x32\x35\x30\"u\n\x08MlConfig\x12\x16\n\nbatch_size\x18\x01 \x01(\x05:\x02\x33\x32\x12\x1a\n\x0b\x64isable_gpu\x18\x02 \x01(\x08:\x05\x66\x61lse\x12\x16\n\nnum_epochs\x18\x03 \x01(\x05:\x02\x31\x30\x12\x1d\n\x10validation_ratio\x18\x04 \x01(\x02:\x03\x30.1\"s\n\x14\x43onstructDebugConfig\x12\x15\n\x06\x65nable\x18\x01 \x01(\x08:\x05\x66\x61lse\x12!\n\x14\x64ocument_sample_rate\x18\x02 \x01(\x02:\x03\x30.1\x12!\n\x15partition_subset_size\x18\x03 \x01(\x05:\x02\x35\x30\",\n\x12ShortestPathConfig\x12\x16\n\nnode_batch\x18\x01 \x01(\x05:\x02\x31\x30\"\xd7\x02\n\x0f\x43onstructConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12!\n\x03\x66tp\x18\x03 \x01(\x0b\x32\x14.pymoliere.FtpSource\x12+\n\x06parser\x18\x04 \x01(\x0b\x32\x1b.pymoliere.TextParserConfig\x12*\n\x0csentence_knn\x18\x05 \x01(\x0b\x32\x14.pymoliere.KnnConfig\x12\"\n\x02\x64\x62\x18\x06 \x01(\x0b\x32\x16.pymoliere.RedisConfig\x12 \n\x03sys\x18\x07 \x01(\x0b\x32\x13.pymoliere.MlConfig\x12.\n\x05\x64\x65\x62ug\x18\x08 \x01(\x0b\x32\x1f.pymoliere.ConstructDebugConfig\x12\'\n\x07phrases\x18\t \x01(\x0b\x32\x16.pymoliere.NGramConfig\"\x82\x02\n\x0bQueryConfig\x12\x0e\n\x06source\x18\x01 \x01(\t\x12\x0e\n\x06target\x18\x02 \x01(\t\x12\"\n\x02\x64\x62\x18\x03 \x01(\x0b\x32\x16.pymoliere.RedisConfig\x12)\n\x1bmax_sentences_per_path_elem\x18\x04 \x01(\x05:\x04\x35\x30\x30\x30\x12)\n\x0btopic_model\x18\x05 \x01(\x0b\x32\x14.pymoliere.LdaConfig\x12+\n\x04path\x18\x06 \x01(\x0b\x32\x1d.pymoliere.ShortestPathConfig\x12\x13\n\x0bresult_path\x18\x08 \x01(\t\x12\x17\n\x08override\x18\t \x01(\x08:\x05\x66\x61lse\"\xc6\x01\n\x18SentenceClassifierConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12!\n\x03\x66tp\x18\x02 \x01(\x0b\x32\x14.pymoliere.FtpSource\x12+\n\x06parser\x18\x03 \x01(\x0b\x32\x1b.pymoliere.TextParserConfig\x12\x1f\n\x02ml\x18\x04 \x01(\x0b\x32\x13.pymoliere.MlConfig\x12\x0e\n\x06output\x18\x05 \x01(\t')
 )
 
 
@@ -113,6 +113,13 @@ _CLUSTERCONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='clear_checkpoints', full_name='pymoliere.ClusterConfig.clear_checkpoints', index=6,
+      number=7, type=8, cpp_type=7, label=1,
+      has_default_value=True, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -126,7 +133,7 @@ _CLUSTERCONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=131,
-  serialized_end=288,
+  serialized_end=322,
 )
 
 
@@ -191,8 +198,8 @@ _TEXTPARSERCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=291,
-  serialized_end=480,
+  serialized_start=325,
+  serialized_end=514,
 )
 
 
@@ -236,8 +243,8 @@ _NGRAMCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=482,
-  serialized_end=600,
+  serialized_start=516,
+  serialized_end=634,
 )
 
 
@@ -302,8 +309,8 @@ _KNNCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=603,
-  serialized_end=789,
+  serialized_start=637,
+  serialized_end=823,
 )
 
 
@@ -354,8 +361,8 @@ _REDISCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=791,
-  serialized_end=893,
+  serialized_start=825,
+  serialized_end=927,
 )
 
 
@@ -420,29 +427,43 @@ _LDACONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=896,
-  serialized_end=1073,
+  serialized_start=930,
+  serialized_end=1107,
 )
 
 
-_MLSYSCONFIG = _descriptor.Descriptor(
-  name='MlSysConfig',
-  full_name='pymoliere.MlSysConfig',
+_MLCONFIG = _descriptor.Descriptor(
+  name='MlConfig',
+  full_name='pymoliere.MlConfig',
   filename=None,
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='batch_size', full_name='pymoliere.MlSysConfig.batch_size', index=0,
+      name='batch_size', full_name='pymoliere.MlConfig.batch_size', index=0,
       number=1, type=5, cpp_type=1, label=1,
       has_default_value=True, default_value=32,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='disable_gpu', full_name='pymoliere.MlSysConfig.disable_gpu', index=1,
+      name='disable_gpu', full_name='pymoliere.MlConfig.disable_gpu', index=1,
       number=2, type=8, cpp_type=7, label=1,
       has_default_value=True, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='num_epochs', full_name='pymoliere.MlConfig.num_epochs', index=2,
+      number=3, type=5, cpp_type=1, label=1,
+      has_default_value=True, default_value=10,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='validation_ratio', full_name='pymoliere.MlConfig.validation_ratio', index=3,
+      number=4, type=2, cpp_type=6, label=1,
+      has_default_value=True, default_value=float(0.1),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
@@ -458,8 +479,8 @@ _MLSYSCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1075,
-  serialized_end=1140,
+  serialized_start=1109,
+  serialized_end=1226,
 )
 
 
@@ -503,8 +524,8 @@ _CONSTRUCTDEBUGCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1142,
-  serialized_end=1257,
+  serialized_start=1228,
+  serialized_end=1343,
 )
 
 
@@ -534,8 +555,8 @@ _SHORTESTPATHCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1259,
-  serialized_end=1303,
+  serialized_start=1345,
+  serialized_end=1389,
 )
 
 
@@ -602,13 +623,6 @@ _CONSTRUCTCONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='clear_checkpoints', full_name='pymoliere.ConstructConfig.clear_checkpoints', index=8,
-      number=10, type=8, cpp_type=7, label=1,
-      has_default_value=True, default_value=False,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -621,8 +635,8 @@ _CONSTRUCTCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1306,
-  serialized_end=1686,
+  serialized_start=1392,
+  serialized_end=1735,
 )
 
 
@@ -701,8 +715,8 @@ _QUERYCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1689,
-  serialized_end=1947,
+  serialized_start=1738,
+  serialized_end=1996,
 )
 
 
@@ -735,7 +749,7 @@ _SENTENCECLASSIFIERCONFIG = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='sys', full_name='pymoliere.SentenceClassifierConfig.sys', index=3,
+      name='ml', full_name='pymoliere.SentenceClassifierConfig.ml', index=3,
       number=4, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -760,8 +774,8 @@ _SENTENCECLASSIFIERCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1950,
-  serialized_end=2152,
+  serialized_start=1999,
+  serialized_end=2197,
 )
 
 _CONSTRUCTCONFIG.fields_by_name['cluster'].message_type = _CLUSTERCONFIG
@@ -769,7 +783,7 @@ _CONSTRUCTCONFIG.fields_by_name['ftp'].message_type = _FTPSOURCE
 _CONSTRUCTCONFIG.fields_by_name['parser'].message_type = _TEXTPARSERCONFIG
 _CONSTRUCTCONFIG.fields_by_name['sentence_knn'].message_type = _KNNCONFIG
 _CONSTRUCTCONFIG.fields_by_name['db'].message_type = _REDISCONFIG
-_CONSTRUCTCONFIG.fields_by_name['sys'].message_type = _MLSYSCONFIG
+_CONSTRUCTCONFIG.fields_by_name['sys'].message_type = _MLCONFIG
 _CONSTRUCTCONFIG.fields_by_name['debug'].message_type = _CONSTRUCTDEBUGCONFIG
 _CONSTRUCTCONFIG.fields_by_name['phrases'].message_type = _NGRAMCONFIG
 _QUERYCONFIG.fields_by_name['db'].message_type = _REDISCONFIG
@@ -778,7 +792,7 @@ _QUERYCONFIG.fields_by_name['path'].message_type = _SHORTESTPATHCONFIG
 _SENTENCECLASSIFIERCONFIG.fields_by_name['cluster'].message_type = _CLUSTERCONFIG
 _SENTENCECLASSIFIERCONFIG.fields_by_name['ftp'].message_type = _FTPSOURCE
 _SENTENCECLASSIFIERCONFIG.fields_by_name['parser'].message_type = _TEXTPARSERCONFIG
-_SENTENCECLASSIFIERCONFIG.fields_by_name['sys'].message_type = _MLSYSCONFIG
+_SENTENCECLASSIFIERCONFIG.fields_by_name['ml'].message_type = _MLCONFIG
 DESCRIPTOR.message_types_by_name['FtpSource'] = _FTPSOURCE
 DESCRIPTOR.message_types_by_name['ClusterConfig'] = _CLUSTERCONFIG
 DESCRIPTOR.message_types_by_name['TextParserConfig'] = _TEXTPARSERCONFIG
@@ -786,7 +800,7 @@ DESCRIPTOR.message_types_by_name['NGramConfig'] = _NGRAMCONFIG
 DESCRIPTOR.message_types_by_name['KnnConfig'] = _KNNCONFIG
 DESCRIPTOR.message_types_by_name['RedisConfig'] = _REDISCONFIG
 DESCRIPTOR.message_types_by_name['LdaConfig'] = _LDACONFIG
-DESCRIPTOR.message_types_by_name['MlSysConfig'] = _MLSYSCONFIG
+DESCRIPTOR.message_types_by_name['MlConfig'] = _MLCONFIG
 DESCRIPTOR.message_types_by_name['ConstructDebugConfig'] = _CONSTRUCTDEBUGCONFIG
 DESCRIPTOR.message_types_by_name['ShortestPathConfig'] = _SHORTESTPATHCONFIG
 DESCRIPTOR.message_types_by_name['ConstructConfig'] = _CONSTRUCTCONFIG
@@ -843,12 +857,12 @@ LdaConfig = _reflection.GeneratedProtocolMessageType('LdaConfig', (_message.Mess
   })
 _sym_db.RegisterMessage(LdaConfig)
 
-MlSysConfig = _reflection.GeneratedProtocolMessageType('MlSysConfig', (_message.Message,), {
-  'DESCRIPTOR' : _MLSYSCONFIG,
+MlConfig = _reflection.GeneratedProtocolMessageType('MlConfig', (_message.Message,), {
+  'DESCRIPTOR' : _MLCONFIG,
   '__module__' : 'pymoliere.config.config_pb2'
-  # @@protoc_insertion_point(class_scope:pymoliere.MlSysConfig)
+  # @@protoc_insertion_point(class_scope:pymoliere.MlConfig)
   })
-_sym_db.RegisterMessage(MlSysConfig)
+_sym_db.RegisterMessage(MlConfig)
 
 ConstructDebugConfig = _reflection.GeneratedProtocolMessageType('ConstructDebugConfig', (_message.Message,), {
   'DESCRIPTOR' : _CONSTRUCTDEBUGCONFIG,

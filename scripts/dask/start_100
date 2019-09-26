@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -l select=50:ncpus=24:mem=115gb:ngpus=2:gpu_model=k40:interconnect=56g,walltime=72:00:00
+#PBS -l select=100:ncpus=16:mem=60gb:interconnect=fdr,walltime=72:00:00
 #PBS -o /dev/null
 #PBS -e /dev/null
 #PBS -N dask
@@ -42,16 +42,13 @@ while read WORKER; do
   ssh $WORKER """
     dask-worker \
       $HOSTNAME:$DASK_PORT \
-      --host $WORKER \
-      --nprocs 2 \
-      --nthreads 12 \
-      --memory-limit 'auto' \
-      --resources 'GPU=1' \
+      --nprocs 1 \
+      --nthreads 16 \
+      --memory-limit 60GB \
       --local-directory $DASK_WORKER_LOCAL \
       --scheduler-file $DASK_WORKER_SHARED/scheduler.json \
       --interface ib0
-  """ \
-  >& /dev/null \
+  """ >& /dev/null \
   &
 done < $PBS_NODEFILE
 

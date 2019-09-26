@@ -1,0 +1,56 @@
+#!/bin/bash
+#PBS -l select=50:ncpus=24:mem=115gb:ngpus=2:gpu_model=k40:interconnect=56g,walltime=72:00:00
+#PBS -o /dev/null
+#PBS -e /dev/null
+#PBS -N dask
+#PBS -m be
+
+if [[ -n $PBS_O_WORKDIR ]]; then
+  cd $PBS_O_WORKDIR
+fi
+
+echo "Overwritting dask config at ~/.dask/config.yaml"
+mkdir -p ~/.dask
+ln -sf $(readlink -f dask.config.yaml) ~/.dask/config.yaml
+
+
+DASK_WORKER_LOCAL=/tmp/__dask__
+DASK_WORKER_SHARED=/scratch2/$USER/__dask__
+echo "Setting worker local directory to $DASK_WORKER_LOCAL"
+echo "Setting worker shared directory to $DASK_WORKER_SHARED"
+
+
+MODULE_NAME="pymoliere"
+CONDA_START=~/anaconda3/etc/profile.d/conda.sh
+MODULE_GROUP=~/module_groups/$MODULE_NAME
+echo $MODULE_NAME > ~/.default_module
+source $CONDA_START
+source $MODULE_GROUP
+
+DASK_PORT=8786
+
+# Starting scheduler
+dask-scheduler \
+  --host $HOSTNAME \
+  --port $DASK_PORT \
+  --local-directory $DASK_WORKER_LOCAL \
+  --scheduler-file $DASK_WORKER_SHARED/scheduler.json \
+  &
+
+while read WORKER; do
+  echo Starting worker at $WORKER
+  ssh $WORKER """
+    dask-worker \
+      $HOSTNAME:$DASK_PORT \
+      --nprocs 2 \
+      --nthreads 12 \
+      --memory-limit 'auto' \
+      --resources 'GPU=1' \
+      --local-directory $DASK_WORKER_LOCAL \
+      --scheduler-file $DASK_WORKER_SHARED/scheduler.json \
+      --interface ib0
+  """ >& /dev/null \
+  &
+done < $PBS_NODEFILE
+
+wait

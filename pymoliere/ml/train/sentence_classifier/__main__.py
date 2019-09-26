@@ -80,7 +80,7 @@ if __name__ == "__main__":
   print("Loading")
   sentences = []
   labels = []
-  for file_path in tqdm(list(labeled_sentence_dir.iterdir())[:10]):
+  for file_path in tqdm(list(labeled_sentence_dir.iterdir())):
     if file_path.suffix == ".gz":
       with gzip.open(str(file_path)) as f:
         for line in f:

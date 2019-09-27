@@ -7,6 +7,7 @@ import string
 import random
 import pickle
 import dask
+from tqdm import tqdm
 
 EXT = ".pkl"
 DONE_FILE = "__done__"
@@ -33,6 +34,21 @@ def prep_scratches(
   local.mkdir(parents=True, exist_ok=True)
   shared.mkdir(parents=True, exist_ok=True)
   return local, shared
+
+def load_to_memory(dir_path:Path)->List[Any]:
+  "Performs loading right now, without dask"
+  assert is_result_saved(dir_path)
+  done_path = dir_path.joinpath(DONE_FILE)
+  result = []
+  with open(done_path) as f:
+    for line in tqdm(f):
+      path = Path(line.strip())
+      if path.is_file():
+        result += load_part(path)
+      else:
+        raise Exception(f"Invalid stored bag {dir_path}. Missing {path}.")
+  return result
+
 
 def load_part(path:Path)->List[Any]:
   with open(path, 'rb') as f:

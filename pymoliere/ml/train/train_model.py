@@ -42,15 +42,18 @@ def train_classifier(
   def print_training_plot(training_data, validation_data):
     fig = plotille.Figure()
     fig.height = 10
+    fig.set_x_limits(min_=0)
     fig.plot(
         list(range(len(training_data))),
         training_data,
-        label="Training"
+        label="Training",
+        lc="bright_blue",
     )
     fig.plot(
         list(range(len(validation_data))),
         validation_data,
-        label="Validation"
+        label="Validation",
+        lc="bright_magenta",
     )
     print(fig.show(legend=True))
 
@@ -59,14 +62,13 @@ def train_classifier(
       print("Shuffling...")
       training_data, training_labels = shuffle(training_data, training_labels)
     for phase in ["train", "validation"]:
-      if len(training_losses) + len(training_accuracies) > 0:
-        system("clear")
-        print(f"Epoch: {epoch}/{num_epochs} -- {phase}")
-        print("Loss")
-        print_training_plot(training_losses, validation_losses)
-        print("Accuracy")
-        print_training_plot(training_accuracies, validation_accuracies)
-        print()
+      system("clear")
+      print(f"Epoch: {epoch}/{num_epochs} -- {phase}")
+      print("Loss")
+      print_training_plot(training_losses, validation_losses)
+      print("Accuracy")
+      print_training_plot(training_accuracies, validation_accuracies)
+      print()
 
       if phase == "train":
         model.train()
@@ -82,18 +84,21 @@ def train_classifier(
         y_true = validation_labels
 
       running_loss = 0.0
-      running_corrects = 0
-      running_count = 0
+      running_corrects = 0.0
+      running_count = 0.0
 
       def get_desc():
         if running_count == 0:
           return "-"*5
         else:
           l = running_loss/running_count
-          a = running_corrects/running_count
+          a = float(running_corrects)/running_count
           return f"Loss:{l:0.4f} Acc:{a:0.4f}"
 
-      pbar = tqdm(iter_to_batches(zip(X, y_true), batch_size))
+      pbar = tqdm(
+          iter_to_batches(zip(X, y_true), batch_size),
+          total=int(len(X)/batch_size)
+      )
       for batch in pbar:
         batch_data = [x for x,_ in batch]
         batch_labels = [y for _, y in batch]
@@ -115,9 +120,9 @@ def train_classifier(
 
         _, batch_predictions = torch.max(batch_logits, 1)
         running_loss += loss.detach() * batch_data.size(0)
-        running_corrects += torch.sum(batch_predictions == batch_labels)
-        running_count += batch_data.size(0)
+        running_corrects += float(torch.sum(batch_predictions == batch_labels))
+        running_count += float(batch_data.size(0))
         pbar.set_description(get_desc())
 
-      losses.append(running_loss / running_count)
-      accuracies.append(running_corrects / running_count)
+      losses.append(float(running_loss / running_count))
+      accuracies.append(float(running_corrects / running_count))

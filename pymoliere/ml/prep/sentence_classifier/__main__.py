@@ -5,6 +5,8 @@ from pymoliere.config import (
     proto_util,
 )
 from pymoliere.construct import (
+    dask_process_global as dpg,
+    embedding_util,
     file_util,
     ftp_util,
     parse_pubmed_xml,
@@ -20,6 +22,20 @@ from pymoliere.ml.util.sentence_classifier import (
 )
 from pymoliere.construct import dask_checkpoint
 from typing import Iterable
+
+
+def filter_and_pick(records:Iterable[Record])->Iterable[Record]:
+  return list(map(
+      lambda r: {
+        "sent_text": r["sent_text"],
+        "sent_type": r["sent_type"],
+        "sent_ratio": r["sent_idx"] / r["sent_total"]
+      },
+      filter(
+        lambda r: r["sent_type"] in LABEL2IDX,
+        records
+      )
+  ))
 
 
 if __name__ == "__main__":
@@ -98,6 +114,13 @@ if __name__ == "__main__":
         show_progress=True,
     )
 
+  preloader = dpg.WorkerPreloader()
+  preloader.register(*embedding_util.get_scibert_initializer(
+      scibert_data_dir=config.parser.scibert_data_dir,
+      disable_gpu=config.ml.disable_gpu,
+  ))
+  dpg.add_global_preloader(client=dask_client, preloader=preloader)
+
   ##############################################################################
   # READY TO GO!
 
@@ -123,16 +146,14 @@ if __name__ == "__main__":
   ckpt("sentences")
 
   ## END OF DUPLICATED SECTION
-  def filter_and_pick(records:Iterable[Record])->Iterable[Record]:
-    return map(
-        lambda r: {
-          "sent_text": r["sent_text"],
-          "sent_type": r["sent_type"],
-        },
-        filter(
-          lambda r: r["sent_type"] in LABEL2IDX,
-          records
-        )
-    )
-  labeled_sentences = sentences.map_partitions(filter_and_pick)
-  ckpt("labeled_sentences")
+  ml_labeled_sentences = sentences.map_partitions(filter_and_pick)
+  ckpt("ml_labeled_sentences")
+
+  ml_embedded_labeled_sentences = ml_labeled_sentences.map_partitions(
+      embedding_util.embed_records,
+      # --
+      batch_size=config.ml.batch_size,
+      text_field="sent_text",
+      max_sequence_length=config.parser.max_sequence_length,
+  )
+  ckpt("ml_embedded_labeled_sentences")

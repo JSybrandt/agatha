@@ -43,17 +43,14 @@ def embed_records(
     out_embedding_field:str="embedding",
 )->Iterable[Record]:
   """
-  Analogous to embed_texts, but for a partition of records.
-  Each record must contain text_field and id_field.
-  Result are truncated records containing only id_field and out_embedding_field.
+  Introduces an embedding field to each record, indicated the scibert embedding
+  of the supplied text field.
   """
 
   dev, tok, model = dpg.get("embedding_util:dev,tok,model")
 
-  res = []
   for batch in iter_to_batches(records, batch_size):
     texts = list(map(lambda x: x[text_field], batch))
-    ids = list(map(lambda x: x[id_field], batch))
     sequs = pad_sequence(
       sequences=[
         torch.tensor(tok.encode(t)[:max_sequence_length])
@@ -63,10 +60,7 @@ def embed_records(
     ).to(dev)
     with torch.no_grad():
       embs = model(sequs)[-1].cpu().detach().numpy()
-    for _id, emb in zip(ids, embs):
-      res.append({
-        id_field: _id,
-        out_embedding_field: emb,
-      })
-  return res
+    for record, emb in zip(batch, embs):
+      record[out_embedding_field] = emb
+  return records
 

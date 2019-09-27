@@ -24,23 +24,19 @@ from pymoliere.ml.util.sentence_classifier import (
     NUM_LABELS,
     SCIBERT_OUTPUT_DIM,
 )
+import numpy as np
 
 
 class SentenceClassifier(torch.nn.Module):
-  def __init__(self, scibert_data_dir:Path):
+  def __init__(self):
     super(SentenceClassifier, self).__init__()
-    self.bert = BertModel.from_pretrained(scibert_data_dir)
-    self.l1 = torch.nn.Linear(SCIBERT_OUTPUT_DIM, 256)
+    self.l1 = torch.nn.Linear(SCIBERT_OUTPUT_DIM+1, 256)
     self.l2 = torch.nn.Linear(256, NUM_LABELS)
     self.linear = [
         self.l1, self.l2,
     ]
-    # freeze bert layers
-    for param in self.bert.parameters():
-      param.requires_grad = False
 
   def forward(self, x):
-    x = self.bert(x)[-1]
     # for all but the last
     for l in self.linear[:-1]:
       x = F.relu(l(x))
@@ -66,31 +62,26 @@ if __name__ == "__main__":
   print("Running pymoliere sentence_classifier with the following parameters:")
   print(config)
 
-  labeled_sentence_dir = Path(
+  print("Loading")
+  embedding_data_dir = Path(
       config.cluster.shared_scratch
   ).joinpath(
       "dask_checkpoints"
   ).joinpath(
-      "labeled_sentences"
+      "ml_embedded_labeled_sentences"
   )
+  records = file_util.load_to_memory(embedding_data_dir)
 
-  if not file_util.is_result_saved(labeled_sentence_dir):
-    raise Exception(f"Could not find prepared data in {labeled_sentence_dir}")
+  print("Converting")
+  data = [
+      np.append(rec["embedding"], rec["sent_ratio"])
+      for rec in records
+  ]
 
-  print("Loading")
-  sentences = []
-  labels = []
-  for file_path in tqdm(list(labeled_sentence_dir.iterdir())):
-    if file_path.suffix == ".gz":
-      with gzip.open(str(file_path)) as f:
-        for line in f:
-          record = json.loads(line)
-          if record["sent_type"] in LABEL2IDX:
-            sentences.append(record["sent_text"])
-            labels.append(LABEL2IDX[record["sent_type"]])
-
-  assert len(sentences) == len(labels)
-  print(f"Loaded {len(sentences)} sentences.")
+  labels = [
+      LABEL2IDX[rec["sent_type"]]
+      for rec in records
+  ]
 
   print("Prepping model")
   if torch.cuda.is_available() and not config.ml.disable_gpu:
@@ -98,10 +89,7 @@ if __name__ == "__main__":
   else:
     device = torch.device("cpu")
 
-  model = SentenceClassifier(scibert_data_dir=config.parser.scibert_data_dir)
-  batch_to_tensor_fn = get_batch_to_tensors(
-      scibert_data_dir=config.parser.scibert_data_dir
-  )
+  model = SentenceClassifier()
   loss_fn = nn.CrossEntropyLoss()
   optimizer = torch.optim.Adam(
       filter(lambda x: x.requires_grad, model.parameters()),
@@ -121,10 +109,10 @@ if __name__ == "__main__":
       optimizer=optimizer,
       num_epochs=config.ml.num_epochs,
       batch_size=config.ml.batch_size,
-      data=sentences,
+      data=data,
       labels=labels,
       validation_ratio=config.ml.validation_ratio,
-      batch_to_tensor_fn=batch_to_tensor_fn,
+      batch_to_tensor_fn=lambda x, y: (torch.FloatTensor(x), torch.LongTensor(y)),
   )
 
   torch.save(model.state_dict(), config.output)

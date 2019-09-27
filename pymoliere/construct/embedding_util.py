@@ -49,6 +49,7 @@ def embed_records(
 
   dev, tok, model = dpg.get("embedding_util:dev,tok,model")
 
+  res = []
   for batch in iter_to_batches(records, batch_size):
     texts = list(map(lambda x: x[text_field], batch))
     sequs = pad_sequence(
@@ -62,5 +63,6 @@ def embed_records(
       embs = model(sequs)[-1].cpu().detach().numpy()
     for record, emb in zip(batch, embs):
       record[out_embedding_field] = emb
-  return records
+      res.append(record)
+  return res
 

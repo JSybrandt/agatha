@@ -70,9 +70,13 @@ def load(dir_path:Path)->dbag.Bag:
 
 def save_part(part:List[Any], path:Path)->Path:
   "Stores that partition at `path`, returns `path`"
+  # Turns out that some complex functions might have non-list partitions
+  # For instance, a partition containing numpy arrays will be _MapChunk
+  part = list(part)
   with open(path, 'wb') as f:
     pickle.dump(part, f)
   return path
+
 
 def write_done_file(parts:List[str], part_dir:Path)->Path:
   done_path = part_dir.joinpath(DONE_FILE)

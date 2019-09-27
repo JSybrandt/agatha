@@ -35,12 +35,7 @@ class WorkerPreloader(object):
 
   def initialize(self, key:str)->None:
     assert key in self.initializers
-    lock = Lock(f"init:{key}")
-    while(not lock.acquire(timeout=5)):
-      pass
     self.worker_data[key] = self.initializers[key]()
-    print("Initialized", key)
-    lock.release()
 
   def clear(self)->None:
     self.worker_data.clear()

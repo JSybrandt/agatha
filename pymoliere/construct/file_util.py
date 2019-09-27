@@ -1,16 +1,19 @@
 from pathlib import Path
-from typing import Callable, Any, Tuple, Optional
+from typing import Callable, Any, Tuple, Optional, List
 import dask.bag as dbag
 import json
-import msgpack
 from dask.distributed import Lock
 import string
 import random
+import pickle
+import dask
 
-EXT = ".json.gz"
+EXT = ".pkl"
+DONE_FILE = "__done__"
 
 def get_random_ascii_str(str_len:int)->str:
   return "".join([random.choice(string.ascii_letters) for _ in range(str_len)])
+import pickle
 
 def copy_to_local_scratch(src:Path, local_scratch_dir:Path)->Path:
   local_scratch_dir.mkdir(parents=True, exist_ok=True)
@@ -31,27 +34,48 @@ def prep_scratches(
   shared.mkdir(parents=True, exist_ok=True)
   return local, shared
 
-def load(path:Path)->dbag.Bag:
-  assert is_result_saved(path)
-  return dbag.read_text(
-      str(path.joinpath(f"*{EXT}")),
-  ).map(json.loads)
+def load_part(path:Path)->List[Any]:
+  with open(path, 'rb') as f:
+    return pickle.load(f)
 
-def save(bag:dbag.Bag, path:Path, **kwargs)->Optional[dbag.Bag]:
+def load(dir_path:Path)->dbag.Bag:
+  assert is_result_saved(dir_path)
+  done_path = dir_path.joinpath(DONE_FILE)
+  load_tasks = []
+  with open(done_path) as f:
+    for line in f:
+      path = Path(line.strip())
+      if path.is_file():
+        load_tasks.append(dask.delayed(load_part)(path))
+      else:
+        raise Exception(f"Invalid stored bag {dir_path}. Missing {path}.")
+  return dbag.from_delayed(load_tasks)
+
+
+def save_part(part:List[Any], path:Path)->Path:
+  "Stores that partition at `path`, returns `path`"
+  with open(path, 'wb') as f:
+    pickle.dump(part, f)
+  return path
+
+def write_done_file(parts:List[str], part_dir:Path)->Path:
+  done_path = part_dir.joinpath(DONE_FILE)
+  with open(done_path, 'w') as f:
+    for part in parts:
+      f.write(f"{part}\n")
+  return done_path
+
+def save(bag:dbag.Bag, path:Path)->dask.delayed:
   assert path.is_dir()
-  return bag.map(json.dumps).to_textfiles(
-    path=str(path.joinpath(f"*{EXT}")),
-    **kwargs
-  )
+  save_tasks = []
+  for part_idx, part in enumerate(bag.to_delayed()):
+    part_path = path.joinpath(f"part-{part_idx}{EXT}")
+    save_tasks.append(dask.delayed(save_part)(part, part_path))
+  return dask.delayed(write_done_file)(save_tasks, path)
 
 def is_result_saved(path:Path)->bool:
-  files = [
-      int(f.name.split(".")[0])
-      for f in path.iterdir()
-      if f.name.endswith(EXT)
-  ]
-  files.sort()
-  return len(files) > 0 and (files[-1]+1) == len(files)
+  done_path = path.joinpath(DONE_FILE)
+  return done_path.is_file()
 
 def touch_random_unused_file(base_dir:Path, ext:Optional[str]=None)->Path:
   assert base_dir.is_dir()

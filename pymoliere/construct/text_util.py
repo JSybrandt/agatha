@@ -333,8 +333,8 @@ def analyze_sentences(
         map(
           lambda x:x[text_field],
           records
-        ),
-      batch_size=100)
+        )
+      )
   ):
     sent_rec[entity_field] = [
       {

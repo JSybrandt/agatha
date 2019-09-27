@@ -32,5 +32,5 @@ def checkpoint(
   assert part_dir.is_dir()
 
   if not file_util.is_result_saved(part_dir):
-    file_util.save(data, part_dir)
+    file_util.save(data, part_dir).compute()
   return file_util.load(part_dir)

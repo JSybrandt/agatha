@@ -20,40 +20,36 @@ _INITIALIZERS = {}
 class WorkerPreloader(object):
   def __init__(self):
     self.initializers = {}
-    self.worker_data = {}
 
   def setup(self, worker:Worker):
-    pass
+    print("setup")
+    worker._preloader_data = {}
 
   def teardown(self, worker:Worker):
-    self.clear()
+    print("teardown")
+    del worker._preloader_data
 
   def register(self, key:str, init:Callable)->None:
     "Adds a global object to the preloader"
     assert key not in self.initializers
     self.initializers[key] = init
 
-  def initialize(self, key:str)->None:
-    assert key in self.initializers
-    self.worker_data[key] = self.initializers[key]()
-
-  def clear(self)->None:
-    self.worker_data.clear()
-    self.initializers.clear()
-
-  def get(self, key:str)->Any:
+  def get(self, key:str, worker:Worker)->Any:
+    assert hasattr(worker, "_preloader_data")
     if key not in self.initializers:
       raise Exception(f"Attempted to get unregistered key {key}")
-    if key not in self.worker_data:
-      self.initialize(key)
-    # 2nd try
-    if key not in self.worker_data:
-      raise Exception(f"Failed to initialize {key}")
-    return self.worker_data[key]
+    if key not in worker._preloader_data:
+      with worker._lock:
+        if key not in worker._preloader_data:
+          print(f"Initializing {key}")
+          worker._preloader_data[key] = self.initializers[key]()
+    return worker._preloader_data[key]
+
 
 def add_global_preloader(client:Client, preloader:WorkerPreloader)->None:
   client.register_worker_plugin(preloader, name="global_preloader")
 
 def get(key:str)->Any:
   "Gets a value from the global preloader"
-  return get_worker().plugins["global_preloader"].get(key)
+  worker = get_worker()
+  return worker.plugins["global_preloader"].get(key, worker)

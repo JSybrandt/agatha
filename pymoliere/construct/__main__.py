@@ -57,7 +57,7 @@ if __name__ == "__main__":
     cluster_address = f"{config.cluster.address}:{config.cluster.port}"
     print("Configuring Dask, attaching to cluster")
     print(f"\t- {cluster_address}")
-    dask_client = Client(address=cluster_address, heartbeat_interval=500)
+    dask_client = Client(address=cluster_address)
   if config.cluster.restart:
     print("\t- Restarting cluster...")
     dask_client.restart()

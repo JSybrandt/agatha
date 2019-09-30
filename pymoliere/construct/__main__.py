@@ -130,6 +130,7 @@ if __name__ == "__main__":
   def ckpt(name:str)->None:
     "Applies checkpointing to the given bag"
     if not config.cluster.disable_checkpoints:
+      print("Checkpoint:", name)
       assert name in globals()
       assert type(globals()[name]) == dbag.Bag
       globals()[name] = dask_checkpoint.checkpoint(
@@ -154,7 +155,7 @@ if __name__ == "__main__":
 
   ##############################################################################
 
-  print("Preparing computation graph")
+  print("Constructing Moliere Database")
   final_tasks = []
   if config.debug.enable:
     print(f"\t- Downsampling {len(xml_paths)} xml files to only "

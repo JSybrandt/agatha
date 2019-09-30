@@ -139,5 +139,6 @@ message SentenceClassifierConfig {
   optional TextParserConfig parser = 3;
   optional MlConfig ml = 4;
   // Path to store model
-  optional string output = 5;
+  optional string model_output_path = 5;
+  optional string evaluation_output_dir = 6;
 }

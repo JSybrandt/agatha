@@ -13,7 +13,7 @@ from pytorch_transformers import BertModel, BertTokenizer
 import torch
 from torch import nn
 from torch.nn import functional as F
-from pymoliere.ml.train import train_model
+from pymoliere.ml.train import train_model, evaluate_model
 import gzip
 import json
 from tqdm import tqdm
@@ -30,10 +30,11 @@ import numpy as np
 class SentenceClassifier(torch.nn.Module):
   def __init__(self):
     super(SentenceClassifier, self).__init__()
-    self.l1 = torch.nn.Linear(SCIBERT_OUTPUT_DIM+1, 256)
-    self.l2 = torch.nn.Linear(256, NUM_LABELS)
+    self.l1 = torch.nn.Linear(SCIBERT_OUTPUT_DIM+1, 512)
+    self.l2 = torch.nn.Linear(512, 256)
+    self.l3 = torch.nn.Linear(256, NUM_LABELS)
     self.linear = [
-        self.l1, self.l2,
+        self.l1, self.l2, self.l3,
     ]
 
   def forward(self, x):
@@ -101,19 +102,37 @@ if __name__ == "__main__":
     # model = nn.DataParallel(model)
     # config.ml.batch_size *= torch.cuda.device_count()
 
-  print("Beginning Training")
-  train_model.train_classifier(
-      model=model,
-      device=device,
-      loss_fn=loss_fn,
-      optimizer=optimizer,
-      num_epochs=config.ml.num_epochs,
-      batch_size=config.ml.batch_size,
-      data=data,
-      labels=labels,
-      validation_ratio=config.ml.validation_ratio,
-      batch_to_tensor_fn=lambda x, y: (torch.FloatTensor(x), torch.LongTensor(y)),
-  )
+  if not Path(config.model_output_path).is_file():
+    print("Beginning Training")
+    train_model.train_classifier(
+        model=model,
+        device=device,
+        loss_fn=loss_fn,
+        optimizer=optimizer,
+        num_epochs=config.ml.num_epochs,
+        batch_size=config.ml.batch_size,
+        data=data,
+        labels=labels,
+        validation_ratio=config.ml.validation_ratio,
+        batch_to_tensor_fn=lambda x, y: (torch.FloatTensor(x), torch.LongTensor(y)),
+    )
+    print("Saving model")
+    torch.save(model.state_dict(), config.model_output_path)
+  else:
+    print("Loading Model")
+    model.load_state_dict(torch.load(config.model_output_path))
 
-  torch.save(model.state_dict(), config.output)
+  if config.HasField("evaluation_output_dir"):
+    print("Evaluation")
+    evaluate_model.evaluate_multiclass_model(
+        model=model,
+        device=device,
+        batch_size=config.ml.batch_size,
+        data_batch_to_tensor_fn=lambda x: torch.FloatTensor(x),
+        data=data,
+        labels=labels,
+        metadata=[r["sent_text"] for r in records],
+        class_names=IDX2LABEL,
+        output_dir=Path(config.evaluation_output_dir),
+    )
 

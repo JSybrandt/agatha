@@ -9,7 +9,8 @@ from pymoliere.util.misc_util import (
     iter_to_batches,
     generator_to_list,
     flatten_list,
-    hash_str_to_int64
+    hash_str_to_int64,
+    SUBGRAPH_EDGE_THRESHOLD,
 )
 from pymoliere.util import db_key_util
 from pymoliere.util.misc_util import Record
@@ -38,7 +39,8 @@ def get_neighbors_from_index_per_part(
   include more/less neighbors depending on hash collisions. (Effect should be
   negligible).
   """
-  res = networkx.Graph()
+  res = []
+  subgraph = networkx.Graph()
   self = get_neighbors_from_index_per_part
   if not hasattr(self, "index"):
     if index is not None:
@@ -68,9 +70,14 @@ def get_neighbors_from_index_per_part(
         # for each text id
         for neigh_id in neigh_ids:
           neigh_graph_key = db_key_util.to_graph_key(neigh_id)
-          res.add_edge(root_graph_key, neigh_graph_key, weight=1)
-          res.add_edge(neigh_graph_key, root_graph_key, weight=1)
-  return [res]
+          subgraph.add_edge(root_graph_key, neigh_graph_key, weight=1)
+          subgraph.add_edge(neigh_graph_key, root_graph_key, weight=1)
+          if len(subgraph.edges) > SUBGRAPH_EDGE_THRESHOLD:
+            res.append(subgraph)
+            subgraph = nx.Graph()
+
+  res.append(subgraph)
+  return res
 
 def create_inverted_index(
     ids:dbag.Bag,

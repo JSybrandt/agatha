@@ -5,6 +5,8 @@ import hashlib
 
 Record = Dict[str, Any]
 
+SUBGRAPH_EDGE_THRESHOLD=100000
+
 
 def iter_to_batches(iterable, batch_size):
   args = [iter(iterable)] * batch_size

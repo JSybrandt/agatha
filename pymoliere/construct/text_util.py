@@ -3,7 +3,7 @@ from nltk.tokenize import sent_tokenize
 from pathlib import Path
 from pymoliere.construct import dask_process_global as dpg
 from pymoliere.util import db_key_util, misc_util
-from pymoliere.util.misc_util import Record
+from pymoliere.util.misc_util import Record, SUBGRAPH_EDGE_THRESHOLD
 from typing import List, Tuple, Any, Optional, Dict, Callable, Iterable, Set
 import dask.bag as dbag
 import logging
@@ -465,7 +465,8 @@ def get_edges_from_sentence_part(
     ngram_field:str="ngrams",
     id_field:str="id",
 )->Iterable[nx.Graph]:
-  res = nx.Graph()
+  res = []
+  subgraph = nx.Graph()
   for sent_rec in sentences:
     sent_k = db_key_util.to_graph_key(sent_rec[id_field])
     # Calculate
@@ -493,13 +494,16 @@ def get_edges_from_sentence_part(
         total_documents=total_documents
     ).items():
       weight = 1/tf_idf
-      res.add_edge(sent_k, tok_k, weight=weight)
-      res.add_edge(tok_k, sent_k, weight=weight)
+      subgraph.add_edge(sent_k, tok_k, weight=weight)
+      subgraph.add_edge(tok_k, sent_k, weight=weight)
+      if len(subgraph.edges) > SUBGRAPH_EDGE_THRESHOLD:
+        res.append(subgraph)
+        subgraph = nx.Graph()
 
     # Adj sentence edges. We only need to make edges for "this" sentence,
     # because the other sentences will get the other sides of each connection.
     if sent_rec[sent_idx_field] > 0:
-      res.add_edge(
+      subgraph.add_edge(
         sent_k,
         get_sentence_id(
           pmid=sent_rec["pmid"],
@@ -510,7 +514,7 @@ def get_edges_from_sentence_part(
         weight=1,
       )
     if sent_rec[sent_idx_field] < sent_rec[sent_total_field]-1:
-      res.add_edge(
+      subgraph.add_edge(
         sent_k,
         get_sentence_id(
           pmid=sent_rec["pmid"],
@@ -520,4 +524,5 @@ def get_edges_from_sentence_part(
         ),
         weight=1,
       )
-  return [res]
+  res.append(subgraph)
+  return res

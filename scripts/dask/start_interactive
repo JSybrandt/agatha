@@ -11,6 +11,5 @@ echo $MODULE_NAME > ~/.default_module
 source $CONDA_START
 source $MODULE_GROUP
 
-mkdir $LOG_DIR
 dask-ssh \
   --hostfile $PBS_NODEFILE

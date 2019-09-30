@@ -3,13 +3,14 @@ from nltk.tokenize import sent_tokenize
 from pathlib import Path
 from pymoliere.construct import dask_process_global as dpg
 from pymoliere.util import db_key_util, misc_util
-from pymoliere.util.misc_util import Record, Edge
+from pymoliere.util.misc_util import Record
 from typing import List, Tuple, Any, Optional, Dict, Callable, Iterable, Set
 import dask.bag as dbag
 import logging
 import math
 import spacy
 from dask import delayed
+import networkx as nx
 
 # More details : https://spacy.io/api/annotation
 INTERESTING_POS_TAGS = {
@@ -463,8 +464,8 @@ def get_edges_from_sentence_part(
     sent_total_field:str="sent_total",
     ngram_field:str="ngrams",
     id_field:str="id",
-)->Iterable[Edge]:
-  res = []
+)->Iterable[nx.Graph]:
+  res = nx.Graph()
   for sent_rec in sentences:
     sent_k = db_key_util.to_graph_key(sent_rec[id_field])
     # Calculate
@@ -492,40 +493,31 @@ def get_edges_from_sentence_part(
         total_documents=total_documents
     ).items():
       weight = 1/tf_idf
-      res.append(db_key_util.to_edge(
-        source=sent_k,
-        target=tok_k,
-        weight=weight
-      ))
-      res.append(db_key_util.to_edge(
-        target=sent_k,
-        source=tok_k,
-        weight=weight
-      ))
+      res.add_edge(sent_k, tok_k, weight=weight)
+      res.add_edge(tok_k, sent_k, weight=weight)
+
     # Adj sentence edges. We only need to make edges for "this" sentence,
     # because the other sentences will get the other sides of each connection.
     if sent_rec[sent_idx_field] > 0:
-      res.append(
-        db_key_util.to_edge(
-          source=sent_k,
-          target=get_sentence_id(
-            pmid=sent_rec["pmid"],
-            version=sent_rec["version"],
-            sent_idx=sent_rec["sent_idx"]-1,
-            graph=True,
-          )
-        )
+      res.add_edge(
+        sent_k,
+        get_sentence_id(
+          pmid=sent_rec["pmid"],
+          version=sent_rec["version"],
+          sent_idx=sent_rec["sent_idx"]-1,
+          graph=True,
+        ),
+        weight=1,
       )
     if sent_rec[sent_idx_field] < sent_rec[sent_total_field]-1:
-      res.append(
-        db_key_util.to_edge(
-          source=sent_k,
-          target=get_sentence_id(
-            pmid=sent_rec["pmid"],
-            version=sent_rec["version"],
-            sent_idx=sent_rec["sent_idx"]+1,
-            graph=True,
-          )
-        )
+      res.add_edge(
+        sent_k,
+        get_sentence_id(
+          pmid=sent_rec["pmid"],
+          version=sent_rec["version"],
+          sent_idx=sent_rec["sent_idx"]+1,
+          graph=True,
+        ),
+        weight=1,
       )
-  return res
+  return [res]

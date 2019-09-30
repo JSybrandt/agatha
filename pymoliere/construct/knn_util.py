@@ -12,8 +12,9 @@ from pymoliere.util.misc_util import (
     hash_str_to_int64
 )
 from pymoliere.util import db_key_util
-from pymoliere.util.misc_util import Record, Edge
+from pymoliere.util.misc_util import Record
 import dask
+import networkx as nx
 
 # Maps a single hash value to a list of original id str
 InvertedIds = Dict[int, List[str]]
@@ -28,7 +29,7 @@ def get_neighbors_from_index_per_part(
     index_path:Optional[Path]=None,
     id_field:str="id",
     embedding_field:str="embedding",
-)->Iterable[Edge]:
+)->Iterable[nx.Graph]:
   """
   Given a set of records, and a precomputed index object, actually get the KNN.
   Each record is embedded, and the given index is used to lookup similar
@@ -37,7 +38,7 @@ def get_neighbors_from_index_per_part(
   include more/less neighbors depending on hash collisions. (Effect should be
   negligible).
   """
-  res = []
+  res = networkx.Graph()
   self = get_neighbors_from_index_per_part
   if not hasattr(self, "index"):
     if index is not None:
@@ -67,15 +68,9 @@ def get_neighbors_from_index_per_part(
         # for each text id
         for neigh_id in neigh_ids:
           neigh_graph_key = db_key_util.to_graph_key(neigh_id)
-          res.append(db_key_util.to_edge(
-            source=root_graph_key,
-            target=neigh_graph_key
-          ))
-          res.append(db_key_util.to_edge(
-            target=root_graph_key,
-            source=neigh_graph_key
-          ))
-  return res
+          res.add_edge(root_graph_key, neigh_graph_key, weight=1)
+          res.add_edge(neigh_graph_key, root_graph_key, weight=1)
+  return [res]
 
 def create_inverted_index(
     ids:dbag.Bag,

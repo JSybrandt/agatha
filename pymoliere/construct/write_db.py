@@ -2,12 +2,13 @@ from datetime import datetime
 from google.protobuf.json_format import MessageToDict
 from pymoliere.config import config_pb2 as cpb
 from pymoliere.construct import dask_process_global as dpg
-from pymoliere.util.misc_util import Record, Edge
+from pymoliere.util.misc_util import Record
 from pymoliere.util.misc_util import iter_to_batches
 from redis import Redis
 from typing import Tuple, Iterable
 import json
 import pymoliere
+import networkx as nx
 
 
 def get_redis_client_initialzizer(
@@ -27,22 +28,26 @@ def get_redis_client_initialzizer(
 
 
 def write_edges(
-    edges:Iterable[Edge],
+    subgraphs:Iterable[nx.Graph],
     redis_client:Redis=None,
-    batch_size:int=500,
 )->Iterable[int]:
+  """
+  Writes edges to the redis database located at `write_db:redis_client`.  Edges
+  are stored in a networkx graph. We iterate each node, and batch results based
+  on nodes. Node weight must be specified in the "weight" attribute.
+  """
   if redis_client is None:
     redis_client = dpg.get("write_db:redis_client")
   count = 0
   with redis_client.pipeline() as pipe:
-    for edge_batch in iter_to_batches(edges, batch_size):
-      for edge in edge_batch:
-        pipe.zadd(
-          edge["source"],
-          {edge["target"]: edge["weight"]},
-        )
-        count += 1
-      pipe.execute()
+    for subgraph in subgraphs:
+      for source in subgraph.nodes:
+        edges = {
+            target: attr["weight"] for target, attr in subgraph[source].items()
+        }
+        pipe.zadd(source, edges)
+        pipe.execute()
+      count += len(subgraph.edges)
   return [count]
 
 
@@ -68,6 +73,7 @@ def write_records(
         count += 1
       pipe.execute()
   return [count]
+
 
 def get_meta_record(config:cpb.ConstructConfig)->Record:
   """

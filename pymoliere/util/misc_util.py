@@ -4,7 +4,6 @@ import numpy as np
 import hashlib
 
 Record = Dict[str, Any]
-Edge = Dict[str, Any]
 
 
 def iter_to_batches(iterable, batch_size):

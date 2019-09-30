@@ -215,11 +215,16 @@ if __name__ == "__main__":
 
   final_tasks.append(sentences_with_bow.map_partitions(write_db.write_records))
 
+  document_freqs = text_util.get_document_frequencies(
+      sentences_with_bow,
+      min_document_frequency=config.parser.min_document_frequency,
+  )
+
   # get edges from sentence metadata and store in DB
   sentence_edges = sentences_with_bow.map_partitions(
       text_util.get_edges_from_sentence_part,
       # --
-      document_freqs=text_util.get_document_frequencies(sentences_with_bow),
+      document_freqs=document_freqs,
       total_documents=sentences_with_bow.count(),
   )
   ckpt("sentence_edges")

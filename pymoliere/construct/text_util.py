@@ -398,40 +398,56 @@ def add_bow_to_analyzed_sentence(
 
 def get_document_frequencies(
     analyzed_sentences:dbag.Bag,
+    min_document_frequency:int,
     token_field:str="tokens",
     entity_field:str="entities",
     mesh_field:str="mesh_headings",
     ngram_field:str="ngrams"
 )->Record:  # delayed counts
-  def record_to_init_counts(
-      record:Record,
+  def records_to_init_counts(
+      records:Iterable[Record],
   )->Record:
+    # Count for all partitions
     res = {}
-    for field, to_key in [
-        (token_field, lambda x:token_to_id(x, graph=True)),
-        (entity_field, lambda x: entity_to_id(x,
-                                              sentence=record,
-                                              token_field=token_field,
-                                              graph=True)
-        ),
-        (mesh_field, lambda x:mesh_to_id(x, graph=True)),
-        (ngram_field, lambda x:ngram_to_id(x, graph=True)),
-    ]:
-      for val in record[field]:
-        key = to_key(val)
-        res[key] = 1
+    for record in records:
+      # keys from this record
+      keys = set()
+      for field, to_key in [
+          (token_field, lambda x:token_to_id(x, graph=True)),
+          (entity_field, lambda x: entity_to_id(x,
+                                                sentence=record,
+                                                token_field=token_field,
+                                                graph=True)
+          ),
+          (mesh_field, lambda x:mesh_to_id(x, graph=True)),
+          (ngram_field, lambda x:ngram_to_id(x, graph=True)),
+      ]:
+        for data in record[field]:
+          key = to_key(data)
+          if key not in keys:
+            keys.add(key)
+            if key not in res:
+              res[key] = 1
+            else:
+              res[key] += 1
     return res
-  return analyzed_sentences.map(
-      record_to_init_counts
-  ).fold(
-      misc_util.merge_counts,
-      initial={}
+  key2doc_freq = analyzed_sentences.reduction(
+      perpartition=records_to_init_counts,
+      aggregate=misc_util.merge_counts,
   )
+  def filter_by_counts(d:Record)->Record:
+    return dict(
+        filter(
+          lambda x:x[1] > min_document_frequency,
+          d.items()
+        )
+    )
+  return delayed(filter_by_counts)(key2doc_freq)
 
 
 def calc_tf_idf(
     terms:List[str],
-    document_freqs:Dict[str, int],
+    document_frequencies:Dict[str, int],
     total_documents:int,
 )->Dict[str, float]:
   tfs = {}
@@ -446,16 +462,16 @@ def calc_tf_idf(
         f/(math.log(len(terms))+1)
       )*(
         # idf
-        math.log(total_documents/document_freqs[t])
+        math.log(total_documents/document_frequencies[t])
       )
       for t, f in tfs.items()
-      if t in document_freqs
+      if t in document_frequencies
   }
 
 
 def get_edges_from_sentence_part(
     sentences:Iterable[Record],
-    document_freqs:Dict[str,int],
+    document_frequencies:Dict[str,int],
     total_documents:int,
     token_field:str="tokens",
     entity_field:str="entities",
@@ -490,7 +506,7 @@ def get_edges_from_sentence_part(
 
     for tok_k, tf_idf in calc_tf_idf(
         terms=keys,
-        document_freqs=document_freqs,
+        document_frequencies=document_frequencies,
         total_documents=total_documents
     ).items():
       weight = 1/tf_idf

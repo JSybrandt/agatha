@@ -38,9 +38,11 @@ def hash_str_to_int64(s):
 
 def merge_counts(
   key_to_doc_count_1:Record,
-  key_to_doc_count_2:Record,
+  key_to_doc_count_2:Record=None,
 )->Record:
   "Adds up counts from two dicts"
+  if key_to_doc_count_2 is None:
+    return key_to_doc_count_1
   if len(key_to_doc_count_1) > len(key_to_doc_count_2):
     larger, smaller = key_to_doc_count_1, key_to_doc_count_2
   else:

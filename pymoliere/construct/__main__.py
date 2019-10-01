@@ -8,6 +8,7 @@ from pymoliere.construct import (
     embedding_util,
     file_util,
     ftp_util,
+    graph_util,
     knn_util,
     parse_pubmed_xml,
     text_util,
@@ -215,18 +216,49 @@ if __name__ == "__main__":
 
   final_tasks.append(sentences_with_bow.map_partitions(write_db.write_records))
 
-  document_freqs = text_util.get_document_frequencies(
-      sentences_with_bow,
-      min_document_frequency=config.parser.min_document_frequency,
+  # Don't want to reload this every time
+  print("Persisting bow for edge calcs...")
+  sentences_with_bow_persist = sentences_with_bow.persist()
+  sentence_edges_terms = graph_util.record_to_bipartite_edges(
+    records=sentences_with_bow_persist,
+    get_neighbor_keys_fn=text_util.get_interesting_token_keys,
   )
+  ckpt("sentence_edges_terms")
+  sentence_edges_entities = graph_util.record_to_bipartite_edges(
+    records=sentences_with_bow_persist,
+    get_neighbor_keys_fn=text_util.get_entity_keys,
+  )
+  ckpt("sentence_edges_entities")
+  sentence_edges_mesh = graph_util.record_to_bipartite_edges(
+    records=sentences_with_bow_persist,
+    get_neighbor_keys_fn=text_util.get_mesh_keys,
+  )
+  ckpt("sentence_edges_mesh")
+  sentence_edges_ngrams = graph_util.record_to_bipartite_edges(
+    records=sentences_with_bow_persist,
+    get_neighbor_keys_fn=text_util.get_ngram_keys,
+  )
+  ckpt("sentence_edges_ngrams")
+  sentence_edges_adj = graph_util.record_to_bipartite_edges(
+    records=sentences_with_bow_persist,
+    get_neighbor_keys_fn=text_util.get_adjacent_sentences,
+    # We can store only one side of the connection because each sentence will
+    # get their own neighbors. Additionally, these should all have the same
+    # sort of connections.
+    weight_by_tf_idf=False,
+    bidirectional=False,
+  )
+  ckpt("sentence_edges_adj")
+  # We're done with sentences_with_bow
+  del sentences_with_bow_persist
 
-  # get edges from sentence metadata and store in DB
-  sentence_edges = sentences_with_bow.map_partitions(
-      text_util.get_edges_from_sentence_part,
-      # --
-      document_freqs=document_freqs,
-      total_documents=sentences_with_bow.count(),
-  )
+  sentence_edges = dbag.concat([
+    sentence_edges_terms,
+    sentence_edges_entities,
+    sentence_edges_mesh,
+    sentence_edges_ngrams,
+    sentence_edges_adj,
+  ])
   ckpt("sentence_edges")
 
   final_tasks.append(sentence_edges.map_partitions(write_db.write_edges))

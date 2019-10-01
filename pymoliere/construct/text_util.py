@@ -396,149 +396,73 @@ def add_bow_to_analyzed_sentence(
     record[bow_field] = bow
   return records
 
-def get_document_frequencies(
-    analyzed_sentences:dbag.Bag,
-    min_document_frequency:int,
-    token_field:str="tokens",
-    entity_field:str="entities",
-    mesh_field:str="mesh_headings",
-    ngram_field:str="ngrams"
-)->Record:  # delayed counts
-  def records_to_init_counts(
-      records:Iterable[Record],
-  )->Record:
-    # Count for all partitions
-    res = {}
-    for record in records:
-      # keys from this record
-      keys = set()
-      for field, to_key in [
-          (token_field, lambda x:token_to_id(x, graph=True)),
-          (entity_field, lambda x: entity_to_id(x,
-                                                sentence=record,
-                                                token_field=token_field,
-                                                graph=True)
-          ),
-          (mesh_field, lambda x:mesh_to_id(x, graph=True)),
-          (ngram_field, lambda x:ngram_to_id(x, graph=True)),
-      ]:
-        for data in record[field]:
-          key = to_key(data)
-          if key not in keys:
-            keys.add(key)
-            if key not in res:
-              res[key] = 1
-            else:
-              res[key] += 1
-    return res
-  key2doc_freq = analyzed_sentences.reduction(
-      perpartition=records_to_init_counts,
-      aggregate=misc_util.merge_counts,
-  )
-  def filter_by_counts(d:Record)->Record:
-    return dict(
-        filter(
-          lambda x:x[1] > min_document_frequency,
-          d.items()
-        )
-    )
-  return delayed(filter_by_counts)(key2doc_freq)
-
-
-def calc_tf_idf(
-    terms:List[str],
-    document_frequencies:Dict[str, int],
-    total_documents:int,
-)->Dict[str, float]:
-  tfs = {}
-  for t in terms:
-    if t in tfs:
-      tfs[t] += 1
-    else:
-      tfs[t] = 1
-  return {
-      t: (
-        # tf. Log of document length reduces variance of small docs
-        f/(math.log(len(terms))+1)
-      )*(
-        # idf
-        math.log(total_documents/document_frequencies[t])
-      )
-      for t, f in tfs.items()
-      if t in document_frequencies
-  }
-
-
-def get_edges_from_sentence_part(
-    sentences:Iterable[Record],
-    document_frequencies:Dict[str,int],
-    total_documents:int,
-    token_field:str="tokens",
-    entity_field:str="entities",
-    mesh_field:str="mesh_headings",
-    sent_idx_field:str="sent_idx",
-    sent_total_field:str="sent_total",
-    ngram_field:str="ngrams",
-    id_field:str="id",
-)->Iterable[nx.Graph]:
+def get_adjacent_sentences(
+    sentence_record:Record,
+    graph_keys:bool=True
+)->Set[str]:
+  """
+  Given the i'th sentence, return the keys for sentence i-1 and i+1 if they exist.
+  """
+  idx = sentence_record["sent_idx"]
+  pmid = sentence_record["pmid"]
+  ver = sentence_record["version"]
   res = []
-  subgraph = nx.Graph()
-  for sent_rec in sentences:
-    sent_k = db_key_util.to_graph_key(sent_rec[id_field])
-    # Calculate
-    keys = []
-    for token in sent_rec[token_field]:
-      if not token["stop"] and token["pos"] in INTERESTING_POS_TAGS:
-        tok_k = token_to_id(token, graph=True)
-        keys.append(tok_k)
-    for entity in sent_rec[entity_field]:
-      ent_k = entity_to_id(
-          entity=entity,
-          sentence=sent_rec,
-          token_field=token_field,
-          graph=True
-      )
-      keys.append(ent_k)
-    for mesh_code in sent_rec[mesh_field]:
-      keys.append(mesh_to_id(mesh_code, graph=True))
-    for ngram in sent_rec[ngram_field]:
-      keys.append(ngram_to_id(ngram, graph=True))
-
-    for tok_k, tf_idf in calc_tf_idf(
-        terms=keys,
-        document_frequencies=document_frequencies,
-        total_documents=total_documents
-    ).items():
-      weight = 1/tf_idf
-      subgraph.add_edge(sent_k, tok_k, weight=weight)
-      subgraph.add_edge(tok_k, sent_k, weight=weight)
-      if len(subgraph.edges) > SUBGRAPH_EDGE_THRESHOLD:
-        res.append(subgraph)
-        subgraph = nx.Graph()
-
-    # Adj sentence edges. We only need to make edges for "this" sentence,
-    # because the other sentences will get the other sides of each connection.
-    if sent_rec[sent_idx_field] > 0:
-      subgraph.add_edge(
-        sent_k,
-        get_sentence_id(
-          pmid=sent_rec["pmid"],
-          version=sent_rec["version"],
-          sent_idx=sent_rec["sent_idx"]-1,
-          graph=True,
-        ),
-        weight=1,
-      )
-    if sent_rec[sent_idx_field] < sent_rec[sent_total_field]-1:
-      subgraph.add_edge(
-        sent_k,
-        get_sentence_id(
-          pmid=sent_rec["pmid"],
-          version=sent_rec["version"],
-          sent_idx=sent_rec["sent_idx"]+1,
-          graph=True,
-        ),
-        weight=1,
-      )
-  res.append(subgraph)
+  if idx > 0:
+    res.append(get_sentence_id(
+      pmid=pmid,
+      version=ver,
+      sent_idx=idx-1,
+      graph=graph_keys
+    ))
+  if idx < sentence_record["sent_total"]-1:
+    res.append(get_sentence_id(
+      pmid=pmid,
+      version=ver,
+      sent_idx=idx+1,
+      graph=graph_keys
+    ))
   return res
+
+def get_interesting_token_keys(
+    sentence_record:Record,
+    graph_keys:bool=True,
+)->List[str]:
+  return [
+      token_to_id(token, graph_keys)
+      for token in sentence_record["tokens"]
+      if not token["stop"] and token["pos"] in INTERESTING_POS_TAGS
+  ]
+
+
+def get_entity_keys(
+    sentence_record:Record,
+    graph_keys:bool=True,
+)->List[str]:
+  return [
+      entity_to_id(
+        entity,
+        sentence=sentence_record,
+        graph=graph_keys,
+      )
+      for entity in sentence_record["entities"]
+  ]
+
+
+def get_mesh_keys(
+    sentence_record:Record,
+    graph_keys:bool=True,
+)->List[str]:
+  return [
+      mesh_to_id(mesh, graph=graph_keys)
+      for mesh in sentence_record["mesh_headings"]
+  ]
+
+
+def get_ngram_keys(
+    sentence_record:Record,
+    graph_keys:bool=True,
+)->List[str]:
+  return [
+      ngram_to_id(gram, graph=graph_keys)
+      for gram in sentence_record["ngrams"]
+  ]

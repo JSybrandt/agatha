@@ -36,8 +36,6 @@ message TextParserConfig {
   // The BERT model will error out if given a too-long sequence.
   // Long sequences will be truncated.
   optional int32 max_sequence_length = 6 [default=500];
-  // Drop sentence edges if they only appear in X documents.
-  optional int32 min_document_frequency = 7 [default=1];
 }
 
 message NGramConfig {

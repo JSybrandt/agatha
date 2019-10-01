@@ -36,6 +36,18 @@ def hash_str_to_int64(s):
   )
 
 
+def hash_str_to_int32(s):
+  return np.int32(
+      int.from_bytes(
+        hashlib.md5(
+          s.encode("utf-8")
+        ).digest(),
+        byteorder="big",
+        signed=False,
+      ) % np.iinfo(np.int32).max
+  )
+
+
 def merge_counts(
   key_to_doc_count_1:Record,
   key_to_doc_count_2:Record=None,

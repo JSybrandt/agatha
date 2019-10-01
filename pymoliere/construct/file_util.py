@@ -74,7 +74,7 @@ def save_part(part:List[Any], path:Path)->Path:
   # For instance, a partition containing numpy arrays will be _MapChunk
   part = list(part)
   with open(path, 'wb') as f:
-    pickle.dump(part, f)
+    pickle.dump(part, f, protocol=4)
   return path
 
 

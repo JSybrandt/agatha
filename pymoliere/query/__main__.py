@@ -27,7 +27,7 @@ def assert_conf_has_field(config:cpb.QueryConfig, field:str)->None:
 
 
 def assert_db_has_key(client:redis.Redis, key:str)->None:
-  num_candidates = 5
+  num_candidates = 15
   if not client.exists(key):
     key = strip_major_type(key)
     candidates = "\n\t".join(

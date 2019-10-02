@@ -4,6 +4,7 @@ import networkx as nx
 from pymoliere.util.misc_util import Record, SUBGRAPH_EDGE_THRESHOLD
 from math import log
 import pandas as pd
+from pymoliere.util.db_key_util import to_graph_key
 
 def record_to_bipartite_edges(
     records:dbag.Bag,
@@ -12,7 +13,7 @@ def record_to_bipartite_edges(
     minimum_document_frequency:int=2,
     bidirectional:bool=True,
     default_weight_multiplier:float=1.0,
-    get_source_key_fn:Callable[[Record], str]=lambda x:x["id"],
+    get_source_key_fn:Callable[[Record], str]=lambda x:to_graph_key(x["id"]),
 )->dbag.Bag:
   """
   This function is responsible for extracting edges from records. For example,

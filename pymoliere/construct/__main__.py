@@ -361,5 +361,5 @@ if __name__ == "__main__":
   )
   final_tasks.append(sentences_with_bow.map_partitions(write_db.write_records))
 
-  print("Running!")
+  print("Writing everything to redis.")
   dask_client.compute(final_tasks, sync=True)

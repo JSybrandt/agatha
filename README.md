@@ -23,6 +23,7 @@ in order to provide new information. If you would like to run your own queries
 using our existing network, you can simply download our pre-constructed database
 (pending) and only use the query component.
 
+
 # Installation
 
 While we're working on packaging the module, the first thing you can do is clone
@@ -94,6 +95,7 @@ global default, then config file, then command-line argument.
 
 # Construct a Moliere Network
 
+
 To begin, we recommend creating a minimal config file to specify your custom
 paths to data files. For instance, it will likely look like this:
 ```proto
@@ -117,6 +119,9 @@ construction process is as simple as:
 ```bash
 python3 -m pymoliere.construct example.conf
 ```
+
+The network construction process is detailed in [this
+document][construction_diagram] and is subject to change.
 
 # Query a Moliere Network
 
@@ -234,3 +239,4 @@ Now you are free to run pymoliere!
 [bioarxiv_paper]:https://www.biorxiv.org/content/10.1101/591438v3
 [config_path]:https://github.com/JSybrandt/PyMoliere/blob/master/pymoliere/config/config.proto
 [scispacy]:https://github.com/allenai/scispacy
+[construction_diagram]:http://bit.ly/pymoliere_construction_diagram

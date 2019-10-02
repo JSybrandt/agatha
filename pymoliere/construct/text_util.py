@@ -230,26 +230,35 @@ def get_frequent_ngrams(
   )->Iterable[Dict[Tuple[str], int]]:
     ngram2count = {}
     for rec in records:
+
+      def interesting(idx):
+        t = rec[token_field][idx]
+        return not t["stop"] and t["pos"] in INTERESTING_POS_TAGS
+
+      # beginning of ngram
       for start_tok_idx in range(len(rec[token_field])):
+        # ngrams must begin with an interesting word
+        if not interesting(start_tok_idx):
+          continue
+        # for each potential n-gram size
         for ngram_len in range(2, max_ngram_length):
           end_tok_idx = start_tok_idx + ngram_len
+          # ngrams cannot extend beyond the sentence
           if end_tok_idx > len(rec[token_field]):
             continue
-          relevant_words = 0
-          for tok_idx in range(start_tok_idx, end_tok_idx):
-            if not rec[token_field][tok_idx]["stop"] and \
-                rec[token_field][tok_idx]["pos"] in INTERESTING_POS_TAGS:
-              relevant_words += 1
-          if relevant_words >= 2:
-            ngram = tuple(
-                rec[token_field][tok_idx]["lemma"]
-                for tok_idx
-                in range(start_tok_idx, end_tok_idx)
-            )
-            if ngram in ngram2count:
-              ngram2count[ngram] += 1
-            else:
-              ngram2count[ngram] = 1
+          # ngrams must end with an interesting word
+          if not interesting(end_tok_idx-1):
+            continue
+          # the ngram is an ordered tuple of lemmas
+          ngram = tuple(
+              rec[token_field][tok_idx]["lemma"]
+              for tok_idx
+              in range(start_tok_idx, end_tok_idx)
+          )
+          if ngram in ngram2count:
+            ngram2count[ngram] += 1
+          else:
+            ngram2count[ngram] = 1
     # filter out all low-occurrence ngrams in this partition
     return [{
         n: c for n, c in ngram2count.items()

@@ -114,7 +114,7 @@ def create_inverted_index(
 
 
 def train_distributed_knn(
-    idx_embedding:dbag.Bag,
+    hash_and_embedding:dbag.Bag,
     batch_size:int,
     num_centroids:int,
     num_probes:int,
@@ -133,7 +133,7 @@ def train_distributed_knn(
 
   I'm so sorry this one function has to do so much...
 
-  @param idx_embedding: bag of hash value and embedding values
+  @param hash_and_embedding: bag of hash value and embedding values
   @param text_field: input text field that we embed.
   @param id_field: output id field we use to store number ids
   @param batch_size: number of sentences per batch
@@ -151,7 +151,7 @@ def train_distributed_knn(
       f.unlink()
 
   # First off, we need to get a representative sample for faiss training
-  training_data = idx_embedding.random_sample(
+  training_data = hash_and_embedding.random_sample(
       prob=training_sample_prob
   ).pluck(
       embedding_field
@@ -168,7 +168,7 @@ def train_distributed_knn(
   )
 
   # For each partition, load embeddings to idx
-  partial_idx_paths = idx_embedding.map_partitions(
+  partial_idx_paths = hash_and_embedding.map_partitions(
       create_partial_faiss_index,
       # --
       init_index_path=init_index_path,

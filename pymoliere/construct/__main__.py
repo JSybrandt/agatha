@@ -139,6 +139,10 @@ if __name__ == "__main__":
           name=name,
           checkpoint_dir=checkpoint_dir,
       )
+    if config.HasField("stop_after_ckpt") and config.stop_after_ckpt == name:
+      print("Stopping early.")
+      exit(0)
+
 
   # Download all of pubmed. ####
   print("Downloading pubmed XML Files")
@@ -251,7 +255,7 @@ if __name__ == "__main__":
   )
   ckpt("sentence_edges_adj")
 
-  # Join them all together
+  # Join them all together and write to DB
   sentence_edges = dbag.concat([
     sentence_edges_terms,
     sentence_edges_entities,
@@ -259,41 +263,49 @@ if __name__ == "__main__":
     sentence_edges_ngrams,
     sentence_edges_adj,
   ])
-  ckpt("sentence_edges")
-
   final_tasks.append(sentence_edges.map_partitions(write_db.write_edges))
 
   # At this point we have to do the embedding
 
-  # Get KNN. To start, we need numeric indices and embeddings. Additionally,
-  # we're going to need the opposite mapping as well.
-  strid2hash= knn_util.create_inverted_index(sentences)
-  hash_and_embedding = sentences.map(
-      lambda x: {
-        "id": misc_util.hash_str_to_int64(x["id"]),  # need numeric ids
-        "sent_text": x["sent_text"],  # keep text
-      }
-  ).map_partitions(
-      embedding_util.embed_records,
-      # --
-      batch_size=config.sys.batch_size,
-      text_field="sent_text",
-      max_sequence_length=config.parser.max_sequence_length,
+  sentences_with_embedding = (
+      sentences_with_bow
+      .map_partitions(
+        embedding_util.embed_records,
+        # --
+        batch_size=config.sys.batch_size,
+        text_field="sent_text",
+        max_sequence_length=config.parser.max_sequence_length,
+      )
+  )
+  ckpt("sentences_with_embedding")
+
+  strid2hash= knn_util.create_inverted_index(sentences_with_embedding)
+  hash_and_embedding = (
+      sentences_with_embedding
+      .map(
+        lambda x: {
+          "id": misc_util.hash_str_to_int64(x["id"]),
+          "embedding": x["embedding"]
+        }
+      )
   )
   ckpt("hash_and_embedding")
 
   # Now we can distribute the knn training
-  final_index_path = knn_util.train_distributed_knn(
-      idx_embedding=hash_and_embedding,
-      batch_size=config.sys.batch_size,
-      num_centroids=config.sentence_knn.num_centroids,
-      num_probes=config.sentence_knn.num_probes,
-      num_quantizers=config.sentence_knn.num_quantizers,
-      bits_per_quantizer=config.sentence_knn.bits_per_quantizer,
-      training_sample_prob=config.sentence_knn.training_probability,
-      shared_scratch_dir=faiss_index_dir,
-      final_index_path=faiss_index_dir.joinpath("final.index"),
-  )
+  final_index_path = faiss_index_dir.joinpath("final.index")
+  if not final_index_path.is_file():
+    # now, final_index_path is a delayed object
+    final_index_path = knn_util.train_distributed_knn(
+        idx_embedding=hash_and_embedding,
+        batch_size=config.sys.batch_size,
+        num_centroids=config.sentence_knn.num_centroids,
+        num_probes=config.sentence_knn.num_probes,
+        num_quantizers=config.sentence_knn.num_quantizers,
+        bits_per_quantizer=config.sentence_knn.bits_per_quantizer,
+        training_sample_prob=config.sentence_knn.training_probability,
+        shared_scratch_dir=faiss_index_dir,
+        final_index_path=final_index_path,
+    )
 
   nearest_neighbors_edges = hash_and_embedding.map_partitions(
       knn_util.get_neighbors_from_index_per_part,

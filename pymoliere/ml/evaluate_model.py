@@ -4,31 +4,24 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 from torch import nn
-from pathlib import Path
 from tqdm import tqdm
 from pymoliere.util.misc_util import iter_to_batches
-from typing import List, Optional, Callable, Any, Dict
-
-ToTensorFn = Callable[[Any], torch.Tensor]
+from typing import List
+import numpy as np
 
 def evaluate_multiclass_model(
     model:nn.Module,
     device:torch.device,
     batch_size:int,
-    data:List[Any],
+    data:List[torch.Tensor],
     labels:List[int],
-    metadata:List[Any],
     class_names:List[str],
-    output_dir:Path,
-    data_batch_to_tensor_fn:Optional[ToTensorFn]=None,
 )->None:
   """
   Given a pytorch model and some testing data, perform a number of multiclass
   evaluations. We populate the result dir with different evaluation summaries.
-  @param metadata: Additional data that helps us understand each point beyond its simple vector information. Used for winners/losers
   @param class_names: a mapping of index2string
   """
-  output_dir.mkdir(parents=True, exist_ok=True)
 
   model.to(device)
   model.eval()
@@ -40,14 +33,16 @@ def evaluate_multiclass_model(
       total=int(len(data)/batch_size)
   )
   for batch_data in pbar:
-    if data_batch_to_tensor_fn is not None:
-      batch_data = data_batch_to_tensor_fn(batch_data)
+    batch_data = torch.stack(batch_data)
     batch_data = batch_data.to(device)
 
     batch_logits = model(batch_data)
     _, batch_predictions = torch.max(batch_logits, 1)
     batch_predictions = batch_predictions.detach().cpu().numpy().tolist()
     predicted_labels += batch_predictions
+
+  accuracy = np.mean([x == y for x, y in zip(labels, predicted_labels)])
+  print("Accuracy:", accuracy)
 
   confusion = confusion_matrix(labels, predicted_labels)
   p, r, f, s = precision_recall_fscore_support(labels, predicted_labels)

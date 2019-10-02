@@ -115,6 +115,9 @@ message ConstructConfig {
   optional MlConfig sys = 7;
   optional ConstructDebugConfig debug = 8;
   optional NGramConfig phrases = 9;
+  // If set, we're going to stop the construction process once we checkpoint
+  // this value. Used to help prepare data for the ML process.
+  optional string stop_after_ckpt = 10;
 }
 
 // Config used to query the network.
@@ -134,11 +137,13 @@ message QueryConfig {
 ////////////////////////////////////////////////////////////////////////////////
 
 message SentenceClassifierConfig {
-  optional ClusterConfig cluster = 1;
-  optional FtpSource ftp = 2;
-  optional TextParserConfig parser = 3;
-  optional MlConfig ml = 4;
+  // Root to the scratch directory
+  optional string shared_scratch = 1;
+  optional MlConfig sys = 2;
   // Path to store model
-  optional string model_output_path = 5;
-  optional string evaluation_output_dir = 6;
+  optional string model_output_path = 3;
+  optional string evaluation_output_dir = 4;
+  optional float test_set_ratio = 5 [default=0.2];
+  optional float validation_set_ratio = 6 [default=0.1];
+  optional bool force_retrain = 7 [default=false];
 }

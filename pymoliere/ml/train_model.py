@@ -1,18 +1,12 @@
 import plotille
 import torch
 from torch import nn
-from torch.nn import functional as F
-from typing import List, Any, Callable, Optional, Tuple
+from typing import List
 from os import system
 from tqdm import tqdm
-from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
 from pymoliere.util.misc_util import iter_to_batches
 
-
-# Any function that maps batch_data, batch_labels ->
-# tensor_batch_data, tensor_batch_labels
-ToTensorFn = Callable[[Any, Any], Tuple[torch.Tensor, torch.Tensor]]
 
 def train_classifier(
     model:nn.Module,
@@ -20,19 +14,15 @@ def train_classifier(
     loss_fn:nn.modules.loss._Loss,
     optimizer:torch.optim.Optimizer,
     num_epochs:int,
-    data:List[Any],
-    labels:List[int],
+    training_data:List[torch.Tensor],
+    validation_data:List[torch.Tensor],
+    training_labels:List[int],
+    validation_labels:List[int],
     batch_size:int,
-    validation_ratio:float,
     shuffle_batch:bool=True,
-    batch_to_tensor_fn:Optional[ToTensorFn]=None,
 )->None:
   print("Model -> device")
   model = model.to(device)
-
-  print("Splitting train/test")
-  training_data, validation_data, training_labels, validation_labels = \
-      train_test_split(data, labels, test_size=validation_ratio)
 
   training_losses = []
   validation_losses = []
@@ -100,12 +90,8 @@ def train_classifier(
           total=int(len(X)/batch_size)
       )
       for batch in pbar:
-        batch_data = [x for x,_ in batch]
-        batch_labels = [y for _, y in batch]
-        if batch_to_tensor_fn is not None:
-          batch_data, batch_labels = batch_to_tensor_fn(
-              batch_data, batch_labels
-          )
+        batch_data = torch.stack([x for x,_ in batch])
+        batch_labels = torch.LongTensor([y for _, y in batch])
 
         batch_data = batch_data.to(device)
         batch_labels = batch_labels.to(device)

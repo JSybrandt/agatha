@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='pymoliere',
   syntax='proto2',
   serialized_options=None,
-  serialized_pb=_b('\n\x1dpymoliere/config/config.proto\x12\tpymoliere\"T\n\tFtpSource\x12%\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\x14\x66tp.ncbi.nlm.nih.gov\x12 \n\x07workdir\x18\x02 \x01(\t:\x0fpubmed/baseline\"\xe3\x01\n\rClusterConfig\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\t\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x38\x37\x38\x36\x12\x1b\n\rlocal_scratch\x18\x03 \x01(\t:\x04/tmp\x12\x16\n\x0eshared_scratch\x18\x04 \x01(\t\x12\x16\n\x07restart\x18\x05 \x01(\x08:\x05\x66\x61lse\x12\x1a\n\x0brun_locally\x18\x06 \x01(\x08:\x05\x66\x61lse\x12 \n\x11\x63lear_checkpoints\x18\x07 \x01(\x08:\x05\x66\x61lse\x12\"\n\x13\x64isable_checkpoints\x18\x08 \x01(\x08:\x05\x66\x61lse\"\xe0\x01\n\x10TextParserConfig\x12\x18\n\x10scispacy_version\x18\x01 \x01(\t\x12\x18\n\x10scibert_data_dir\x18\x02 \x01(\t\x12\x1c\n\x10min_sentence_len\x18\x03 \x01(\x05:\x02\x31\x30\x12\x1e\n\x10max_sentence_len\x18\x04 \x01(\x05:\x04\x31\x30\x30\x30\x12\x15\n\rstopword_list\x18\x05 \x01(\t\x12 \n\x13max_sequence_length\x18\x06 \x01(\x05:\x03\x35\x30\x30\x12!\n\x16min_document_frequency\x18\x07 \x01(\x05:\x01\x31\"v\n\x0bNGramConfig\x12\x1b\n\x10max_ngram_length\x18\x01 \x01(\x05:\x01\x33\x12\x1e\n\x11min_ngram_support\x18\x02 \x01(\x05:\x03\x31\x30\x30\x12*\n\x1fmin_ngram_support_per_partition\x18\x03 \x01(\x05:\x01\x32\"\xba\x01\n\tKnnConfig\x12\x1a\n\rnum_neighbors\x18\x01 \x01(\x05:\x03\x31\x30\x30\x12\x1b\n\rnum_centroids\x18\x02 \x01(\x05:\x04\x34\x30\x39\x36\x12\x15\n\nnum_probes\x18\x03 \x01(\x05:\x01\x38\x12\x1a\n\x0enum_quantizers\x18\x04 \x01(\x05:\x02\x33\x32\x12\x1d\n\x12\x62its_per_quantizer\x18\x05 \x01(\x05:\x01\x38\x12\"\n\x14training_probability\x18\x06 \x01(\x02:\x04\x30.01\"f\n\x0bRedisConfig\x12\x1a\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\tlocalhost\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x36\x33\x37\x39\x12\x11\n\x06\x64\x62_num\x18\x03 \x01(\x05:\x01\x30\x12\x14\n\x05\x63lear\x18\x04 \x01(\x08:\x05\x66\x61lse\"\xb1\x01\n\tLdaConfig\x12\x16\n\nnum_topics\x18\x01 \x01(\x05:\x02\x32\x30\x12\x17\n\x0brandom_seed\x18\x02 \x01(\x05:\x02\x34\x32\x12\x16\n\niterations\x18\x03 \x01(\x05:\x02\x35\x30\x12\x1c\n\x11min_support_count\x18\x04 \x01(\x05:\x01\x32\x12!\n\x14max_support_fraction\x18\x05 \x01(\x02:\x03\x30.1\x12\x1a\n\rtruncate_size\x18\x07 \x01(\x05:\x03\x32\x35\x30\"u\n\x08MlConfig\x12\x16\n\nbatch_size\x18\x01 \x01(\x05:\x02\x33\x32\x12\x1a\n\x0b\x64isable_gpu\x18\x02 \x01(\x08:\x05\x66\x61lse\x12\x16\n\nnum_epochs\x18\x03 \x01(\x05:\x02\x31\x30\x12\x1d\n\x10validation_ratio\x18\x04 \x01(\x02:\x03\x30.1\"s\n\x14\x43onstructDebugConfig\x12\x15\n\x06\x65nable\x18\x01 \x01(\x08:\x05\x66\x61lse\x12!\n\x14\x64ocument_sample_rate\x18\x02 \x01(\x02:\x03\x30.1\x12!\n\x15partition_subset_size\x18\x03 \x01(\x05:\x02\x35\x30\",\n\x12ShortestPathConfig\x12\x16\n\nnode_batch\x18\x01 \x01(\x05:\x02\x31\x30\"\xd7\x02\n\x0f\x43onstructConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12!\n\x03\x66tp\x18\x03 \x01(\x0b\x32\x14.pymoliere.FtpSource\x12+\n\x06parser\x18\x04 \x01(\x0b\x32\x1b.pymoliere.TextParserConfig\x12*\n\x0csentence_knn\x18\x05 \x01(\x0b\x32\x14.pymoliere.KnnConfig\x12\"\n\x02\x64\x62\x18\x06 \x01(\x0b\x32\x16.pymoliere.RedisConfig\x12 \n\x03sys\x18\x07 \x01(\x0b\x32\x13.pymoliere.MlConfig\x12.\n\x05\x64\x65\x62ug\x18\x08 \x01(\x0b\x32\x1f.pymoliere.ConstructDebugConfig\x12\'\n\x07phrases\x18\t \x01(\x0b\x32\x16.pymoliere.NGramConfig\"\x82\x02\n\x0bQueryConfig\x12\x0e\n\x06source\x18\x01 \x01(\t\x12\x0e\n\x06target\x18\x02 \x01(\t\x12\"\n\x02\x64\x62\x18\x03 \x01(\x0b\x32\x16.pymoliere.RedisConfig\x12)\n\x1bmax_sentences_per_path_elem\x18\x04 \x01(\x05:\x04\x35\x30\x30\x30\x12)\n\x0btopic_model\x18\x05 \x01(\x0b\x32\x14.pymoliere.LdaConfig\x12+\n\x04path\x18\x06 \x01(\x0b\x32\x1d.pymoliere.ShortestPathConfig\x12\x13\n\x0bresult_path\x18\x08 \x01(\t\x12\x17\n\x08override\x18\t \x01(\x08:\x05\x66\x61lse\"\xf0\x01\n\x18SentenceClassifierConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12!\n\x03\x66tp\x18\x02 \x01(\x0b\x32\x14.pymoliere.FtpSource\x12+\n\x06parser\x18\x03 \x01(\x0b\x32\x1b.pymoliere.TextParserConfig\x12\x1f\n\x02ml\x18\x04 \x01(\x0b\x32\x13.pymoliere.MlConfig\x12\x19\n\x11model_output_path\x18\x05 \x01(\t\x12\x1d\n\x15\x65valuation_output_dir\x18\x06 \x01(\t')
+  serialized_pb=_b('\n\x1dpymoliere/config/config.proto\x12\tpymoliere\"T\n\tFtpSource\x12%\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\x14\x66tp.ncbi.nlm.nih.gov\x12 \n\x07workdir\x18\x02 \x01(\t:\x0fpubmed/baseline\"\xe3\x01\n\rClusterConfig\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\t\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x38\x37\x38\x36\x12\x1b\n\rlocal_scratch\x18\x03 \x01(\t:\x04/tmp\x12\x16\n\x0eshared_scratch\x18\x04 \x01(\t\x12\x16\n\x07restart\x18\x05 \x01(\x08:\x05\x66\x61lse\x12\x1a\n\x0brun_locally\x18\x06 \x01(\x08:\x05\x66\x61lse\x12 \n\x11\x63lear_checkpoints\x18\x07 \x01(\x08:\x05\x66\x61lse\x12\"\n\x13\x64isable_checkpoints\x18\x08 \x01(\x08:\x05\x66\x61lse\"\xbd\x01\n\x10TextParserConfig\x12\x18\n\x10scispacy_version\x18\x01 \x01(\t\x12\x18\n\x10scibert_data_dir\x18\x02 \x01(\t\x12\x1c\n\x10min_sentence_len\x18\x03 \x01(\x05:\x02\x31\x30\x12\x1e\n\x10max_sentence_len\x18\x04 \x01(\x05:\x04\x31\x30\x30\x30\x12\x15\n\rstopword_list\x18\x05 \x01(\t\x12 \n\x13max_sequence_length\x18\x06 \x01(\x05:\x03\x35\x30\x30\"v\n\x0bNGramConfig\x12\x1b\n\x10max_ngram_length\x18\x01 \x01(\x05:\x01\x33\x12\x1e\n\x11min_ngram_support\x18\x02 \x01(\x05:\x03\x31\x30\x30\x12*\n\x1fmin_ngram_support_per_partition\x18\x03 \x01(\x05:\x01\x32\"\xba\x01\n\tKnnConfig\x12\x1a\n\rnum_neighbors\x18\x01 \x01(\x05:\x03\x31\x30\x30\x12\x1b\n\rnum_centroids\x18\x02 \x01(\x05:\x04\x34\x30\x39\x36\x12\x15\n\nnum_probes\x18\x03 \x01(\x05:\x01\x38\x12\x1a\n\x0enum_quantizers\x18\x04 \x01(\x05:\x02\x33\x32\x12\x1d\n\x12\x62its_per_quantizer\x18\x05 \x01(\x05:\x01\x38\x12\"\n\x14training_probability\x18\x06 \x01(\x02:\x04\x30.01\"f\n\x0bRedisConfig\x12\x1a\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\tlocalhost\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x36\x33\x37\x39\x12\x11\n\x06\x64\x62_num\x18\x03 \x01(\x05:\x01\x30\x12\x14\n\x05\x63lear\x18\x04 \x01(\x08:\x05\x66\x61lse\"\xb1\x01\n\tLdaConfig\x12\x16\n\nnum_topics\x18\x01 \x01(\x05:\x02\x32\x30\x12\x17\n\x0brandom_seed\x18\x02 \x01(\x05:\x02\x34\x32\x12\x16\n\niterations\x18\x03 \x01(\x05:\x02\x35\x30\x12\x1c\n\x11min_support_count\x18\x04 \x01(\x05:\x01\x32\x12!\n\x14max_support_fraction\x18\x05 \x01(\x02:\x03\x30.1\x12\x1a\n\rtruncate_size\x18\x07 \x01(\x05:\x03\x32\x35\x30\"u\n\x08MlConfig\x12\x16\n\nbatch_size\x18\x01 \x01(\x05:\x02\x33\x32\x12\x1a\n\x0b\x64isable_gpu\x18\x02 \x01(\x08:\x05\x66\x61lse\x12\x16\n\nnum_epochs\x18\x03 \x01(\x05:\x02\x31\x30\x12\x1d\n\x10validation_ratio\x18\x04 \x01(\x02:\x03\x30.1\"s\n\x14\x43onstructDebugConfig\x12\x15\n\x06\x65nable\x18\x01 \x01(\x08:\x05\x66\x61lse\x12!\n\x14\x64ocument_sample_rate\x18\x02 \x01(\x02:\x03\x30.1\x12!\n\x15partition_subset_size\x18\x03 \x01(\x05:\x02\x35\x30\",\n\x12ShortestPathConfig\x12\x16\n\nnode_batch\x18\x01 \x01(\x05:\x02\x31\x30\"\xf0\x02\n\x0f\x43onstructConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12!\n\x03\x66tp\x18\x03 \x01(\x0b\x32\x14.pymoliere.FtpSource\x12+\n\x06parser\x18\x04 \x01(\x0b\x32\x1b.pymoliere.TextParserConfig\x12*\n\x0csentence_knn\x18\x05 \x01(\x0b\x32\x14.pymoliere.KnnConfig\x12\"\n\x02\x64\x62\x18\x06 \x01(\x0b\x32\x16.pymoliere.RedisConfig\x12 \n\x03sys\x18\x07 \x01(\x0b\x32\x13.pymoliere.MlConfig\x12.\n\x05\x64\x65\x62ug\x18\x08 \x01(\x0b\x32\x1f.pymoliere.ConstructDebugConfig\x12\'\n\x07phrases\x18\t \x01(\x0b\x32\x16.pymoliere.NGramConfig\x12\x17\n\x0fstop_after_ckpt\x18\n \x01(\t\"\x82\x02\n\x0bQueryConfig\x12\x0e\n\x06source\x18\x01 \x01(\t\x12\x0e\n\x06target\x18\x02 \x01(\t\x12\"\n\x02\x64\x62\x18\x03 \x01(\x0b\x32\x16.pymoliere.RedisConfig\x12)\n\x1bmax_sentences_per_path_elem\x18\x04 \x01(\x05:\x04\x35\x30\x30\x30\x12)\n\x0btopic_model\x18\x05 \x01(\x0b\x32\x14.pymoliere.LdaConfig\x12+\n\x04path\x18\x06 \x01(\x0b\x32\x1d.pymoliere.ShortestPathConfig\x12\x13\n\x0bresult_path\x18\x08 \x01(\t\x12\x17\n\x08override\x18\t \x01(\x08:\x05\x66\x61lse\"\xec\x01\n\x18SentenceClassifierConfig\x12\x16\n\x0eshared_scratch\x18\x01 \x01(\t\x12 \n\x03sys\x18\x02 \x01(\x0b\x32\x13.pymoliere.MlConfig\x12\x19\n\x11model_output_path\x18\x03 \x01(\t\x12\x1d\n\x15\x65valuation_output_dir\x18\x04 \x01(\t\x12\x1b\n\x0etest_set_ratio\x18\x05 \x01(\x02:\x03\x30.2\x12!\n\x14validation_set_ratio\x18\x06 \x01(\x02:\x03\x30.1\x12\x1c\n\rforce_retrain\x18\x07 \x01(\x08:\x05\x66\x61lse')
 )
 
 
@@ -193,13 +193,6 @@ _TEXTPARSERCONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='min_document_frequency', full_name='pymoliere.TextParserConfig.min_document_frequency', index=6,
-      number=7, type=5, cpp_type=1, label=1,
-      has_default_value=True, default_value=1,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -213,7 +206,7 @@ _TEXTPARSERCONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=361,
-  serialized_end=585,
+  serialized_end=550,
 )
 
 
@@ -257,8 +250,8 @@ _NGRAMCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=587,
-  serialized_end=705,
+  serialized_start=552,
+  serialized_end=670,
 )
 
 
@@ -323,8 +316,8 @@ _KNNCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=708,
-  serialized_end=894,
+  serialized_start=673,
+  serialized_end=859,
 )
 
 
@@ -375,8 +368,8 @@ _REDISCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=896,
-  serialized_end=998,
+  serialized_start=861,
+  serialized_end=963,
 )
 
 
@@ -441,8 +434,8 @@ _LDACONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1001,
-  serialized_end=1178,
+  serialized_start=966,
+  serialized_end=1143,
 )
 
 
@@ -493,8 +486,8 @@ _MLCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1180,
-  serialized_end=1297,
+  serialized_start=1145,
+  serialized_end=1262,
 )
 
 
@@ -538,8 +531,8 @@ _CONSTRUCTDEBUGCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1299,
-  serialized_end=1414,
+  serialized_start=1264,
+  serialized_end=1379,
 )
 
 
@@ -569,8 +562,8 @@ _SHORTESTPATHCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1416,
-  serialized_end=1460,
+  serialized_start=1381,
+  serialized_end=1425,
 )
 
 
@@ -637,6 +630,13 @@ _CONSTRUCTCONFIG = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='stop_after_ckpt', full_name='pymoliere.ConstructConfig.stop_after_ckpt', index=8,
+      number=10, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -649,8 +649,8 @@ _CONSTRUCTCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1463,
-  serialized_end=1806,
+  serialized_start=1428,
+  serialized_end=1796,
 )
 
 
@@ -729,8 +729,8 @@ _QUERYCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1809,
-  serialized_end=2067,
+  serialized_start=1799,
+  serialized_end=2057,
 )
 
 
@@ -742,44 +742,51 @@ _SENTENCECLASSIFIERCONFIG = _descriptor.Descriptor(
   containing_type=None,
   fields=[
     _descriptor.FieldDescriptor(
-      name='cluster', full_name='pymoliere.SentenceClassifierConfig.cluster', index=0,
-      number=1, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
+      name='shared_scratch', full_name='pymoliere.SentenceClassifierConfig.shared_scratch', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='ftp', full_name='pymoliere.SentenceClassifierConfig.ftp', index=1,
+      name='sys', full_name='pymoliere.SentenceClassifierConfig.sys', index=1,
       number=2, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='parser', full_name='pymoliere.SentenceClassifierConfig.parser', index=2,
-      number=3, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='ml', full_name='pymoliere.SentenceClassifierConfig.ml', index=3,
-      number=4, type=11, cpp_type=10, label=1,
-      has_default_value=False, default_value=None,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      serialized_options=None, file=DESCRIPTOR),
-    _descriptor.FieldDescriptor(
-      name='model_output_path', full_name='pymoliere.SentenceClassifierConfig.model_output_path', index=4,
-      number=5, type=9, cpp_type=9, label=1,
+      name='model_output_path', full_name='pymoliere.SentenceClassifierConfig.model_output_path', index=2,
+      number=3, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
-      name='evaluation_output_dir', full_name='pymoliere.SentenceClassifierConfig.evaluation_output_dir', index=5,
-      number=6, type=9, cpp_type=9, label=1,
+      name='evaluation_output_dir', full_name='pymoliere.SentenceClassifierConfig.evaluation_output_dir', index=3,
+      number=4, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='test_set_ratio', full_name='pymoliere.SentenceClassifierConfig.test_set_ratio', index=4,
+      number=5, type=2, cpp_type=6, label=1,
+      has_default_value=True, default_value=float(0.2),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='validation_set_ratio', full_name='pymoliere.SentenceClassifierConfig.validation_set_ratio', index=5,
+      number=6, type=2, cpp_type=6, label=1,
+      has_default_value=True, default_value=float(0.1),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+    _descriptor.FieldDescriptor(
+      name='force_retrain', full_name='pymoliere.SentenceClassifierConfig.force_retrain', index=6,
+      number=7, type=8, cpp_type=7, label=1,
+      has_default_value=True, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
@@ -795,8 +802,8 @@ _SENTENCECLASSIFIERCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2070,
-  serialized_end=2310,
+  serialized_start=2060,
+  serialized_end=2296,
 )
 
 _CONSTRUCTCONFIG.fields_by_name['cluster'].message_type = _CLUSTERCONFIG
@@ -810,10 +817,7 @@ _CONSTRUCTCONFIG.fields_by_name['phrases'].message_type = _NGRAMCONFIG
 _QUERYCONFIG.fields_by_name['db'].message_type = _REDISCONFIG
 _QUERYCONFIG.fields_by_name['topic_model'].message_type = _LDACONFIG
 _QUERYCONFIG.fields_by_name['path'].message_type = _SHORTESTPATHCONFIG
-_SENTENCECLASSIFIERCONFIG.fields_by_name['cluster'].message_type = _CLUSTERCONFIG
-_SENTENCECLASSIFIERCONFIG.fields_by_name['ftp'].message_type = _FTPSOURCE
-_SENTENCECLASSIFIERCONFIG.fields_by_name['parser'].message_type = _TEXTPARSERCONFIG
-_SENTENCECLASSIFIERCONFIG.fields_by_name['ml'].message_type = _MLCONFIG
+_SENTENCECLASSIFIERCONFIG.fields_by_name['sys'].message_type = _MLCONFIG
 DESCRIPTOR.message_types_by_name['FtpSource'] = _FTPSOURCE
 DESCRIPTOR.message_types_by_name['ClusterConfig'] = _CLUSTERCONFIG
 DESCRIPTOR.message_types_by_name['TextParserConfig'] = _TEXTPARSERCONFIG

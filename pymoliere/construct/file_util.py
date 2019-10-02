@@ -38,16 +38,19 @@ def prep_scratches(
 def load_to_memory(dir_path:Path)->List[Any]:
   "Performs loading right now, without dask"
   assert is_result_saved(dir_path)
-  done_path = dir_path.joinpath(DONE_FILE)
   result = []
-  with open(done_path) as f:
-    for line in tqdm(f):
-      path = Path(line.strip())
-      if path.is_file():
-        result += load_part(path)
-      else:
-        raise Exception(f"Invalid stored bag {dir_path}. Missing {path}.")
+  for path in get_part_files(dir_path):
+    if path.is_file():
+      result += load_part(path)
+    else:
+      raise Exception(f"Invalid stored bag {dir_path}. Missing {path}.")
   return result
+
+
+def get_part_files(dir_path:Path)->List[Path]:
+  assert is_result_saved(dir_path)
+  with open(dir_path.joinpath(DONE_FILE)) as f:
+    return [Path(line.strip()) for line in f]
 
 
 def load_part(path:Path)->List[Any]:

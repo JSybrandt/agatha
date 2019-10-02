@@ -65,16 +65,16 @@ def record_to_bipartite_edges(
     # columns=term, doc_freq
     return list(t2df.items())
 
-  def calculate_tf_idf(row, corpus_size):
-    tfidf = 1.0 / ((
-        row.freq / log(row.doc_len+1)
-          ) * (
-        log(float(corpus_size) / row.doc_freq)
-    ))
-    return pd.Series(
-      [row.id, row.term, tfidf],
-      index=["id", "term", "freq"]
-    )
+  def calculate_tf_idf_part(part, corpus_size):
+    res = []
+    for row in part.itertuples():
+      tfidf = 1.0 / ((
+          row.freq / log(row.doc_len+1)
+            ) * (
+          log(float(corpus_size) / row.doc_freq)
+      ))
+      res.append([row.id, row.term, tfidf])
+    return pd.DataFrame(res, columns=["id", "term", "freq"])
 
   def part_to_graph(id_term_freqs):
     graph = nx.Graph()
@@ -122,9 +122,8 @@ def record_to_bipartite_edges(
     term_df = (
         term_df
         .join(document_frequencies, how="inner", on="term")
-        .apply(
-          calculate_tf_idf,
-          axis=1,
+        .map_partitions(
+          calculate_tf_idf_part,
           corpus_size=corpus_size,
           meta={
             "id": str,

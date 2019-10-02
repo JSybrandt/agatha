@@ -52,6 +52,22 @@ class SentenceClassifier(torch.nn.Module):
     # for the last
     return self.linear[-1](x)
 
+def record_to_sentence_classifier_input(record:Record)->torch.FloatTensor:
+  return torch.FloatTensor(
+    np.append(
+      record["embedding"],
+      record["sent_idx"] / float(record["sent_total"])
+    )
+  )
+
+
+def sentence_classifier_output_to_labels(
+    batch_logits:torch.FloatTensor,
+)->List[str]:
+  _, batch_predictions = torch.max(batch_logits, 1)
+  batch_predictions = batch_predictions.detach().cpu().numpy().tolist()
+  return [IDX2LABEL[i] for i in batch_predictions]
+
 
 def load_training_data_from_ckpt(ckpt_dir:Path)->List[Record]:
   res = []
@@ -61,12 +77,7 @@ def load_training_data_from_ckpt(ckpt_dir:Path)->List[Record]:
     for record in tqdm(part):
       if record["sent_type"] in LABEL2IDX:
         res.append(TrainingData(
-          dense_data=torch.FloatTensor(
-            np.append(
-              record["embedding"],
-              record["sent_idx"] / float(record["sent_total"])
-            )
-          ),
+          dense_data=record_to_sentence_classifier_input(record),
           label=LABEL2IDX[record["sent_type"]],
           date=record["date"],
         ))

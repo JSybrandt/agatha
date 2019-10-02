@@ -19,6 +19,10 @@ from dask.distributed import (
   Client,
   LocalCluster,
 )
+from pymoliere.ml.sentence_classifier import (
+    SentenceClassifier,
+    LABEL2IDX as SENT_TYPE_SET,
+)
 from copy import copy
 from pathlib import Path
 from random import shuffle
@@ -98,15 +102,23 @@ if __name__ == "__main__":
   preloader.register(*text_util.get_stopwordlist_initializer(
       stopword_path=config.parser.stopword_list
   ))
+  preloader.register(*embedding_util.get_pytorch_device_initalizer(
+      disable_gpu=config.sys.disable_gpu,
+  ))
   preloader.register(*embedding_util.get_scibert_initializer(
       scibert_data_dir=config.parser.scibert_data_dir,
-      disable_gpu=config.sys.disable_gpu,
   ))
   preloader.register(*write_db.get_redis_client_initialzizer(
       host=config.db.address,
       port=config.db.port,
       db=config.db.db_num,
   ))
+  if config.pretrained.HasField("sentence_classifier_path"):
+    preloader.register(*embedding_util.get_pretrained_model_initializer(
+      name="sentence_classifier",
+      model_class=SentenceClassifier,
+      data_dir=Path(config.pretrained.sentence_classifier_path)
+    ))
   dpg.add_global_preloader(client=dask_client, preloader=preloader)
 
   # Prepping all scratch dirs ###
@@ -161,7 +173,6 @@ if __name__ == "__main__":
   ##############################################################################
 
   print("Constructing Moliere Database")
-  final_tasks = []
   if config.debug.enable:
     print(f"\t- Downsampling {len(xml_paths)} xml files to only "
           f"{config.debug.partition_subset_size}.")
@@ -218,8 +229,6 @@ if __name__ == "__main__":
   )
   ckpt("sentences_with_bow")
 
-  final_tasks.append(sentences_with_bow.map_partitions(write_db.write_records))
-
   sentence_edges_terms = graph_util.record_to_bipartite_edges(
     records=sentences_with_bow,
     get_neighbor_keys_fn=text_util.get_interesting_token_keys,
@@ -263,7 +272,6 @@ if __name__ == "__main__":
     sentence_edges_ngrams,
     sentence_edges_adj,
   ])
-  final_tasks.append(sentence_edges.map_partitions(write_db.write_edges))
 
   # At this point we have to do the embedding
 
@@ -278,10 +286,36 @@ if __name__ == "__main__":
       )
   )
   ckpt("sentences_with_embedding")
+  final_sentence_records = sentences_with_embedding
 
-  strid2hash= knn_util.create_inverted_index(sentences_with_embedding)
+  if config.pretrained.HasField("sentence_classifier_path"):
+    labeled_sentences = (
+        final_sentence_records
+        .filter(
+          lambda r: r["sent_type"] in SENT_TYPE_SET
+        )
+    )
+    predicted_sentences = (
+        final_sentence_records
+        .filter(
+          lambda r: r["sent_type"] not in SENT_TYPE_SET
+        )
+        .map_partitions(
+          embedding_util.apply_sentence_classifier_to_part,
+          # --
+          batch_size=config.sys.batch_size
+        )
+    )
+    sentences_with_predicted_types = dbag.concat([
+      labeled_sentences,
+      predicted_sentences,
+    ])
+    ckpt("sentences_with_predicted_types")
+    final_sentence_records = sentences_with_predicted_types
+
+  strid2hash= knn_util.create_inverted_index(final_sentence_records)
   hash_and_embedding = (
-      sentences_with_embedding
+      final_sentence_records
       .map(
         lambda x: {
           "id": misc_util.hash_str_to_int64(x["id"]),
@@ -294,6 +328,7 @@ if __name__ == "__main__":
   # Now we can distribute the knn training
   final_index_path = faiss_index_dir.joinpath("final.index")
   if not final_index_path.is_file():
+    print("Training Faiss Index")
     # now, final_index_path is a delayed object
     final_index_path = knn_util.train_distributed_knn(
         idx_embedding=hash_and_embedding,
@@ -306,6 +341,8 @@ if __name__ == "__main__":
         shared_scratch_dir=faiss_index_dir,
         final_index_path=final_index_path,
     )
+  else:
+    print("Using existing Faiss Index")
 
   nearest_neighbors_edges = hash_and_embedding.map_partitions(
       knn_util.get_neighbors_from_index_per_part,
@@ -317,9 +354,12 @@ if __name__ == "__main__":
   )
   ckpt("nearest_neighbors_edges")
 
+  final_tasks = []
+  final_tasks.append(sentence_edges.map_partitions(write_db.write_edges))
   final_tasks.append(
       nearest_neighbors_edges.map_partitions(write_db.write_edges)
   )
+  final_tasks.append(sentences_with_bow.map_partitions(write_db.write_records))
 
   print("Running!")
   dask_client.compute(final_tasks, sync=True)

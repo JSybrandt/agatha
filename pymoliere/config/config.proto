@@ -100,6 +100,12 @@ message ShortestPathConfig {
   optional int32 node_batch = 1 [default=10];
 }
 
+message PretrainedModelConfig {
+  // When you add models to the construction process / ml module, add
+  // optional params here to notify the construction process.
+  optional string sentence_classifier_path = 1;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Config used to construct the network.
@@ -118,6 +124,7 @@ message ConstructConfig {
   // If set, we're going to stop the construction process once we checkpoint
   // this value. Used to help prepare data for the ML process.
   optional string stop_after_ckpt = 10;
+  optional PretrainedModelConfig pretrained = 11;
 }
 
 // Config used to query the network.

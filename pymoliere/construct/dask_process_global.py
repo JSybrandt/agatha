@@ -33,6 +33,7 @@ class WorkerPreloader(object):
     "Adds a global object to the preloader"
     assert key not in self.initializers
     self.initializers[key] = init
+    print("Registered", key)
 
   def get(self, key:str, worker:Worker)->Any:
     assert hasattr(worker, "_preloader_data")

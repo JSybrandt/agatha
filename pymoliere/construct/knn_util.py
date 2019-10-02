@@ -40,7 +40,7 @@ def get_neighbors_from_index_per_part(
   negligible).
   """
   res = []
-  subgraph = networkx.Graph()
+  subgraph = nx.Graph()
   self = get_neighbors_from_index_per_part
   if not hasattr(self, "index"):
     if index is not None:

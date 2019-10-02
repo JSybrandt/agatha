@@ -1,4 +1,4 @@
-from typing import List, Tuple, Any, Optional, Dict, Callable, Iterable
+from typing import Tuple, Iterable, ClassVar
 import torch
 import torch
 from pytorch_transformers import (
@@ -16,22 +16,75 @@ import logging
 from dask.distributed import Lock
 from pymoliere.util.misc_util import Record
 from pymoliere.construct import dask_process_global as dpg
+from pymoliere.ml.sentence_classifier import (
+    record_to_sentence_classifier_input,
+    sentence_classifier_output_to_labels,
+)
 
-def get_scibert_initializer(
-    scibert_data_dir:Path,
+def get_pytorch_device_initalizer(
     disable_gpu:bool,
 )->Tuple[str, dpg.Initializer]:
   def _init():
     if torch.cuda.is_available() and not disable_gpu:
-      dev = torch.device("cuda")
+      return torch.device("cuda")
     else:
-      dev = torch.device("cpu")
+      return torch.device("cpu")
+  return "embedding_util:device", _init
+
+def get_scibert_initializer(
+    scibert_data_dir:Path,
+)->Tuple[str, dpg.Initializer]:
+  def _init():
+    device = dpg.get("embedding_util:device")
     tok = BertTokenizer.from_pretrained(scibert_data_dir)
     model = BertModel.from_pretrained(scibert_data_dir)
     model.eval()
-    model.to(dev)
-    return (dev, tok, model)
-  return "embedding_util:dev,tok,model", _init
+    model.to(device)
+    return (tok, model)
+  return "embedding_util:tok,model", _init
+
+
+def get_pretrained_model_initializer(
+  name:str,
+  model_class:ClassVar,
+  data_dir:Path,
+  **model_kwargs
+)->Tuple[str, dpg.Initializer]:
+  def _init():
+    device = dpg.get("embedding_util:device")
+    model = model_class(**model_kwargs)
+    model.load_state_dict(
+        torch.load(
+          str(data_dir),
+          map_location=device,
+        )
+    )
+    model.eval()
+    return model
+  return f"embedding_util:{name}", _init
+
+
+def apply_sentence_classifier_to_part(
+    records:Iterable[Record],
+    batch_size:int,
+    sentence_classifier_name="sentence_classifier",
+    predicted_type_suffix=":pred",
+    sentence_type_field="sent_type",
+)->Iterable[Record]:
+  device = dpg.get("embedding_util:device")
+  model = dpg.get(f"embedding_util:{sentence_classifier_name}")
+
+  res = []
+  for rec_batch in iter_to_batches(records, batch_size):
+    model_input = torch.stack(
+        [record_to_sentence_classifier_input(r) for r in rec_batch]
+    ).to(device)
+    predicted_labels = sentence_classifier_output_to_labels(model(model_input))
+    for r, lbl in zip(rec_batch, predicted_labels):
+      r[sentence_type_field] = lbl+predicted_type_suffix
+      res.append(r)
+  print(len(res))
+  return res
 
 
 def embed_records(
@@ -47,7 +100,8 @@ def embed_records(
   of the supplied text field.
   """
 
-  dev, tok, model = dpg.get("embedding_util:dev,tok,model")
+  dev = dpg.get("embedding_util:device")
+  tok, model = dpg.get("embedding_util:tok,model")
 
   res = []
   for batch in iter_to_batches(records, batch_size):
@@ -65,4 +119,3 @@ def embed_records(
       record[out_embedding_field] = emb
       res.append(record)
   return res
-

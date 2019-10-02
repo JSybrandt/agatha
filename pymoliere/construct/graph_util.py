@@ -48,14 +48,10 @@ def record_to_bipartite_edges(
         else:
           tfs[n] = 1
       res += [
-          {
-            "id": id_,
-            "term": term,
-            "freq": freq,
-            "doc_len": len(neighs),
-          }
+          (id_, term, freq, len(neighs))
           for term, freq in tfs.items()
       ]
+    # columns=id, term, freq, doc_len
     return res
 
   def to_partial_doc_freqs(records):
@@ -66,13 +62,8 @@ def record_to_bipartite_edges(
           t2df[t] += 1
         else:
           t2df[t] = 1
-    return [
-        {
-          "term": term,
-          "doc_freq": doc_freq,
-        }
-        for term, doc_freq in t2df.items()
-    ]
+    # columns=term, doc_freq
+    return list(t2df.items())
 
   def calculate_tf_idf(row, corpus_size):
     tfidf = 1.0 / ((

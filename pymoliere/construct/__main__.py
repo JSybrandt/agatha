@@ -216,31 +216,32 @@ if __name__ == "__main__":
 
   final_tasks.append(sentences_with_bow.map_partitions(write_db.write_records))
 
-  # Don't want to reload this every time
-  print("Persisting bow for edge calcs...")
-  sentences_with_bow_persist = sentences_with_bow.persist()
   sentence_edges_terms = graph_util.record_to_bipartite_edges(
-    records=sentences_with_bow_persist,
+    records=sentences_with_bow,
     get_neighbor_keys_fn=text_util.get_interesting_token_keys,
   )
   ckpt("sentence_edges_terms")
+
   sentence_edges_entities = graph_util.record_to_bipartite_edges(
-    records=sentences_with_bow_persist,
+    records=sentences_with_bow,
     get_neighbor_keys_fn=text_util.get_entity_keys,
   )
   ckpt("sentence_edges_entities")
+
   sentence_edges_mesh = graph_util.record_to_bipartite_edges(
-    records=sentences_with_bow_persist,
+    records=sentences_with_bow,
     get_neighbor_keys_fn=text_util.get_mesh_keys,
   )
   ckpt("sentence_edges_mesh")
+
   sentence_edges_ngrams = graph_util.record_to_bipartite_edges(
-    records=sentences_with_bow_persist,
+    records=sentences_with_bow,
     get_neighbor_keys_fn=text_util.get_ngram_keys,
   )
   ckpt("sentence_edges_ngrams")
+
   sentence_edges_adj = graph_util.record_to_bipartite_edges(
-    records=sentences_with_bow_persist,
+    records=sentences_with_bow,
     get_neighbor_keys_fn=text_util.get_adjacent_sentences,
     # We can store only one side of the connection because each sentence will
     # get their own neighbors. Additionally, these should all have the same
@@ -249,9 +250,8 @@ if __name__ == "__main__":
     bidirectional=False,
   )
   ckpt("sentence_edges_adj")
-  # We're done with sentences_with_bow
-  del sentences_with_bow_persist
 
+  # Join them all together
   sentence_edges = dbag.concat([
     sentence_edges_terms,
     sentence_edges_entities,

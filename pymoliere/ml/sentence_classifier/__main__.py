@@ -16,7 +16,6 @@ from typing import List, Tuple, Any
 import numpy as np
 import pickle
 import torch
-from multiprocessing import Pool
 
 
 IDX2LABEL = [
@@ -71,30 +70,19 @@ def sentence_classifier_output_to_labels(
   return [IDX2LABEL[i] for i in batch_predictions]
 
 
-def load_pkl(path):
-  res = []
-  with open(path, 'rb') as f:
-    part = pickle.load(f)
-  for record in part:
-    if record["sent_type"] in LABEL2IDX:
-      res.append(TrainingData(
-        dense_data=record_to_sentence_classifier_input(record),
-        label=LABEL2IDX[record["sent_type"]],
-        date=record["date"],
-      ))
-  return res
-
-
 def load_training_data_from_ckpt(ckpt_dir:Path)->List[Record]:
   res = []
   part_files = file_util.get_part_files(ckpt_dir)
-  with Pool() as pool:
-    pbar = tqdm(
-        pool.imap_unordered(load_pkl, part_files),
-        total=len(part_files),
-    )
-    for part in pbar:
-      res += part
+  for path in tqdm(part_files):
+    with open(path, 'rb') as f:
+      part = pickle.load(f)
+    for record in part:
+      if record["sent_type"] in LABEL2IDX:
+        res.append(TrainingData(
+          dense_data=record_to_sentence_classifier_input(record),
+          label=LABEL2IDX[record["sent_type"]],
+          date=record["date"],
+        ))
   return res
 
 

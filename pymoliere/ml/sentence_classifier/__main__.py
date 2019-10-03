@@ -41,19 +41,20 @@ class SentenceClassifier(torch.nn.Module):
   def __init__(self):
     super(SentenceClassifier, self).__init__()
     self.l1 = torch.nn.Linear(SCIBERT_OUTPUT_DIM+1, 512)
+    self.r1 = torch.nn.ReLU(inplace=True)
     self.l2 = torch.nn.Linear(512, 256)
+    self.r2 = torch.nn.ReLU(inplace=True)
     self.l3 = torch.nn.Linear(256, NUM_LABELS)
-    self.linear = [
-        self.l1, self.l2, self.l3,
-    ]
+    self.soft = torch.nn.LogSoftmax(dim=1)
 
   def forward(self, x):
-    # for all but the last
-    for l in self.linear[:-1]:
-      x = F.relu(l(x))
-    # for the last
-    return self.linear[-1](x)
-
+    x = self.l1(x)
+    x = self.r1(x)
+    x = self.l2(x)
+    x = self.r2(x)
+    x = self.l3(x)
+    x = self.soft(x)
+    return x
 
 def record_to_sentence_classifier_input(record:Record)->torch.FloatTensor:
   return torch.FloatTensor(
@@ -159,21 +160,19 @@ if __name__ == "__main__":
   print("Running pymoliere sentence_classifier with the following parameters:")
   print(config)
 
-  if config.cluster.run_locally:
-    print("Running on local machine!")
-    cluster = LocalCluster()
-    dask_client = Client(cluster)
-  else:
-    cluster_address = f"{config.cluster.address}:{config.cluster.port}"
-    print("Configuring Dask, attaching to cluster")
-    print(f"\t- {cluster_address}")
-    dask_client = Client(address=cluster_address)
-  if config.cluster.restart:
-    print("\t- Restarting cluster...")
-    dask_client.restart()
-  print(f"\t- Running on {len(dask_client.nthreads())} machines.")
-
-
+  # if config.cluster.run_locally:
+    # print("Running on local machine!")
+    # cluster = LocalCluster()
+    # dask_client = Client(cluster)
+  # else:
+    # cluster_address = f"{config.cluster.address}:{config.cluster.port}"
+    # print("Configuring Dask, attaching to cluster")
+    # print(f"\t- {cluster_address}")
+    # dask_client = Client(address=cluster_address)
+  # if config.cluster.restart:
+    # print("\t- Restarting cluster...")
+    # dask_client.restart()
+  # print(f"\t- Running on {len(dask_client.nthreads())} machines.")
 
   shared_scratch = Path(config.shared_scratch)
   training_data_scratch = (
@@ -191,11 +190,16 @@ if __name__ == "__main__":
 
   print("Prepping model")
   if torch.cuda.is_available() and not config.sys.disable_gpu:
-    device = torch.device("cuda:0")
+    device = torch.device("cuda")
   else:
     device = torch.device("cpu")
 
   model = SentenceClassifier()
+  # if torch.cuda.device_count() and not config.sys.disable_gpu:
+    # print("Going to two gpu")
+    # model = torch.nn.DataParallel(model)
+  model.to(device)
+
   loss_fn = nn.CrossEntropyLoss()
   optimizer = torch.optim.Adam(
       filter(lambda x: x.requires_grad, model.parameters()),

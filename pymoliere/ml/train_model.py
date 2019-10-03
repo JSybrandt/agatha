@@ -21,9 +21,6 @@ def train_classifier(
     batch_size:int,
     shuffle_batch:bool=True,
 )->None:
-  print("Model -> device")
-  model = model.to(device)
-
   training_losses = []
   validation_losses = []
   training_accuracies = []

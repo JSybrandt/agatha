@@ -88,12 +88,14 @@ def write_done_file(parts:List[str], part_dir:Path)->Path:
       f.write(f"{part}\n")
   return done_path
 
-def save(bag:dbag.Bag, path:Path)->dask.delayed:
+def save(bag:dbag.Bag, path:Path, keep_partial_result:bool=False)->dask.delayed:
   assert path.is_dir()
   save_tasks = []
   for part_idx, part in enumerate(bag.to_delayed()):
     part_path = path.joinpath(f"part-{part_idx}{EXT}")
-    save_tasks.append(dask.delayed(save_part)(part, part_path))
+    # if the partial result is not present, or we're not keeping partials
+    if not part_path.is_file() or not keep_partial_result:
+      save_tasks.append(dask.delayed(save_part)(part, part_path))
   return dask.delayed(write_done_file)(save_tasks, path)
 
 def is_result_saved(path:Path)->bool:

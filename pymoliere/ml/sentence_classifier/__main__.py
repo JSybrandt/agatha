@@ -16,6 +16,8 @@ from typing import List, Tuple, Any
 import numpy as np
 import pickle
 import torch
+import dask
+from dask.distributed import Client, LocalCluster
 
 
 IDX2LABEL = [
@@ -71,11 +73,8 @@ def sentence_classifier_output_to_labels(
 
 
 def load_training_data_from_ckpt(ckpt_dir:Path)->List[Record]:
-  res = []
-  part_files = file_util.get_part_files(ckpt_dir)
-  for path in tqdm(part_files):
-    with open(path, 'rb') as f:
-      part = pickle.load(f)
+  def part_to_data(part):
+    res = []
     for record in part:
       if record["sent_type"] in LABEL2IDX:
         res.append(TrainingData(
@@ -83,7 +82,13 @@ def load_training_data_from_ckpt(ckpt_dir:Path)->List[Record]:
           label=LABEL2IDX[record["sent_type"]],
           date=record["date"],
         ))
-  return res
+    return res
+  print("Loading from pymoliere checkpoint.")
+  return (
+      file_util.load(ckpt_dir)
+      .map_partitions(part_to_data)
+      .compute()
+  )
 
 
 def create_or_load_training_data(
@@ -153,6 +158,22 @@ if __name__ == "__main__":
   proto_util.parse_args_to_config_proto(config)
   print("Running pymoliere sentence_classifier with the following parameters:")
   print(config)
+
+  if config.cluster.run_locally:
+    print("Running on local machine!")
+    cluster = LocalCluster()
+    dask_client = Client(cluster)
+  else:
+    cluster_address = f"{config.cluster.address}:{config.cluster.port}"
+    print("Configuring Dask, attaching to cluster")
+    print(f"\t- {cluster_address}")
+    dask_client = Client(address=cluster_address)
+  if config.cluster.restart:
+    print("\t- Restarting cluster...")
+    dask_client.restart()
+  print(f"\t- Running on {len(dask_client.nthreads())} machines.")
+
+
 
   shared_scratch = Path(config.shared_scratch)
   training_data_scratch = (

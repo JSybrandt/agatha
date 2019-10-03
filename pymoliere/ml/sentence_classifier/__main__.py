@@ -12,10 +12,11 @@ from pymoliere.util.misc_util import Record
 from torch import nn
 from torch.nn import functional as F
 from tqdm import tqdm
-from typing import List
+from typing import List, Tuple, Any
 import numpy as np
 import pickle
 import torch
+from multiprocessing import Pool
 
 
 IDX2LABEL = [
@@ -52,6 +53,7 @@ class SentenceClassifier(torch.nn.Module):
     # for the last
     return self.linear[-1](x)
 
+
 def record_to_sentence_classifier_input(record:Record)->torch.FloatTensor:
   return torch.FloatTensor(
     np.append(
@@ -69,19 +71,91 @@ def sentence_classifier_output_to_labels(
   return [IDX2LABEL[i] for i in batch_predictions]
 
 
+def load_pkl(path):
+  res = []
+  with open(path, 'rb') as f:
+    part = pickle.load(f)
+  for record in part:
+    if record["sent_type"] in LABEL2IDX:
+      res.append(TrainingData(
+        dense_data=record_to_sentence_classifier_input(record),
+        label=LABEL2IDX[record["sent_type"]],
+        date=record["date"],
+      ))
+  return res
+
+
 def load_training_data_from_ckpt(ckpt_dir:Path)->List[Record]:
   res = []
-  for path in tqdm(file_util.get_part_files(ckpt_dir)):
-    with open(path, 'rb') as f:
-      part = pickle.load(f)
-    for record in tqdm(part):
-      if record["sent_type"] in LABEL2IDX:
-        res.append(TrainingData(
-          dense_data=record_to_sentence_classifier_input(record),
-          label=LABEL2IDX[record["sent_type"]],
-          date=record["date"],
-        ))
+  part_files = file_util.get_part_files(ckpt_dir)
+  with Pool() as pool:
+    pbar = tqdm(
+        pool.imap_unordered(load_pkl, part_files),
+        total=len(part_files),
+    )
+    for part in pbar:
+      res += part
   return res
+
+
+def create_or_load_training_data(
+    shared_scratch:Path,
+    data_path:Path,
+)->Tuple[List[Any], List[Any], List[Any]]:
+  "Returns train, validation, test"
+  training_data_scratch = (
+      shared_scratch
+      .joinpath("models")
+      .joinpath("sentence_classifier")
+  )
+  training_data_scratch.mkdir(parents=True, exist_ok=True)
+  data_path = training_data_scratch.joinpath("data.pkl")
+
+  if not data_path.is_file():
+    sent_w_emb_ckpt_dir = (
+        shared_scratch
+        .joinpath("dask_checkpoints")
+        .joinpath("sentences_with_embedding")  # name from construct.__main__
+    )
+    if not file_util.is_result_saved(sent_w_emb_ckpt_dir):
+      print("Error, failed to find `sentences_with_embedding` checkpoint")
+      print("Run pymoliere.construct with:")
+      print("`--stop_after_ckpt sentences_with_embedding`")
+      exit(1)
+    # Load what we need from ckpt
+    data = load_training_data_from_ckpt(sent_w_emb_ckpt_dir)
+    data.sort(key=lambda x: x.date)
+    test_set_size = int(len(data)*config.test_set_ratio)
+    validation_set_size = int(
+        (len(data) - test_set_size) * config.validation_set_ratio
+    )
+    idx_2 = len(data) - test_set_size
+    idx_1 = idx_2 - validation_set_size
+    idx_1 = len(data) - test_set_size - validation_set_size
+    training_data = data[:idx_1]
+    validation_data = data[idx_1:idx_2]
+    test_data = data[idx_2:]
+    with open(data_path, 'wb') as f:
+      pickle.dump(
+          {
+            "train": training_data,
+            "validation": validation_data,
+            "test": test_data,
+          },
+          f,
+          protocol=4,
+      )
+  else:
+    with open(data_path, 'rb') as f:
+      data = pickle.load(f)
+    training_data = data["train"]
+    validation_data = data["validation"]
+    test_data = data["test"]
+  print("Last Training Date:", training_data[-1].date)
+  print("Last Validation Date:", validation_data[-1].date)
+  print("Last Test Date:", test_data[-1].date)
+  print(f"{len(training_data)} - {len(validation_data)} - {len(test_data)}")
+  return training_data, validation_data, test_data
 
 
 if __name__ == "__main__":
@@ -92,39 +166,19 @@ if __name__ == "__main__":
   print("Running pymoliere sentence_classifier with the following parameters:")
   print(config)
 
-  sent_w_emb_ckpt_dir = (
-      Path(config.shared_scratch)
-      .joinpath("dask_checkpoints")
-      .joinpath("sentences_with_embedding")  # name from construct.__main__
+  shared_scratch = Path(config.shared_scratch)
+  training_data_scratch = (
+      shared_scratch
+      .joinpath("models")
+      .joinpath("sentence_classifier")
   )
-  if not file_util.is_result_saved(sent_w_emb_ckpt_dir):
-    print("Error, failed to find `sentences_with_embedding` checkpoint")
-    print("Run pymoliere.construct with:")
-    print("`--stop_after_ckpt sentences_with_embedding`")
-    exit(1)
+  training_data_scratch.mkdir(parents=True, exist_ok=True)
+  data_path = training_data_scratch.joinpath("data.pkl")
 
-  print("Loading training data")
-  data = load_training_data_from_ckpt(sent_w_emb_ckpt_dir)
-
-  print("Sorting by date")
-  data.sort(key=lambda x: x.date)
-
-  print("Splitting training / test")
-  test_set_size = int(len(data)*config.test_set_ratio)
-  validation_set_size = int(
-      (len(data) - test_set_size) * config.validation_set_ratio
+  training_data, validation_data, test_data = create_or_load_training_data(
+      shared_scratch=shared_scratch,
+      data_path=data_path
   )
-  idx_2 = len(data) - test_set_size
-  idx_1 = idx_2 - validation_set_size
-  idx_1 = len(data) - test_set_size - validation_set_size
-  training_data = data[:idx_1]
-  validation_data = data[idx_1:idx_2]
-  test_data = data[idx_2:]
-  print(len(data))
-  print(f"{len(training_data)} - {len(validation_data)} - {len(test_data)}")
-  print("Last Training Date:", training_data[-1].date)
-  print("Last Validation Date:", validation_data[-1].date)
-  print("Last Test Date:", test_data[-1].date)
 
   print("Prepping model")
   if torch.cuda.is_available() and not config.sys.disable_gpu:

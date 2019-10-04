@@ -96,6 +96,9 @@ def save(bag:dbag.Bag, path:Path, keep_partial_result:bool=False)->dask.delayed:
     # if the partial result is not present, or we're not keeping partials
     if not part_path.is_file() or not keep_partial_result:
       save_tasks.append(dask.delayed(save_part)(part, part_path))
+    else:
+      # introduces a no-op that keeps __done__ file correct
+      save_tasks.append(dask.delayed(part_path))
   return dask.delayed(write_done_file)(save_tasks, path)
 
 def is_result_saved(path:Path)->bool:

@@ -89,7 +89,7 @@ def write_done_file(parts:List[str], part_dir:Path)->Path:
   return done_path
 
 def save(bag:dbag.Bag, path:Path, keep_partial_result:bool=False)->dask.delayed:
-  assert path.is_dir()
+  path.mkdir(parents=True, exist_ok=True)
   save_tasks = []
   for part_idx, part in enumerate(bag.to_delayed()):
     part_path = path.joinpath(f"part-{part_idx}{EXT}")

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+THREADS=${1:-16}
+MEM=${2:-60GB}
+
 MODULE_NAME="pymoliere"
 
 CONDA_START=~/anaconda3/etc/profile.d/conda.sh
@@ -11,5 +14,9 @@ echo $MODULE_NAME > ~/.default_module
 source $CONDA_START
 source $MODULE_GROUP
 
+echo Starting cluster with $THREADS threads and $MEM memory per node.
+
 dask-ssh \
-  --hostfile $PBS_NODEFILE
+  --hostfile $PBS_NODEFILE \
+  --nthreads $THREADS \
+  --memory-limit $MEM

@@ -331,7 +331,7 @@ if __name__ == "__main__":
     print("Training Faiss Index")
     # now, final_index_path is a delayed object
     final_index_path = knn_util.train_distributed_knn(
-        idx_embedding=hash_and_embedding,
+        hash_and_embedding=hash_and_embedding,
         batch_size=config.sys.batch_size,
         num_centroids=config.sentence_knn.num_centroids,
         num_probes=config.sentence_knn.num_probes,

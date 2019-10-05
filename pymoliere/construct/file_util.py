@@ -39,7 +39,7 @@ def load_to_memory(dir_path:Path)->List[Any]:
   "Performs loading right now, without dask"
   assert is_result_saved(dir_path)
   result = []
-  for path in get_part_files(dir_path):
+  for path in tqdm(get_part_files(dir_path)):
     if path.is_file():
       result += load_part(path)
     else:

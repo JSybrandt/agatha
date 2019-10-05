@@ -146,35 +146,40 @@ def train_distributed_knn(
   @return The path you can load the resulting FAISS index
   """
   init_index_path = shared_scratch_dir.joinpath("init.index")
-  for f in shared_scratch_dir.iterdir():
-    if f.suffix == ".index" and f not in [init_index_path, final_index_path]:
-      f.unlink()
 
-  # First off, we need to get a representative sample for faiss training
-  training_data = hash_and_embedding.random_sample(
-      prob=training_sample_prob
-  ).pluck(
-      embedding_field
-  )
+  if not init_index_path.is_file():
+    # First off, we need to get a representative sample for faiss training
+    training_data = hash_and_embedding.random_sample(
+        prob=training_sample_prob
+    ).pluck(
+        embedding_field
+    )
 
-  # Train initial index, store result in init_index_path
-  init_index_path = dask.delayed(train_initial_index)(
-    training_data=training_data,
-    num_centroids=num_centroids,
-    num_probes=num_probes,
-    num_quantizers=num_quantizers,
-    bits_per_quantizer=bits_per_quantizer,
-    output_path=init_index_path,
-  )
+    # Train initial index, store result in init_index_path
+    init_index_path = dask.delayed(train_initial_index)(
+      training_data=training_data,
+      num_centroids=num_centroids,
+      num_probes=num_probes,
+      num_quantizers=num_quantizers,
+      bits_per_quantizer=bits_per_quantizer,
+      output_path=init_index_path,
+    )
 
   # For each partition, load embeddings to idx
-  partial_idx_paths = hash_and_embedding.map_partitions(
-      create_partial_faiss_index,
-      # --
-      init_index_path=init_index_path,
-      shared_scratch_dir=shared_scratch_dir,
-      batch_size=batch_size,
-  )
+  partial_idx_paths = []
+  for part_idx, part in enumerate(hash_and_embedding.to_delayed()):
+    part_path=shared_scratch_dir.joinpath(f"part-{part_idx}.index")
+    if part_path.is_file():  # rudimentary ckpt
+      partial_idx_paths.append(dask.delayed(part_path))
+    else:
+      partial_idx_paths.append(
+          dask.delayed(add_points_to_index)(
+            records=part,
+            init_index_path=init_index_path,
+            output_path=part_path,
+            batch_size=batch_size,
+          )
+      )
 
   return dask.delayed(merge_index)(
       init_index_path=init_index_path,
@@ -253,20 +258,16 @@ def train_initial_index(
   faiss.write_index(index, str(output_path))
   return output_path
 
-def create_partial_faiss_index(
+def add_points_to_index(
     records:Iterable[Record],
     init_index_path:Path,
-    shared_scratch_dir:Path,
     batch_size:int,
+    output_path:Path,
     embedding_field:str="embedding",
     id_field:str="id",
 )->Path:
   "Loads an initial index, adds the partition to the index, and writes result"
   index = faiss.read_index(str(init_index_path))
-  write_path = file_util.touch_random_unused_file(
-      shared_scratch_dir,
-      ".index"
-  )
   assert index.is_trained
 
   for batch in iter_to_batches(records, batch_size):
@@ -276,8 +277,8 @@ def create_partial_faiss_index(
         embedding_field=embedding_field
     )
     index.add_with_ids(embeddings, ids)
-  faiss.write_index(index, str(write_path))
-  return write_path
+  faiss.write_index(index, str(output_path))
+  return output_path
 
 def records_to_ids_and_embeddings(
     records:Iterable[Record],

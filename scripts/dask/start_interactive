@@ -16,7 +16,16 @@ source $MODULE_GROUP
 
 echo Starting cluster with $THREADS threads and $MEM memory per node.
 
+# Starting scheduler
+dask-scheduler &
+
+ALL_BUT_ME=$(mktemp)
+sed '1d' $PBS_NODEFILE > $ALL_BUT_ME
+
 dask-ssh \
-  --hostfile $PBS_NODEFILE \
+  --hostfile $ALL_BUT_ME \
   --nthreads $THREADS \
-  --memory-limit $MEM
+  --memory-limit $MEM \
+  --scheduler $HOSTNAME
+
+wait

@@ -64,7 +64,7 @@ def get_neighbors_from_index_per_part(
           for idx in neigh_indices
           if idx in inverted_ids and idx != root_idx
       )
-      # Potential for hash collosions
+      # Potential for hash collisions
       for root_key in inverted_ids[root_idx]:
         root_graph_key = db_key_util.to_graph_key(root_key)
         # for each text id

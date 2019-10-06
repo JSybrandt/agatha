@@ -17,6 +17,7 @@ from pymoliere.ml.sentence_classifier.util import (
     filter_sentences_with_embedding,
     record_to_training_tuple,
     SentenceClassifier,
+    IDX2LABEL,
 )
 
 

@@ -31,20 +31,30 @@ SCIBERT_OUTPUT_DIM = 768
 class SentenceClassifier(torch.nn.Module):
   def __init__(self):
     super(SentenceClassifier, self).__init__()
+    769 - 512 - 512 - 256 - 6
+    # input
     self.l1 = torch.nn.Linear(SCIBERT_OUTPUT_DIM+1, 512)
     self.r1 = torch.nn.ReLU(inplace=True)
-    self.l2 = torch.nn.Linear(512, 256)
+    # batch 1
+    self.l2 = torch.nn.Linear(512, 512)
     self.r2 = torch.nn.ReLU(inplace=True)
-    self.l3 = torch.nn.Linear(256, NUM_LABELS)
+    # batch 2
+    self.l3 = torch.nn.Linear(512, 256)
+    self.r3 = torch.nn.ReLU(inplace=True)
+    # output
+    self.l4 = torch.nn.Linear(256, NUM_LABELS)
     self.soft = torch.nn.LogSoftmax(dim=1)
 
+    self.ops = [
+        self.l1, self.r1,
+        self.l2, self.r2,
+        self.l3, self.r3,
+        self.l4, self.soft,
+    ]
+
   def forward(self, x):
-    x = self.l1(x)
-    x = self.r1(x)
-    x = self.l2(x)
-    x = self.r2(x)
-    x = self.l3(x)
-    x = self.soft(x)
+    for op in self.ops:
+      x = op(x)
     return x
 
 ################################################################################

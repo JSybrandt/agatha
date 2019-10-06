@@ -34,6 +34,7 @@ import redis
 import socket
 from pprint import pprint
 import shutil
+from pymoliere.util.db_key_util import to_graph_key
 
 
 if __name__ == "__main__":
@@ -93,6 +94,21 @@ if __name__ == "__main__":
       redis_client=redis_client
   )
 
+  # Prepping all scratch dirs ###
+  def scratch(task_name):
+    "Creates a local / global scratch dir with the give name"
+    return file_util.prep_scratches(
+      local_scratch_root=local_scratch_root,
+      shared_scratch_root=shared_scratch_root,
+      task_name=task_name,
+    )
+
+  print("Prepping scratch directories")
+  download_local, download_shared = scratch("download_pubmed")
+  _, faiss_index_dir = scratch("faiss_index")
+  _, checkpoint_dir = scratch("dask_checkpoints")
+  faiss_index_path = faiss_index_dir.joinpath("final.index")
+
   # Initialize Helper Objects ###
   print("Registering Helper Objects")
   preloader = dpg.WorkerPreloader()
@@ -113,6 +129,10 @@ if __name__ == "__main__":
       port=config.db.port,
       db=config.db.db_num,
   ))
+  # This actual file path will need to be created during the pipeline before use
+  preloader.register(*knn_util.get_faiss_index_initializer(
+      faiss_index_path=faiss_index_path,
+  ))
   if config.pretrained.HasField("sentence_classifier_path"):
     preloader.register(*embedding_util.get_pretrained_model_initializer(
       name="sentence_classifier",
@@ -120,20 +140,6 @@ if __name__ == "__main__":
       data_dir=Path(config.pretrained.sentence_classifier_path)
     ))
   dpg.add_global_preloader(client=dask_client, preloader=preloader)
-
-  # Prepping all scratch dirs ###
-  def scratch(task_name):
-    "Creates a local / global scratch dir with the give name"
-    return file_util.prep_scratches(
-      local_scratch_root=local_scratch_root,
-      shared_scratch_root=shared_scratch_root,
-      task_name=task_name,
-    )
-
-  print("Prepping scratch directories")
-  download_local, download_shared = scratch("download_pubmed")
-  _, faiss_index_dir = scratch("faiss_index")
-  _, checkpoint_dir = scratch("dask_checkpoints")
 
   if config.cluster.clear_checkpoints:
     print("Clearing checkpoint dir")
@@ -313,7 +319,6 @@ if __name__ == "__main__":
     ckpt("sentences_with_predicted_types")
     final_sentence_records = sentences_with_predicted_types
 
-  strid2hash= knn_util.create_inverted_index(final_sentence_records)
   hash_and_embedding = (
       final_sentence_records
       .map(
@@ -325,12 +330,11 @@ if __name__ == "__main__":
   )
   ckpt("hash_and_embedding")
 
+
   # Now we can distribute the knn training
-  final_index_path = faiss_index_dir.joinpath("final.index")
-  if not final_index_path.is_file():
+  if not faiss_index_path.is_file():
     print("Training Faiss Index")
-    # now, final_index_path is a delayed object
-    final_index_path = knn_util.train_distributed_knn(
+    knn_util.train_distributed_knn(
         hash_and_embedding=hash_and_embedding,
         batch_size=config.sys.batch_size,
         num_centroids=config.sentence_knn.num_centroids,
@@ -339,18 +343,28 @@ if __name__ == "__main__":
         bits_per_quantizer=config.sentence_knn.bits_per_quantizer,
         training_sample_prob=config.sentence_knn.training_probability,
         shared_scratch_dir=faiss_index_dir,
-        final_index_path=final_index_path,
-    )
+        final_index_path=faiss_index_path,
+    ).compute()
   else:
     print("Using existing Faiss Index")
 
-  nearest_neighbors_edges = hash_and_embedding.map_partitions(
-      knn_util.get_neighbors_from_index_per_part,
-      # --
-      inverted_ids=strid2hash,
-      num_neighbors=config.sentence_knn.num_neighbors,
+  # Needed for inverted index and graph edges
+  hash_and_graph_key = (
+      final_sentence_records
+      .map(
+        lambda x: {
+          "id": misc_util.hash_str_to_int64(x["id"]),
+          "name": to_graph_key(x["id"]),
+        }
+      )
+  )
+  ckpt("hash_and_graph_key")
+
+  nearest_neighbors_edges = knn_util.nearest_neighbors_network_from_index(
+      hash_and_embedding=hash_and_embedding,
+      hash_and_name=hash_and_graph_key,
       batch_size=config.sys.batch_size,
-      index_path=final_index_path,
+      num_neighbors=config.sentence_knn.num_neighbors,
   )
   ckpt("nearest_neighbors_edges")
 

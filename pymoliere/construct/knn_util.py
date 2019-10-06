@@ -16,101 +16,96 @@ from pymoliere.util import db_key_util
 from pymoliere.util.misc_util import Record
 import dask
 import networkx as nx
-
-# Maps a single hash value to a list of original id str
-InvertedIds = Dict[int, List[str]]
+from pymoliere.construct import dask_process_global as dpg
 
 
-def get_neighbors_from_index_per_part(
-    records:Iterable[Record],
-    inverted_ids: InvertedIds,
-    num_neighbors:int,
+################################################################################
+
+def get_faiss_index_initializer(
+    faiss_index_path:Path,
+    index_name:str="final"
+)->Tuple[str, dpg.Initializer]:
+  def _init():
+    assert faiss_index_path.is_file()
+    return faiss.read_index(str(faiss_index_path))
+  return f"knn_util:faiss_{index_name}", _init
+
+
+################################################################################
+
+
+def nearest_neighbors_network_from_index(
+    hash_and_embedding:dbag.Bag,
+    hash_and_name:dbag.Bag,
     batch_size:int,
-    index:Optional[faiss.Index]=None,
-    index_path:Optional[Path]=None,
-    id_field:str="id",
-    embedding_field:str="embedding",
+    num_neighbors:int,
+    faiss_index_name="final",
+    weight:float=1.0,
 )->Iterable[nx.Graph]:
   """
-  Given a set of records, and a precomputed index object, actually get the KNN.
-  Each record is embedded, and the given index is used to lookup similar
-  records.  The inverted_ids object is also used to coordinate the numerical to
-  string values.  Note that the result will NOT include a self-link, and may
-  include more/less neighbors depending on hash collisions. (Effect should be
-  negligible).
+  Step 1, create inverted index as a dataframe indexed on hash
+  Step 2, perform inference using index, store results as dataframe
+  Step 3, perform dataframe joins to dereference hashes
   """
-  res = []
-  subgraph = nx.Graph()
-  self = get_neighbors_from_index_per_part
-  if not hasattr(self, "index"):
-    if index is not None:
-      self.index = index
-    elif index_path is not None:
-      self.index = faiss.read_index(str(index_path))
-    assert hasattr(self, "index")
-    assert self.index is not None
-
-  for batch in iter_to_batches(records, batch_size):
-    ids, embeddings = records_to_ids_and_embeddings(
-        records=batch,
-        id_field=id_field,
-        embedding_field=embedding_field,
-    )
-    _, neigh_per_id = self.index.search(embeddings, num_neighbors)
-    for root_idx, neigh_indices in zip(ids, neigh_per_id):
-      # get text ids
-      neigh_ids = flatten_list(
-          inverted_ids[idx]
-          for idx in neigh_indices
-          if idx in inverted_ids and idx != root_idx
+  def apply_faiss_to_edges(records:Iterable[Record])->Iterable[Record]:
+    index = dpg.get(f"knn_util:faiss_{faiss_index_name}")
+    res = []
+    for batch in iter_to_batches(records, batch_size):
+      ids, embeddings = records_to_ids_and_embeddings(
+          records=batch,
       )
-      # Potential for hash collisions
-      for root_key in inverted_ids[root_idx]:
-        root_graph_key = db_key_util.to_graph_key(root_key)
-        # for each text id
-        for neigh_id in neigh_ids:
-          neigh_graph_key = db_key_util.to_graph_key(neigh_id)
-          subgraph.add_edge(root_graph_key, neigh_graph_key, weight=1)
-          subgraph.add_edge(neigh_graph_key, root_graph_key, weight=1)
-          if len(subgraph.edges) > SUBGRAPH_EDGE_THRESHOLD:
-            res.append(subgraph)
-            subgraph = nx.Graph()
+      _, neighs_per_root = index.search(embeddings, num_neighbors)
+      for root_idx, neigh_indices in zip(ids, neighs_per_root):
+        for neigh_idx in neigh_indices:
+          if neigh_idx != root_idx:
+            res.append({
+              "s": root_idx,
+              "t": neigh_idx,
+            })
+    return res
 
-  res.append(subgraph)
-  return res
+  def part_to_graph(raw_edges:Iterable[Tuple])->Iterable[nx.Graph]:
+    graph = nx.Graph()
+    for source, target in raw_edges:
+      graph.add_edge(source, target, weight=weight)
+      graph.add_edge(target, source, weight=weight)
+    return [graph]
 
-def create_inverted_index(
-    ids:dbag.Bag,
-    id_field:str="id",
-)->InvertedIds:
-  def part_to_inv_idx(
-      part:Iterable[Record],
-  )->Iterable[InvertedIds]:
-    res = {}
-    for record in part:
-      str_id = record[id_field]
-      int_id = hash_str_to_int64(str_id)
-      if int_id not in res:
-        res[int_id] = [str_id]
-      else:
-        res[int_id].append(str_id)
-    return [res]
+  # this dataframe a
+  hash_and_name = (
+      hash_and_name
+      .to_dataframe(
+        meta={
+          "id":int,
+          "name":str,
+        }
+      )
+      .set_index("id")
+  )
 
-  def merge_inv_idx(
-      d1:InvertedIds,
-      d2:InvertedIds=None,
-  )->InvertedIds:
-    if d2 is None:
-      return d1
-    if len(d2) > len(d1):
-      d1, d2 = d2, d1
-    for int_id, str_ids in d2.items():
-      if int_id not in d1:
-        d1[int_id] = str_ids
-      else:
-        d1[int_id] += str_ids
-    return d1
-  return ids.map_partitions(part_to_inv_idx).fold(merge_inv_idx)
+  return (
+      hash_and_embedding
+      .map_partitions(apply_faiss_to_edges)
+      .to_dataframe(
+        meta={
+          "s":int,
+          "t":int,
+        }
+      )
+      # perform a join to get the source names
+      .set_index("s")
+      .join(hash_and_name)
+      .rename(columns={"name":"source"})
+      # perform a join to get the target names
+      .set_index("t")
+      .join(hash_and_name)
+      .rename(columns={"name":"target"})
+      # clear index, at this point we have dropped the temp hashes
+      .reset_index(drop=True)
+      # output in nx graph format
+      .to_bag()
+      .map_partitions(part_to_graph)
+  )
 
 
 def train_distributed_knn(

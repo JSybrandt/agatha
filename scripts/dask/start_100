@@ -47,7 +47,8 @@ while read WORKER; do
       --memory-limit 60GB \
       --local-directory $DASK_WORKER_LOCAL \
       --scheduler-file $DASK_WORKER_SHARED/scheduler_100.json \
-      --interface ib0
+      --interface ib0 \
+      --resources WholeCpu=1
   """ >& /dev/null \
   &
 done < $PBS_NODEFILE

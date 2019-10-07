@@ -71,7 +71,8 @@ def nearest_neighbors_network_from_index(
       graph.add_edge(target, source, weight=weight)
     return [graph]
 
-  # this dataframe a
+  # This dataframe acts as an inverted index
+  # Warning, this requires a precompute step
   hash_and_name = (
       hash_and_name
       .to_dataframe(
@@ -83,6 +84,7 @@ def nearest_neighbors_network_from_index(
       .set_index("id")
   )
 
+  # Requires some precompute steps.
   return (
       hash_and_embedding
       .map_partitions(apply_faiss_to_edges)

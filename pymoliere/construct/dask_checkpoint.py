@@ -9,7 +9,8 @@ def checkpoint(
     data:dbag.Bag,
     name:str,
     checkpoint_dir:Path,
-    respect_partial_checkpoints:bool=True
+    respect_partial_checkpoints:bool=True,
+    **compute_kwargs,
 )-> dbag.Bag:
   """
   This function checkpoints a dask bag. The bag is broken into partitions, each
@@ -32,5 +33,5 @@ def checkpoint(
         data,
         part_dir,
         keep_partial_result=respect_partial_checkpoints
-    ).compute()
+    ).compute(**compute_kwargs)
   return file_util.load(part_dir)

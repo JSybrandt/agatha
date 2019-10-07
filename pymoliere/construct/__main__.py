@@ -69,6 +69,15 @@ if __name__ == "__main__":
     dask_client.restart()
   print(f"\t- Running on {len(dask_client.nthreads())} machines.")
 
+  print("Configuring worker resources")
+  for worker in dask_client.cluster.scheduler.workers.keys():
+    dask_client.cluster.scheduler.add_resources(
+        worker=worker,
+        resources={
+          "WholeCpu": 1,  # request this resource to ensure 1 task per worker
+        }
+    )
+
   # Configure Redis ##############
   print("Connecting to Redis...")
   redis_client = redis.Redis(
@@ -146,16 +155,19 @@ if __name__ == "__main__":
     shutil.rmtree(checkpoint_dir)
     checkpoint_dir.mkdir()
 
-  def ckpt(name:str)->None:
+  def ckpt(name:str, **worker_resources)->None:
     "Applies checkpointing to the given bag"
     if not config.cluster.disable_checkpoints:
       print("Checkpoint:", name)
       assert name in globals()
-      assert type(globals()[name]) == dbag.Bag
+      bag = globals()[name]
+      assert bag == dbag.Bag
+      # Replace bag with result of ckpt, typically with save / load
       globals()[name] = dask_checkpoint.checkpoint(
-          globals()[name],
+          bag,
           name=name,
           checkpoint_dir=checkpoint_dir,
+          resources={tuple(bag.__dask_keys__()): worker_resources},
       )
     if config.HasField("stop_after_ckpt") and config.stop_after_ckpt == name:
       print("Stopping early.")
@@ -366,7 +378,7 @@ if __name__ == "__main__":
       batch_size=config.sys.batch_size,
       num_neighbors=config.sentence_knn.num_neighbors,
   )
-  ckpt("nearest_neighbors_edges")
+  ckpt("nearest_neighbors_edges", WholeCpu=1)  # limits 1 faiss p/worker
 
   final_tasks = []
   final_tasks.append(sentence_edges.map_partitions(write_db.write_edges))

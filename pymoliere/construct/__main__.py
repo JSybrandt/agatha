@@ -69,14 +69,14 @@ if __name__ == "__main__":
     dask_client.restart()
   print(f"\t- Running on {len(dask_client.nthreads())} machines.")
 
-  print("Configuring worker resources")
-  for worker in dask_client.cluster.scheduler.workers.keys():
-    dask_client.cluster.scheduler.add_resources(
-        worker=worker,
-        resources={
-          "WholeCpu": 1,  # request this resource to ensure 1 task per worker
-        }
-    )
+  # print("Configuring worker resources")
+  # for worker in dask_client.cluster.scheduler.workers.keys():
+    # dask_client.cluster.scheduler.add_resources(
+        # worker=worker,
+        # resources={
+          # "WholeCpu": 1,  # request this resource to ensure 1 task per worker
+        # }
+    # )
 
   # Configure Redis ##############
   print("Connecting to Redis...")
@@ -378,7 +378,7 @@ if __name__ == "__main__":
       batch_size=config.sys.batch_size,
       num_neighbors=config.sentence_knn.num_neighbors,
   )
-  ckpt("nearest_neighbors_edges", WholeCpu=1)  # limits 1 faiss p/worker
+  ckpt("nearest_neighbors_edges")#, WholeCpu=1)  # limits 1 faiss p/worker
 
   final_tasks = []
   final_tasks.append(sentence_edges.map_partitions(write_db.write_edges))

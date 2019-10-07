@@ -1,12 +1,18 @@
 from pymoliere.util.misc_util import Record
 
-GRAPH_TYPE="g"
-SENTENCE_TYPE="s"
-LEMMA_TYPE="l"
-ENTITY_TYPE="e"
-MESH_TERM_TYPE="m"
+# THESE MUST BE UNIQUE AND 1 CHAR LONG
+# Order by key in alpha order
+
+GENE_TYPE="a"
+UMLS_TERM_TYPE="c"
 DATA_BANK_TYPE="d"
+ENTITY_TYPE="e"
+GRAPH_TYPE="g"
+LEMMA_TYPE="l"
+MESH_TERM_TYPE="m"
 NGRAM_TYPE="n"
+PREDICATE_TYPE="p"
+SENTENCE_TYPE="s"
 
 
 def key_is_type(key:str, key_type:str)->bool:

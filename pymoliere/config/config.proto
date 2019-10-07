@@ -106,6 +106,13 @@ message PretrainedModelConfig {
   optional string sentence_classifier_path = 1;
 }
 
+message MySqlConfig {
+  optional string address = 1;
+  optional string db = 2;
+  optional string user = 3;
+  optional string password = 4;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Config used to construct the network.
@@ -152,4 +159,18 @@ message SentenceClassifierConfig {
   optional float test_set_ratio = 5 [default=0.2];
   optional float validation_set_ratio = 6 [default=0.1];
   optional bool force_retrain = 7 [default=false];
+}
+
+message SemMedDBAddonConfig {
+  optional MySqlConfig semmeddb = 1;
+  optional RedisConfig pymolieredb = 2;
+
+  // This is the edge weight between a sentence and its predicate Remember that
+  // the baseline of 1 is the weight between two adjacent sentences. Also
+  // remember that edge weights are a measure of "distance" as in larger =
+  // weaker.
+  optional float sentence_predicate_weight = 3 [default=0.75];
+
+  // This is the edge weight between a umls term and a predicate
+  optional float term_predicate_weight = 4 [default=0.75];
 }

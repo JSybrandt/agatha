@@ -93,6 +93,7 @@ setup(
       "pandas",
       "paramiko",
       "protobuf",
+      "pymysql",
       "pytorch-transformers",
       "redis",
       "scispacy",

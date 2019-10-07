@@ -157,9 +157,10 @@ if __name__=="__main__":
 
 
   with semmeddb_connection.cursor() as mysql_cursor:
-    mysql_cursor.execute(QUERY)
     with redis_client.pipeline() as redis_pipeline:
-      for row in tqdm(mysql_cursor.fetchall()):
+      print("Preparing Query")
+      mysql_cursor.execute(QUERY)
+      for row in tqdm(mysql_cursor):
         edge_data = to_edges(
             row=row,
             sent_weight=config.sentence_predicate_weight,

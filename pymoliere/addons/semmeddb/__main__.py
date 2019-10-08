@@ -41,7 +41,7 @@ def get_terms(term_field:str)->List[str]:
   return res
 
 def get_sentence_graph_key(row:Record)->str:
-  version = "0"  # for now, we're only going to link to v1 papers
+  version = "1"  # for now, we're only going to link to v1 papers
   sent_idx = row["sent_idx"]  # they index abstracts from 1
   if row["type"] == "ti":  # title
     sent_idx = 0 # we index titles from 0

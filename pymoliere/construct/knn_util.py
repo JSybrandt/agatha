@@ -43,9 +43,12 @@ def nearest_neighbors_network_from_index(
     weight:float=1.0,
 )->Iterable[nx.Graph]:
   """
-  Step 1, create inverted index as a dataframe indexed on hash
-  Step 2, perform inference using index, store results as dataframe
-  Step 3, perform dataframe joins to dereference hashes
+  Step 1, apply faiss to each record,
+  Step 2, join hash_and_name to resolve the source names
+  Step 3, join hash_and_name to resolve the target names
+  Done!
+
+  NOTE! The hash_and_name bag MUST be a single partition
   """
   def apply_faiss_to_edges(records:Iterable[Record])->Iterable[Record]:
     index = dpg.get(f"knn_util:faiss_{faiss_index_name}")
@@ -59,9 +62,20 @@ def nearest_neighbors_network_from_index(
         for neigh_idx in neigh_indices:
           if neigh_idx != root_idx:
             res.append({
-              "s": root_idx,
-              "t": neigh_idx,
+              "source": root_idx,
+              "target": neigh_idx,
             })
+    return res
+
+  def replace_with_name(join_val:Iterable[Tuple[Record, Record]], key:str):
+    res = []
+    for pair in join_val:
+      idx_w_name, edge_w_idx = pair
+      # Copy over all other info
+      data_copy = {k: v for k, v in edge_w_idx.items() if k != key}
+      # Copy over name
+      data_copy[key] = idx_w_name["name"]
+      res.append(data_copy)
     return res
 
   def part_to_graph(raw_edges:Iterable[Tuple])->Iterable[nx.Graph]:
@@ -71,41 +85,28 @@ def nearest_neighbors_network_from_index(
       graph.add_edge(target, source, weight=weight)
     return [graph]
 
-  # This dataframe acts as an inverted index
-  # Warning, this requires a precompute step
-  hash_and_name = (
-      hash_and_name
-      .to_dataframe(
-        meta={
-          "id":int,
-          "name":str,
-        }
-      )
-      .set_index("id")
-  )
-
   # Requires some precompute steps.
   return (
       hash_and_embedding
       .map_partitions(apply_faiss_to_edges)
-      .to_dataframe(
-        meta={
-          "s":int,
-          "t":int,
-        }
+      .join(
+        hash_and_name,
+        on_self=lambda rec:rec["source"],
+        on_other=lambda rec:rec["id"]
       )
-      # perform a join to get the source names
-      .set_index("s")
-      .join(hash_and_name)
-      .rename(columns={"name":"source"})
-      # perform a join to get the target names
-      .set_index("t")
-      .join(hash_and_name)
-      .rename(columns={"name":"target"})
-      # clear index, at this point we have dropped the temp hashes
-      .reset_index(drop=True)
-      # output in nx graph format
-      .to_bag()
+      .map_partitions(
+        replace_with_name,
+        key="source"
+      )
+      .join(
+        hash_and_name,
+        on_self=lambda rec:rec["target"],
+        on_other=lambda rec:rec["id"]
+      )
+      .map_partitions(
+        replace_with_name,
+        key="target"
+      )
       .map_partitions(part_to_graph)
   )
 

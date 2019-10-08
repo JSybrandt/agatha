@@ -17,7 +17,6 @@ source $MODULE_GROUP
 echo Starting cluster with $THREADS threads and $MEM memory per node.
 
 dask-ssh \
-  --hostfile $PBS_NODEFILE \
-  --nthreads $THREADS \
-  --memory-limit $MEM \
-  --scheduler $HOSTNAME
+  --hostfile $PBS_NODEFILE
+  #--nthreads $THREADS \
+  #--memory-limit $MEM

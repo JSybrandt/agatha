@@ -161,7 +161,7 @@ if __name__ == "__main__":
       print("Checkpoint:", name)
       assert name in globals()
       bag = globals()[name]
-      assert bag == dbag.Bag
+      assert type(bag) == dbag.Bag
       # Replace bag with result of ckpt, typically with save / load
       globals()[name] = dask_checkpoint.checkpoint(
           bag,
@@ -369,6 +369,8 @@ if __name__ == "__main__":
           "name": to_graph_key(x["id"]),
         }
       )
+      # One partition makes this embarrassingly parallel
+      .repartition(npartitions=1)
   )
   ckpt("hash_and_graph_key")
 

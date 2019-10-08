@@ -52,10 +52,10 @@ message NGramConfig {
 
 message KnnConfig {
   optional int32 num_neighbors = 1 [default=100];
-  optional int32 num_centroids = 2 [default=4096];
-  optional int32 num_probes = 3 [default=8];
-  optional int32 num_quantizers = 4 [default=32];
-  optional int32 bits_per_quantizer = 5 [default=8];
+  optional int32 num_centroids = 2 [default=2048];
+  optional int32 num_probes = 3 [default=16];
+  optional int32 num_quantizers = 4 [default=64];
+  optional int32 bits_per_quantizer = 5 [default=12];
   // The probability that a randomly selected record is included in the inital
   // training procedure.
   optional float training_probability = 6 [default=0.01];

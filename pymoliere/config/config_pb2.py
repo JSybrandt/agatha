@@ -20,7 +20,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='pymoliere',
   syntax='proto2',
   serialized_options=None,
-  serialized_pb=_b('\n\x1dpymoliere/config/config.proto\x12\tpymoliere\"T\n\tFtpSource\x12%\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\x14\x66tp.ncbi.nlm.nih.gov\x12 \n\x07workdir\x18\x02 \x01(\t:\x0fpubmed/baseline\"\xee\x01\n\rClusterConfig\x12\x1a\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\tlocalhost\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x38\x37\x38\x36\x12\x1b\n\rlocal_scratch\x18\x03 \x01(\t:\x04/tmp\x12\x16\n\x0eshared_scratch\x18\x04 \x01(\t\x12\x16\n\x07restart\x18\x05 \x01(\x08:\x05\x66\x61lse\x12\x1a\n\x0brun_locally\x18\x06 \x01(\x08:\x05\x66\x61lse\x12 \n\x11\x63lear_checkpoints\x18\x07 \x01(\x08:\x05\x66\x61lse\x12\"\n\x13\x64isable_checkpoints\x18\x08 \x01(\x08:\x05\x66\x61lse\"\xbd\x01\n\x10TextParserConfig\x12\x18\n\x10scispacy_version\x18\x01 \x01(\t\x12\x18\n\x10scibert_data_dir\x18\x02 \x01(\t\x12\x1c\n\x10min_sentence_len\x18\x03 \x01(\x05:\x02\x31\x30\x12\x1e\n\x10max_sentence_len\x18\x04 \x01(\x05:\x04\x31\x30\x30\x30\x12\x15\n\rstopword_list\x18\x05 \x01(\t\x12 \n\x13max_sequence_length\x18\x06 \x01(\x05:\x03\x35\x30\x30\"v\n\x0bNGramConfig\x12\x1b\n\x10max_ngram_length\x18\x01 \x01(\x05:\x01\x33\x12\x1e\n\x11min_ngram_support\x18\x02 \x01(\x05:\x03\x31\x30\x30\x12*\n\x1fmin_ngram_support_per_partition\x18\x03 \x01(\x05:\x01\x32\"\xba\x01\n\tKnnConfig\x12\x1a\n\rnum_neighbors\x18\x01 \x01(\x05:\x03\x31\x30\x30\x12\x1b\n\rnum_centroids\x18\x02 \x01(\x05:\x04\x34\x30\x39\x36\x12\x15\n\nnum_probes\x18\x03 \x01(\x05:\x01\x38\x12\x1a\n\x0enum_quantizers\x18\x04 \x01(\x05:\x02\x33\x32\x12\x1d\n\x12\x62its_per_quantizer\x18\x05 \x01(\x05:\x01\x38\x12\"\n\x14training_probability\x18\x06 \x01(\x02:\x04\x30.01\"f\n\x0bRedisConfig\x12\x1a\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\tlocalhost\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x36\x33\x37\x39\x12\x11\n\x06\x64\x62_num\x18\x03 \x01(\x05:\x01\x30\x12\x14\n\x05\x63lear\x18\x04 \x01(\x08:\x05\x66\x61lse\"\xb1\x01\n\tLdaConfig\x12\x16\n\nnum_topics\x18\x01 \x01(\x05:\x02\x32\x30\x12\x17\n\x0brandom_seed\x18\x02 \x01(\x05:\x02\x34\x32\x12\x16\n\niterations\x18\x03 \x01(\x05:\x02\x35\x30\x12\x1c\n\x11min_support_count\x18\x04 \x01(\x05:\x01\x32\x12!\n\x14max_support_fraction\x18\x05 \x01(\x02:\x03\x30.1\x12\x1a\n\rtruncate_size\x18\x07 \x01(\x05:\x03\x32\x35\x30\"u\n\x08MlConfig\x12\x16\n\nbatch_size\x18\x01 \x01(\x05:\x02\x33\x32\x12\x1a\n\x0b\x64isable_gpu\x18\x02 \x01(\x08:\x05\x66\x61lse\x12\x16\n\nnum_epochs\x18\x03 \x01(\x05:\x02\x31\x30\x12\x1d\n\x10validation_ratio\x18\x04 \x01(\x02:\x03\x30.1\"s\n\x14\x43onstructDebugConfig\x12\x15\n\x06\x65nable\x18\x01 \x01(\x08:\x05\x66\x61lse\x12!\n\x14\x64ocument_sample_rate\x18\x02 \x01(\x02:\x03\x30.1\x12!\n\x15partition_subset_size\x18\x03 \x01(\x05:\x02\x35\x30\",\n\x12ShortestPathConfig\x12\x16\n\nnode_batch\x18\x01 \x01(\x05:\x02\x31\x30\"9\n\x15PretrainedModelConfig\x12 \n\x18sentence_classifier_path\x18\x01 \x01(\t\"J\n\x0bMySqlConfig\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\t\x12\n\n\x02\x64\x62\x18\x02 \x01(\t\x12\x0c\n\x04user\x18\x03 \x01(\t\x12\x10\n\x08password\x18\x04 \x01(\t\"\xa6\x03\n\x0f\x43onstructConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12!\n\x03\x66tp\x18\x03 \x01(\x0b\x32\x14.pymoliere.FtpSource\x12+\n\x06parser\x18\x04 \x01(\x0b\x32\x1b.pymoliere.TextParserConfig\x12*\n\x0csentence_knn\x18\x05 \x01(\x0b\x32\x14.pymoliere.KnnConfig\x12\"\n\x02\x64\x62\x18\x06 \x01(\x0b\x32\x16.pymoliere.RedisConfig\x12 \n\x03sys\x18\x07 \x01(\x0b\x32\x13.pymoliere.MlConfig\x12.\n\x05\x64\x65\x62ug\x18\x08 \x01(\x0b\x32\x1f.pymoliere.ConstructDebugConfig\x12\'\n\x07phrases\x18\t \x01(\x0b\x32\x16.pymoliere.NGramConfig\x12\x17\n\x0fstop_after_ckpt\x18\n \x01(\t\x12\x34\n\npretrained\x18\x0b \x01(\x0b\x32 .pymoliere.PretrainedModelConfig\"\x82\x02\n\x0bQueryConfig\x12\x0e\n\x06source\x18\x01 \x01(\t\x12\x0e\n\x06target\x18\x02 \x01(\t\x12\"\n\x02\x64\x62\x18\x03 \x01(\x0b\x32\x16.pymoliere.RedisConfig\x12)\n\x1bmax_sentences_per_path_elem\x18\x04 \x01(\x05:\x04\x35\x30\x30\x30\x12)\n\x0btopic_model\x18\x05 \x01(\x0b\x32\x14.pymoliere.LdaConfig\x12+\n\x04path\x18\x06 \x01(\x0b\x32\x1d.pymoliere.ShortestPathConfig\x12\x13\n\x0bresult_path\x18\x08 \x01(\t\x12\x17\n\x08override\x18\t \x01(\x08:\x05\x66\x61lse\"\xdd\x01\n\x18SentenceClassifierConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12\x16\n\x0eshared_scratch\x18\x02 \x01(\t\x12 \n\x03sys\x18\x03 \x01(\x0b\x32\x13.pymoliere.MlConfig\x12\x1b\n\x0etest_set_ratio\x18\x05 \x01(\x02:\x03\x30.2\x12!\n\x14validation_set_ratio\x18\x06 \x01(\x02:\x03\x30.1\x12\x1c\n\rforce_retrain\x18\x07 \x01(\x08:\x05\x66\x61lse\"\xba\x01\n\x13SemMedDBAddonConfig\x12(\n\x08semmeddb\x18\x01 \x01(\x0b\x32\x16.pymoliere.MySqlConfig\x12+\n\x0bpymolieredb\x18\x02 \x01(\x0b\x32\x16.pymoliere.RedisConfig\x12\'\n\x19sentence_predicate_weight\x18\x03 \x01(\x02:\x04\x30.75\x12#\n\x15term_predicate_weight\x18\x04 \x01(\x02:\x04\x30.75')
+  serialized_pb=_b('\n\x1dpymoliere/config/config.proto\x12\tpymoliere\"T\n\tFtpSource\x12%\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\x14\x66tp.ncbi.nlm.nih.gov\x12 \n\x07workdir\x18\x02 \x01(\t:\x0fpubmed/baseline\"\xee\x01\n\rClusterConfig\x12\x1a\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\tlocalhost\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x38\x37\x38\x36\x12\x1b\n\rlocal_scratch\x18\x03 \x01(\t:\x04/tmp\x12\x16\n\x0eshared_scratch\x18\x04 \x01(\t\x12\x16\n\x07restart\x18\x05 \x01(\x08:\x05\x66\x61lse\x12\x1a\n\x0brun_locally\x18\x06 \x01(\x08:\x05\x66\x61lse\x12 \n\x11\x63lear_checkpoints\x18\x07 \x01(\x08:\x05\x66\x61lse\x12\"\n\x13\x64isable_checkpoints\x18\x08 \x01(\x08:\x05\x66\x61lse\"\xbd\x01\n\x10TextParserConfig\x12\x18\n\x10scispacy_version\x18\x01 \x01(\t\x12\x18\n\x10scibert_data_dir\x18\x02 \x01(\t\x12\x1c\n\x10min_sentence_len\x18\x03 \x01(\x05:\x02\x31\x30\x12\x1e\n\x10max_sentence_len\x18\x04 \x01(\x05:\x04\x31\x30\x30\x30\x12\x15\n\rstopword_list\x18\x05 \x01(\t\x12 \n\x13max_sequence_length\x18\x06 \x01(\x05:\x03\x35\x30\x30\"v\n\x0bNGramConfig\x12\x1b\n\x10max_ngram_length\x18\x01 \x01(\x05:\x01\x33\x12\x1e\n\x11min_ngram_support\x18\x02 \x01(\x05:\x03\x31\x30\x30\x12*\n\x1fmin_ngram_support_per_partition\x18\x03 \x01(\x05:\x01\x32\"\xbc\x01\n\tKnnConfig\x12\x1a\n\rnum_neighbors\x18\x01 \x01(\x05:\x03\x31\x30\x30\x12\x1b\n\rnum_centroids\x18\x02 \x01(\x05:\x04\x32\x30\x34\x38\x12\x16\n\nnum_probes\x18\x03 \x01(\x05:\x02\x31\x36\x12\x1a\n\x0enum_quantizers\x18\x04 \x01(\x05:\x02\x36\x34\x12\x1e\n\x12\x62its_per_quantizer\x18\x05 \x01(\x05:\x02\x31\x32\x12\"\n\x14training_probability\x18\x06 \x01(\x02:\x04\x30.01\"f\n\x0bRedisConfig\x12\x1a\n\x07\x61\x64\x64ress\x18\x01 \x01(\t:\tlocalhost\x12\x12\n\x04port\x18\x02 \x01(\x05:\x04\x36\x33\x37\x39\x12\x11\n\x06\x64\x62_num\x18\x03 \x01(\x05:\x01\x30\x12\x14\n\x05\x63lear\x18\x04 \x01(\x08:\x05\x66\x61lse\"\xb1\x01\n\tLdaConfig\x12\x16\n\nnum_topics\x18\x01 \x01(\x05:\x02\x32\x30\x12\x17\n\x0brandom_seed\x18\x02 \x01(\x05:\x02\x34\x32\x12\x16\n\niterations\x18\x03 \x01(\x05:\x02\x35\x30\x12\x1c\n\x11min_support_count\x18\x04 \x01(\x05:\x01\x32\x12!\n\x14max_support_fraction\x18\x05 \x01(\x02:\x03\x30.1\x12\x1a\n\rtruncate_size\x18\x07 \x01(\x05:\x03\x32\x35\x30\"u\n\x08MlConfig\x12\x16\n\nbatch_size\x18\x01 \x01(\x05:\x02\x33\x32\x12\x1a\n\x0b\x64isable_gpu\x18\x02 \x01(\x08:\x05\x66\x61lse\x12\x16\n\nnum_epochs\x18\x03 \x01(\x05:\x02\x31\x30\x12\x1d\n\x10validation_ratio\x18\x04 \x01(\x02:\x03\x30.1\"s\n\x14\x43onstructDebugConfig\x12\x15\n\x06\x65nable\x18\x01 \x01(\x08:\x05\x66\x61lse\x12!\n\x14\x64ocument_sample_rate\x18\x02 \x01(\x02:\x03\x30.1\x12!\n\x15partition_subset_size\x18\x03 \x01(\x05:\x02\x35\x30\",\n\x12ShortestPathConfig\x12\x16\n\nnode_batch\x18\x01 \x01(\x05:\x02\x31\x30\"9\n\x15PretrainedModelConfig\x12 \n\x18sentence_classifier_path\x18\x01 \x01(\t\"J\n\x0bMySqlConfig\x12\x0f\n\x07\x61\x64\x64ress\x18\x01 \x01(\t\x12\n\n\x02\x64\x62\x18\x02 \x01(\t\x12\x0c\n\x04user\x18\x03 \x01(\t\x12\x10\n\x08password\x18\x04 \x01(\t\"\xa6\x03\n\x0f\x43onstructConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12!\n\x03\x66tp\x18\x03 \x01(\x0b\x32\x14.pymoliere.FtpSource\x12+\n\x06parser\x18\x04 \x01(\x0b\x32\x1b.pymoliere.TextParserConfig\x12*\n\x0csentence_knn\x18\x05 \x01(\x0b\x32\x14.pymoliere.KnnConfig\x12\"\n\x02\x64\x62\x18\x06 \x01(\x0b\x32\x16.pymoliere.RedisConfig\x12 \n\x03sys\x18\x07 \x01(\x0b\x32\x13.pymoliere.MlConfig\x12.\n\x05\x64\x65\x62ug\x18\x08 \x01(\x0b\x32\x1f.pymoliere.ConstructDebugConfig\x12\'\n\x07phrases\x18\t \x01(\x0b\x32\x16.pymoliere.NGramConfig\x12\x17\n\x0fstop_after_ckpt\x18\n \x01(\t\x12\x34\n\npretrained\x18\x0b \x01(\x0b\x32 .pymoliere.PretrainedModelConfig\"\x82\x02\n\x0bQueryConfig\x12\x0e\n\x06source\x18\x01 \x01(\t\x12\x0e\n\x06target\x18\x02 \x01(\t\x12\"\n\x02\x64\x62\x18\x03 \x01(\x0b\x32\x16.pymoliere.RedisConfig\x12)\n\x1bmax_sentences_per_path_elem\x18\x04 \x01(\x05:\x04\x35\x30\x30\x30\x12)\n\x0btopic_model\x18\x05 \x01(\x0b\x32\x14.pymoliere.LdaConfig\x12+\n\x04path\x18\x06 \x01(\x0b\x32\x1d.pymoliere.ShortestPathConfig\x12\x13\n\x0bresult_path\x18\x08 \x01(\t\x12\x17\n\x08override\x18\t \x01(\x08:\x05\x66\x61lse\"\xdd\x01\n\x18SentenceClassifierConfig\x12)\n\x07\x63luster\x18\x01 \x01(\x0b\x32\x18.pymoliere.ClusterConfig\x12\x16\n\x0eshared_scratch\x18\x02 \x01(\t\x12 \n\x03sys\x18\x03 \x01(\x0b\x32\x13.pymoliere.MlConfig\x12\x1b\n\x0etest_set_ratio\x18\x05 \x01(\x02:\x03\x30.2\x12!\n\x14validation_set_ratio\x18\x06 \x01(\x02:\x03\x30.1\x12\x1c\n\rforce_retrain\x18\x07 \x01(\x08:\x05\x66\x61lse\"\xba\x01\n\x13SemMedDBAddonConfig\x12(\n\x08semmeddb\x18\x01 \x01(\x0b\x32\x16.pymoliere.MySqlConfig\x12+\n\x0bpymolieredb\x18\x02 \x01(\x0b\x32\x16.pymoliere.RedisConfig\x12\'\n\x19sentence_predicate_weight\x18\x03 \x01(\x02:\x04\x30.75\x12#\n\x15term_predicate_weight\x18\x04 \x01(\x02:\x04\x30.75')
 )
 
 
@@ -272,28 +272,28 @@ _KNNCONFIG = _descriptor.Descriptor(
     _descriptor.FieldDescriptor(
       name='num_centroids', full_name='pymoliere.KnnConfig.num_centroids', index=1,
       number=2, type=5, cpp_type=1, label=1,
-      has_default_value=True, default_value=4096,
+      has_default_value=True, default_value=2048,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='num_probes', full_name='pymoliere.KnnConfig.num_probes', index=2,
       number=3, type=5, cpp_type=1, label=1,
-      has_default_value=True, default_value=8,
+      has_default_value=True, default_value=16,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='num_quantizers', full_name='pymoliere.KnnConfig.num_quantizers', index=3,
       number=4, type=5, cpp_type=1, label=1,
-      has_default_value=True, default_value=32,
+      has_default_value=True, default_value=64,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='bits_per_quantizer', full_name='pymoliere.KnnConfig.bits_per_quantizer', index=4,
       number=5, type=5, cpp_type=1, label=1,
-      has_default_value=True, default_value=8,
+      has_default_value=True, default_value=12,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       serialized_options=None, file=DESCRIPTOR),
@@ -317,7 +317,7 @@ _KNNCONFIG = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=684,
-  serialized_end=870,
+  serialized_end=872,
 )
 
 
@@ -368,8 +368,8 @@ _REDISCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=872,
-  serialized_end=974,
+  serialized_start=874,
+  serialized_end=976,
 )
 
 
@@ -434,8 +434,8 @@ _LDACONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=977,
-  serialized_end=1154,
+  serialized_start=979,
+  serialized_end=1156,
 )
 
 
@@ -486,8 +486,8 @@ _MLCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1156,
-  serialized_end=1273,
+  serialized_start=1158,
+  serialized_end=1275,
 )
 
 
@@ -531,8 +531,8 @@ _CONSTRUCTDEBUGCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1275,
-  serialized_end=1390,
+  serialized_start=1277,
+  serialized_end=1392,
 )
 
 
@@ -562,8 +562,8 @@ _SHORTESTPATHCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1392,
-  serialized_end=1436,
+  serialized_start=1394,
+  serialized_end=1438,
 )
 
 
@@ -593,8 +593,8 @@ _PRETRAINEDMODELCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1438,
-  serialized_end=1495,
+  serialized_start=1440,
+  serialized_end=1497,
 )
 
 
@@ -645,8 +645,8 @@ _MYSQLCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1497,
-  serialized_end=1571,
+  serialized_start=1499,
+  serialized_end=1573,
 )
 
 
@@ -739,8 +739,8 @@ _CONSTRUCTCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1574,
-  serialized_end=1996,
+  serialized_start=1576,
+  serialized_end=1998,
 )
 
 
@@ -819,8 +819,8 @@ _QUERYCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1999,
-  serialized_end=2257,
+  serialized_start=2001,
+  serialized_end=2259,
 )
 
 
@@ -885,8 +885,8 @@ _SENTENCECLASSIFIERCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2260,
-  serialized_end=2481,
+  serialized_start=2262,
+  serialized_end=2483,
 )
 
 
@@ -937,8 +937,8 @@ _SEMMEDDBADDONCONFIG = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2484,
-  serialized_end=2670,
+  serialized_start=2486,
+  serialized_end=2672,
 )
 
 _CONSTRUCTCONFIG.fields_by_name['cluster'].message_type = _CLUSTERCONFIG

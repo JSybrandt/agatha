@@ -167,7 +167,7 @@ if __name__ == "__main__":
           bag,
           name=name,
           checkpoint_dir=checkpoint_dir,
-          resources={tuple(bag.__dask_keys__()): worker_resources},
+          # resources={tuple(bag.__dask_keys__()): worker_resources},
       )
     if config.HasField("stop_after_ckpt") and config.stop_after_ckpt == name:
       print("Stopping early.")

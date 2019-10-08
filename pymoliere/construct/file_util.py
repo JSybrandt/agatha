@@ -64,10 +64,7 @@ def load(dir_path:Path)->dbag.Bag:
   with open(done_path) as f:
     for line in f:
       path = Path(line.strip())
-      if path.is_file():
-        load_tasks.append(dask.delayed(load_part)(path))
-      else:
-        raise Exception(f"Invalid stored bag {dir_path}. Missing {path}.")
+      load_tasks.append(dask.delayed(load_part)(path))
   return dbag.from_delayed(load_tasks)
 
 

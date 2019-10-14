@@ -7,16 +7,15 @@ from typing import Iterable, List, Dict, Any, Callable, Optional, Tuple
 from pymoliere.construct import embedding_util, file_util
 from pymoliere.util.misc_util import (
     iter_to_batches,
-    generator_to_list,
-    flatten_list,
     hash_str_to_int64,
-    SUBGRAPH_EDGE_THRESHOLD,
 )
 from pymoliere.util import db_key_util
 from pymoliere.util.misc_util import Record
 import dask
 import networkx as nx
 from pymoliere.construct import dask_process_global as dpg
+import pickle
+from copy import copy
 
 
 ################################################################################
@@ -30,85 +29,72 @@ def get_faiss_index_initializer(
     return faiss.read_index(str(faiss_index_path))
   return f"knn_util:faiss_{index_name}", _init
 
+def get_inverted_index_intializer(
+    inverted_index_path:Path,
+)->Tuple[str, dpg.Initializer]:
+  def _init():
+    return file_util.load_value(inverted_index_path)
+  return "knn_util:inverted_index", _init
+
 
 ################################################################################
+
+def make_inverted_index(records:dbag.Bag)->dbag.core.Item:
+  def part2dict(records:Iterable[Record])->Iterable[Dict[int, str]]:
+    d = {}
+    for rec in records:
+      d[hash_str_to_int64(rec["id"])] = db_key_util.to_graph_key(rec["id"])
+    return d
+  def merge_dicts(d1, d2=None):
+    res = {}
+    dicts = d1
+    if d2 is not None:
+      dicts += d2
+    for d in dicts:
+      for k, v in d.items():
+        res[k] = v
+    return res
+  return records.reduction(
+      perpartition=part2dict,
+      aggregate=merge_dicts,
+  )
 
 
 def nearest_neighbors_network_from_index(
     hash_and_embedding:dbag.Bag,
-    hash_and_name:dbag.Bag,
     batch_size:int,
     num_neighbors:int,
     faiss_index_name="final",
     weight:float=1.0,
 )->Iterable[nx.Graph]:
   """
-  Step 1, apply faiss to each record,
-  Step 2, join hash_and_name to resolve the source names
-  Step 3, join hash_and_name to resolve the target names
-  Done!
-
-  NOTE! The hash_and_name bag MUST be a single partition
+  Applies faiss and runs results through inverted index. Requires
+  knn_util:faiss_index and knn_util:inverted_index to be initialized.
   """
-  def apply_faiss_to_edges(records:Iterable[Record])->Iterable[Record]:
+  def apply_faiss_to_edges(records:Iterable[Record])->Iterable[nx.Graph]:
+    # clearing makes it more likely that we're going to have available memory.
+    dpg.clear()
     index = dpg.get(f"knn_util:faiss_{faiss_index_name}")
-    res = []
+    inverted_index = dpg.get("knn_util:inverted_index")
+
+    graph = nx.Graph()
     for batch in iter_to_batches(records, batch_size):
       ids, embeddings = records_to_ids_and_embeddings(
           records=batch,
       )
       _, neighs_per_root = index.search(embeddings, num_neighbors)
       for root_idx, neigh_indices in zip(ids, neighs_per_root):
+        assert root_idx in inverted_index
+        root = inverted_index[root_idx]
         for neigh_idx in neigh_indices:
           if neigh_idx != root_idx:
-            res.append({
-              "source": root_idx,
-              "target": neigh_idx,
-            })
-    return res
-
-  def replace_with_name(join_val:Iterable[Tuple[Record, Record]], key:str):
-    res = []
-    for pair in join_val:
-      idx_w_name, edge_w_idx = pair
-      # Copy over all other info
-      data_copy = {k: v for k, v in edge_w_idx.items() if k != key}
-      # Copy over name
-      data_copy[key] = idx_w_name["name"]
-      res.append(data_copy)
-    return res
-
-  def part_to_graph(raw_edges:Iterable[Tuple])->Iterable[nx.Graph]:
-    graph = nx.Graph()
-    for source, target in raw_edges:
-      graph.add_edge(source, target, weight=weight)
-      graph.add_edge(target, source, weight=weight)
+            assert neigh_idx in inverted_index
+            neigh = inverted_index[neigh_idx]
+            graph.add_edge(root, neigh, weight=weight)
+            graph.add_edge(neigh, root, weight=weight)
     return [graph]
 
-  # Requires some precompute steps.
-  return (
-      hash_and_embedding
-      .map_partitions(apply_faiss_to_edges)
-      .join(
-        hash_and_name,
-        on_self=lambda rec:rec["source"],
-        on_other=lambda rec:rec["id"]
-      )
-      .map_partitions(
-        replace_with_name,
-        key="source"
-      )
-      .join(
-        hash_and_name,
-        on_self=lambda rec:rec["target"],
-        on_other=lambda rec:rec["id"]
-      )
-      .map_partitions(
-        replace_with_name,
-        key="target"
-      )
-      .map_partitions(part_to_graph)
-  )
+  return hash_and_embedding.map_partitions(apply_faiss_to_edges)
 
 
 def train_distributed_knn(

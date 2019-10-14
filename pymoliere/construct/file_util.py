@@ -122,3 +122,18 @@ def touch_random_unused_file(base_dir:Path, ext:Optional[str]=None)->Path:
   lock.release()
   return path
 
+
+def save_value(value:Any, path:Path)->None:
+  """
+  Saves an arbitrary object.
+  """
+  with open(path, 'wb') as f:
+    pickle.dump(value, f)
+
+
+def load_value(path:Path)->Any:
+  """
+  Loads an arbitrary object.
+  """
+  with open(path, 'rb') as f:
+    return pickle.load(f)

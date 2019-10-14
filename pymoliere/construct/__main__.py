@@ -117,6 +117,7 @@ if __name__ == "__main__":
   _, faiss_index_dir = scratch("faiss_index")
   _, checkpoint_dir = scratch("dask_checkpoints")
   faiss_index_path = faiss_index_dir.joinpath("final.index")
+  inverted_index_path = shared_scratch_root.joinpath("inverted_idx.pkl")
 
   # Initialize Helper Objects ###
   print("Registering Helper Objects")
@@ -141,6 +142,10 @@ if __name__ == "__main__":
   # This actual file path will need to be created during the pipeline before use
   preloader.register(*knn_util.get_faiss_index_initializer(
       faiss_index_path=faiss_index_path,
+  ))
+  # This actual file path will need to be created during the pipeline before use
+  preloader.register(*knn_util.get_inverted_index_intializer(
+      inverted_index_path=inverted_index_path,
   ))
   if config.pretrained.HasField("sentence_classifier_path"):
     preloader.register(*embedding_util.get_pretrained_model_initializer(
@@ -361,23 +366,20 @@ if __name__ == "__main__":
     print("Using existing Faiss Index")
 
   # Needed for inverted index and graph edges
-  hash_and_graph_key = (
-      final_sentence_records
-      .map(
-        lambda x: {
-          "id": misc_util.hash_str_to_int64(x["id"]),
-          "name": to_graph_key(x["id"]),
-        }
-      )
-      # One partition makes this embarrassingly parallel
-      .repartition(npartitions=1)
-  )
-  ckpt("hash_and_graph_key")
+  if not inverted_index_path.is_file():
+    inv_index = knn_util.make_inverted_index(final_sentence_records)
+    save_task = dask.delayed(file_util.save_value)(
+        value=inv_index,
+        path=inverted_index_path
+    )
+    print("Computing Inverted Index")
+    save_task.compute()
+  else:
+    print("Using existing Inverted Index")
 
   nearest_neighbors_edges = knn_util.nearest_neighbors_network_from_index(
       hash_and_embedding=hash_and_embedding,
-      hash_and_name=hash_and_graph_key,
-      batch_size=config.sys.batch_size,
+      batch_size=1000,
       num_neighbors=config.sentence_knn.num_neighbors,
   )
   ckpt("nearest_neighbors_edges")#, WholeCpu=1)  # limits 1 faiss p/worker

@@ -49,6 +49,11 @@ class WorkerPreloader(object):
           worker._preloader_data[key] = self.initializers[key]()
     return worker._preloader_data[key]
 
+  def clear(self, worker):
+    print("Clearing process global data.")
+    del worker._preloader_data
+    worker._preloader_data = {}
+
 
 def add_global_preloader(client:Client, preloader:WorkerPreloader)->None:
   with open(PRELOADER_PATH, 'wb') as f:
@@ -70,4 +75,10 @@ def get(key:str)->Any:
   "Gets a value from the global preloader"
   worker = get_worker()
   return get_global_preloader().get(key, worker)
+
+def clear()->None:
+  "Deletes all preloaded data. To be called following a ckpt."
+  get_global_preloader().clear(get_worker())
+
+
 

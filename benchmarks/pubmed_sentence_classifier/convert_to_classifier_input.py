@@ -8,7 +8,10 @@ record, and converting the results into a mocked checkpoint directory.
 
 from argparse import ArgumentParser
 from pathlib import Path
-from pymoliere.ml.sentence_classifier import util as sent_class_util
+from pymoliere.ml.sentence_classifier import (
+    util as sent_class_util,
+    LABEL2IDX,
+)
 from pymoliere.construct import embedding_util
 from pymoliere.util.misc_util import Record
 from typing import Iterable
@@ -32,8 +35,9 @@ def parse_raw_file(raw_file_path:Path)->Iterable[Record]:
   for doc in docs:
     for idx, line in enumerate(doc):
       try:
-        label, text = line.split(" ", 1)
+        label, text = line.split("\t", 1)
         label = f"abstract:{label.lower()}"
+        assert label in LABEL2IDX
         res.append({
           "text": text,
           "sent_type": label,

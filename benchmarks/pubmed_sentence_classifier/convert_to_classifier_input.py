@@ -43,7 +43,7 @@ def parse_raw_file(raw_file_path:Path)->Iterable[Record]:
           "sent_type": label,
           "sent_idx": (idx+1),
           "sent_total": len(doc),
-          "date": "9999-99-99"
+          "date": "9999-99-99",
         })
       except:
         print(f"Err: '{line}'")
@@ -53,15 +53,29 @@ def parse_raw_file(raw_file_path:Path)->Iterable[Record]:
 if __name__ == "__main__":
   parser = ArgumentParser()
   parser.add_argument("--bert_data_dir", type=Path)
-  parser.add_argument("--raw_data_in", type=Path)
-  parser.add_argument("--eval_data_out", type=Path)
+  parser.add_argument("--in_data_dir", type=Path)
+  parser.add_argument("--out_data_dir", type=Path)
   parser.add_argument("--disable_gpu", action="store_true")
   parser.add_argument("--batch_size", type=int, default=32)
   parser.add_argument("--max_sequence_length", type=int, default=500)
   args = parser.parse_args()
 
-  assert args.raw_data_in.is_file()
-  args.eval_data_out.mkdir(parents=True, exist_ok=True)
+
+  # Prepare and check input data
+  in_train = args.in_data_dir.joinpath("train.txt")
+  in_validation = args.in_data_dir.joinpath("dev.txt")
+  in_test = args.in_data_dir.joinpath("test.txt")
+  assert in_train.is_file()
+  assert in_validation.is_file()
+  assert in_test.is_file()
+
+  # Prepare output data
+  out_train = args.out_data_dir.joinpath("training_data")
+  out_validation = args.out_data_dir.joinpath("validation_data")
+  out_test = args.out_data_dir.joinpath("testing_data")
+  out_train.mkdir(parents=True, exist_ok=True)
+  out_validation.mkdir(parents=True, exist_ok=True)
+  out_test.mkdir(parents=True, exist_ok=True)
 
   print("Prepping embedding")
   preloader = dpg.WorkerPreloader()
@@ -73,29 +87,37 @@ if __name__ == "__main__":
   ))
   dpg.add_global_preloader(preloader=preloader)
 
-  print("Converting to records.")
-  records = parse_raw_file(args.raw_data_in)
+  for in_file, out_dir in [
+      (in_train, out_train),
+      (in_validation, out_validation),
+      (in_test, out_test),
+  ]:
+    print(f"Converting {in_file} to {out_dir}")
 
-  # Step 3: Embed Records
-  embedded_records = embedding_util.embed_records(
-      records,
-      batch_size=args.batch_size,
-      text_field="text",
-      max_sequence_length=args.max_sequence_length,
-      show_pbar=True,
-  )
+    print("Converting to records.")
+    records = parse_raw_file(in_file)
 
-  # Step 4: Records to training data via util
-  print("Converting to sentence_classifier.util.TrainingData")
-  training_data = [
-      sent_class_util.record_to_training_tuple(r)
-      for r in embedded_records
-  ]
+    # Step 3: Embed Records
+    print("Embedding")
+    embedded_records = embedding_util.embed_records(
+        records,
+        batch_size=args.batch_size,
+        text_field="text",
+        max_sequence_length=args.max_sequence_length,
+        show_pbar=True,
+    )
 
-  print("Saving as mock ckpt")
-  done_file = args.eval_data_out.joinpath("__done__")
-  part_file = args.eval_data_out.joinpath("part-0.pkl")
-  with open(part_file, 'wb') as f:
-    pickle.dump(training_data, f)
-  with open(done_file, 'w') as f:
-    f.write(f"{part_file}\n")
+    # Step 4: Records to training data via util
+    print("Converting to sentence_classifier.util.TrainingData")
+    embedded_tuples = [
+        sent_class_util.record_to_training_tuple(r)
+        for r in embedded_records
+    ]
+
+    print("Saving as mock ckpt")
+    done_file = out_dir.joinpath("__done__")
+    part_file = out_dir.joinpath("part-0.pkl")
+    with open(part_file, 'wb') as f:
+      pickle.dump(embedded_tuples, f)
+    with open(done_file, 'w') as f:
+      f.write(f"{part_file}\n")

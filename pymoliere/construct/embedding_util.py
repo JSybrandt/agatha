@@ -1,25 +1,25 @@
-from typing import Tuple, Iterable, ClassVar
-import torch
-import torch
-from pytorch_transformers import (
-    BertModel,
-    BertTokenizer,
-)
-import dask.bag as dbag
-import dask.dataframe as ddf
-import numpy as np
-from pathlib import Path
-import math
-from torch.nn.utils.rnn import pad_sequence
-from pymoliere.util.misc_util import iter_to_batches
-import logging
 from dask.distributed import Lock
-from pymoliere.util.misc_util import Record
+from pathlib import Path
 from pymoliere.construct import dask_process_global as dpg
 from pymoliere.ml.sentence_classifier import (
     record_to_sentence_classifier_input,
     sentence_classifier_output_to_labels,
 )
+from pymoliere.util.misc_util import Record
+from pymoliere.util.misc_util import iter_to_batches
+from pytorch_transformers import (
+    BertModel,
+    BertTokenizer,
+)
+from torch.nn.utils.rnn import pad_sequence
+from tqdm import tqdm
+from typing import Tuple, Iterable, ClassVar
+import dask.bag as dbag
+import dask.dataframe as ddf
+import logging
+import math
+import numpy as np
+import torch
 
 def get_pytorch_device_initalizer(
     disable_gpu:bool,
@@ -93,6 +93,7 @@ def embed_records(
     text_field:str,
     max_sequence_length:int,
     out_embedding_field:str="embedding",
+    show_pbar:bool=False,
 )->Iterable[Record]:
   """
   Introduces an embedding field to each record, indicated the scibert embedding
@@ -103,7 +104,13 @@ def embed_records(
   tok, model = dpg.get("embedding_util:tok,model")
 
   res = []
-  for batch in iter_to_batches(records, batch_size):
+  # PBar is necessary when using embed_records in helper scripts.
+  pbar = tqdm(
+      iter_to_batches(records, batch_size),
+      total=int(len(records) / batch_size),
+      disable=not show_pbar,
+  )
+  for batch in pbar:
     texts = list(map(lambda x: x[text_field], batch))
     sequs = pad_sequence(
       sequences=[

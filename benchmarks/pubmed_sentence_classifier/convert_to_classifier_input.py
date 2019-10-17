@@ -13,7 +13,6 @@ from pymoliere.construct import embedding_util
 from pymoliere.util.misc_util import Record
 from typing import Iterable
 from pymoliere.construct import dask_process_global as dpg
-from dask.distributed import Client, LocalCluster
 import pickle
 
 
@@ -60,10 +59,6 @@ if __name__ == "__main__":
   assert args.raw_data_in.is_file()
   args.eval_data_out.mkdir(parents=True, exist_ok=True)
 
-  # Client needed for dpg
-  cluster = LocalCluster(n_workers=1)
-  dask_client = Client(cluster)
-
   print("Prepping embedding")
   preloader = dpg.WorkerPreloader()
   preloader.register(*embedding_util.get_pytorch_device_initalizer(
@@ -72,7 +67,7 @@ if __name__ == "__main__":
   preloader.register(*embedding_util.get_scibert_initializer(
       scibert_data_dir=args.bert_data_dir,
   ))
-  dpg.add_global_preloader(client=dask_client, preloader=preloader)
+  dpg.add_global_preloader(preloader=preloader)
 
   print("Converting to records.")
   records = parse_raw_file(args.raw_data_in)
@@ -83,6 +78,7 @@ if __name__ == "__main__":
       batch_size=args.batch_size,
       text_field="text",
       max_sequence_length=args.max_sequence_length,
+      show_pbar=True,
   )
 
   # Step 4: Records to training data via util

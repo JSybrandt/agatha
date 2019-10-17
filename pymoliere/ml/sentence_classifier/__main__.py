@@ -43,47 +43,56 @@ if __name__ == "__main__":
 
   # Prep scratches
   shared_scratch = Path(config.shared_scratch)
-  load_ckpt_dir = (
+  # Used to load the sentence embedding data produced by pymoliere.construct
+  default_ckpt_dir = (
       shared_scratch
       .joinpath("dask_checkpoints")
   )
-  # We're going to store model-specific checkpoints seperatly
-  checkpoint_dir = (
-      shared_scratch
-      .joinpath("models")
-      .joinpath("sentence_classifier")
-      .joinpath("dask_checkpoints")
-  )
-  checkpoint_dir.mkdir(parents=True, exist_ok=True)
   model_path = (
       shared_scratch
       .joinpath("models")
       .joinpath("sentence_classifier")
       .joinpath("model.pt")
   )
+  # Need to make sure model_path is writable
+  model_path.parent.mkdir(parents=True, exist_ok=True)
+
+  # We're going to store model-specific checkpoints separately
+  if config.HasField("custom_data_dir"):
+    data_ckpt_dir = Path(config.custom_data_dir)
+    assert data_ckpt_dir.is_dir()
+  else:
+    data_ckpt_dir = (
+        shared_scratch
+        .joinpath("models")
+        .joinpath("sentence_classifier")
+        .joinpath("dask_checkpoints")
+    )
+    data_ckpt_dir.mkdir(parents=True, exist_ok=True)
+
 
   # All data, this is the checkpoint we depend on
   sentences_with_embedding = file_util.load(
-      load_ckpt_dir.joinpath("sentences_with_embedding")
+      default_ckpt_dir.joinpath("sentences_with_embedding")
   )
   # Get only results with labels, store at TrainingData tuples
-  sentence_classifier_all_data = sentences_with_embedding.map_partitions(
+  all_data = sentences_with_embedding.map_partitions(
       filter_sentences_with_embedding
   )
-  print("Checkpoint: sentence_classifier_all_data")
+  print("Checkpoint: all_data")
   checkpoint(
-      sentence_classifier_all_data,
-      name="sentence_classifier_all_data",
-      checkpoint_dir=checkpoint_dir,
+      all_data,
+      name="all_data",
+      checkpoint_dir=data_ckpt_dir,
   )
 
   if not file_util.is_result_saved(
-      checkpoint_dir.joinpath("training_data")
+      data_ckpt_dir.joinpath("training_data")
   ):
     print("Finding the training data!")
     print("Getting Dates")
     sample_of_dates = (
-        sentence_classifier_all_data
+        all_data
         .random_sample(0.05)
         .map(lambda x: x.date)
         .compute()
@@ -98,24 +107,24 @@ if __name__ == "__main__":
     print("Testing is after", test_date)
     save_training_data = file_util.save(
         bag=(
-          sentence_classifier_all_data
+          all_data
           .filter(lambda x: x.date < val_date)
         ),
-        path=checkpoint_dir.joinpath("training_data")
+        path=data_ckpt_dir.joinpath("training_data")
     )
     save_validation_data = file_util.save(
         bag=(
-          sentence_classifier_all_data
+          all_data
           .filter(lambda x: val_date <= x.date < test_date)
         ),
-        path=checkpoint_dir.joinpath("validation_data")
+        path=data_ckpt_dir.joinpath("validation_data")
     )
     save_test_data = file_util.save(
         bag=(
-          sentence_classifier_all_data
+          all_data
           .filter(lambda x: test_date <= x.date)
         ),
-        path=checkpoint_dir.joinpath("test_data")
+        path=data_ckpt_dir.joinpath("testing_data")
     )
     print("Filtering and saving training/validation/testing data.")
     dask.compute(save_training_data, save_validation_data, save_test_data)
@@ -145,10 +154,10 @@ if __name__ == "__main__":
     # Get your data!
     print("Loading training data")
     training_data = file_util.load_to_memory(
-        checkpoint_dir.joinpath("training_data")
+        data_ckpt_dir.joinpath("training_data")
     )
     validation_data = file_util.load_to_memory(
-        checkpoint_dir.joinpath("validation_data")
+        data_ckpt_dir.joinpath("validation_data")
     )
     print("Beginning Training")
     train_model.train_classifier(
@@ -171,9 +180,11 @@ if __name__ == "__main__":
     print("Loading Model")
     model.load_state_dict(torch.load(model_path))
 
+  print(f"Loading test data from {data_ckpt_dir}")
   test_data = file_util.load_to_memory(
-      checkpoint_dir.joinpath("test_data")
+      data_ckpt_dir.joinpath("testing_data")
   )
+
   print("Evaluation")
   evaluate_model.evaluate_multiclass_model(
       model=model,

@@ -77,6 +77,14 @@ if __name__ == "__main__":
   out_validation.mkdir(parents=True, exist_ok=True)
   out_test.mkdir(parents=True, exist_ok=True)
 
+  print("Setting up mock all_data")
+  # The sentence classifier code is expecting an all_data checkpoint.
+  # We don't actually use this if we've already got the train/validation/test
+  # split
+  out_all = args.out_data_dir.joinpath("all_data")
+  out_all.mkdir(parents=True, exist_ok=True)
+  out_all.joinpath("__done__").touch()
+
   print("Prepping embedding")
   preloader = dpg.WorkerPreloader()
   preloader.register(*embedding_util.get_pytorch_device_initalizer(
@@ -120,4 +128,4 @@ if __name__ == "__main__":
     with open(part_file, 'wb') as f:
       pickle.dump(embedded_tuples, f)
     with open(done_file, 'w') as f:
-      f.write(f"{part_file}\n")
+      f.write(f"{part_file.absolute()}\n")

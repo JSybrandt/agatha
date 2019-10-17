@@ -4,10 +4,11 @@ import faiss
 from pathlib import Path
 import numpy as np
 from typing import Iterable, List, Dict, Any, Callable, Optional, Tuple
-from pymoliere.construct import embedding_util, file_util
+from pymoliere.construct import embedding_util, file_util, write_db
 from pymoliere.util.misc_util import (
     iter_to_batches,
     hash_str_to_int64,
+    flatten_list
 )
 from pymoliere.util import db_key_util
 from pymoliere.util.misc_util import Record
@@ -29,34 +30,20 @@ def get_faiss_index_initializer(
     return faiss.read_index(str(faiss_index_path))
   return f"knn_util:faiss_{index_name}", _init
 
-def get_inverted_index_intializer(
-    inverted_index_path:Path,
-)->Tuple[str, dpg.Initializer]:
-  def _init():
-    return file_util.load_value(inverted_index_path)
-  return "knn_util:inverted_index", _init
-
 
 ################################################################################
 
-def make_inverted_index(records:dbag.Bag)->dbag.core.Item:
-  def part2dict(records:Iterable[Record])->Iterable[Dict[int, str]]:
-    d = {}
-    for rec in records:
-      d[hash_str_to_int64(rec["id"])] = db_key_util.to_graph_key(rec["id"])
-    return d
-  def merge_dicts(d1, d2=None):
-    res = {}
-    dicts = d1
-    if d2 is not None:
-      dicts += d2
-    for d in dicts:
-      for k, v in d.items():
-        res[k] = v
-    return res
-  return records.reduction(
-      perpartition=part2dict,
-      aggregate=merge_dicts,
+def write_inverted_idx_to_db(records:dbag.Bag)->dbag.core.Item:
+  return (
+      records
+      .map(
+        lambda rec: (
+          hash_str_to_int64(rec["id"]).tobytes(),
+          db_key_util.to_graph_key(rec["id"])
+        )
+      )
+      .map_partitions(write_db.set)
+      .map_partitions(lambda recs: "written")
   )
 
 
@@ -73,9 +60,10 @@ def nearest_neighbors_network_from_index(
   """
   def apply_faiss_to_edges(records:Iterable[Record])->Iterable[nx.Graph]:
     # clearing makes it more likely that we're going to have available memory.
-    dpg.clear()
     index = dpg.get(f"knn_util:faiss_{faiss_index_name}")
-    inverted_index = dpg.get("knn_util:inverted_index")
+
+    # we're going to cache the db calls
+    inverted_index = {}
 
     graph = nx.Graph()
     for batch in iter_to_batches(records, batch_size):
@@ -83,15 +71,31 @@ def nearest_neighbors_network_from_index(
           records=batch,
       )
       _, neighs_per_root = index.search(embeddings, num_neighbors)
+
+      # Download a batch of ids
+      new_ids = list(
+          set(ids.tolist() + flatten_list(neighs_per_root.tolist()))
+          - set(inverted_index.keys())
+      )
+      for idx, val in zip(
+          new_ids,
+          write_db.get(map(lambda x: np.int64(x).tobytes(), new_ids))
+      ):
+        inverted_index[idx] = val
+
+      # Create records
       for root_idx, neigh_indices in zip(ids, neighs_per_root):
-        assert root_idx in inverted_index
         root = inverted_index[root_idx]
+        if root is None:
+          continue
         for neigh_idx in neigh_indices:
-          if neigh_idx != root_idx:
-            assert neigh_idx in inverted_index
-            neigh = inverted_index[neigh_idx]
-            graph.add_edge(root, neigh, weight=weight)
-            graph.add_edge(neigh, root, weight=weight)
+          if neigh_idx == root_idx:
+            continue
+          neigh = inverted_index[neigh_idx]
+          if neigh is None:
+            continue
+          graph.add_edge(root, neigh, weight=weight)
+          graph.add_edge(neigh, root, weight=weight)
     return [graph]
 
   return hash_and_embedding.map_partitions(apply_faiss_to_edges)

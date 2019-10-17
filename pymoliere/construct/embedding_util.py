@@ -92,7 +92,6 @@ def embed_records(
     batch_size:int,
     text_field:str,
     max_sequence_length:int,
-    id_field:str="id",
     out_embedding_field:str="embedding",
 )->Iterable[Record]:
   """

@@ -1,0 +1,3 @@
+[submodule "benchmarks/pubmed_sentence_classifier/raw_data"]
+	path = benchmarks/pubmed_sentence_classifier/raw_data
+	url = https://github.com/Franck-Dernoncourt/pubmed-rct.git

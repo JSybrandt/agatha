@@ -9,15 +9,11 @@ from typing import Callable, Any
 from dask.distributed import Lock, Worker, Client, get_worker
 import cloudpickle
 from pathlib import Path
+from multiprocessing import Lock
 # An initialize is a function that does not take arguments, and produces an
 # expensive-to-load piece of data.
 
 Initializer = Callable[[], Any]
-
-_PROCESS_GLOBAL_DATA = {}
-
-_INITIALIZERS = {}
-
 PRELOADER_PATH = Path("~/.pymoliere_global_preloader").expanduser()
 
 class WorkerPreloader(object):
@@ -51,9 +47,27 @@ class WorkerPreloader(object):
 
   def clear(self, worker):
     print("Clearing process global data.")
-    del worker._preloader_data
-    worker._preloader_data = {}
+    with worker._lock:
+      del worker._preloader_data
+      worker._preloader_data = {}
 
+################################################################################
+
+class LocalMockWorker(object):
+  def __init__(self):
+    "Because the LocalCluster won't spawn workers, we are going to mock one"
+    self._lock = Lock()
+    self.plugins = {}
+    self._preloader_data = {}
+
+
+LOCAL_MOCK_WORKER = LocalMockWorker()
+
+def safe_get_worker():
+  try:
+    return get_worker()
+  except:
+    return LOCAL_MOCK_WORKER
 
 def add_global_preloader(client:Client, preloader:WorkerPreloader)->None:
   with open(PRELOADER_PATH, 'wb') as f:
@@ -62,7 +76,7 @@ def add_global_preloader(client:Client, preloader:WorkerPreloader)->None:
 
 
 def get_global_preloader():
-  worker = get_worker()
+  worker = safe_get_worker()
   if "global_preloader" not in worker.plugins:
     # This is run if the worker disconnects and reconnects.
     with open(PRELOADER_PATH, 'rb') as f:
@@ -73,12 +87,8 @@ def get_global_preloader():
 
 def get(key:str)->Any:
   "Gets a value from the global preloader"
-  worker = get_worker()
-  return get_global_preloader().get(key, worker)
+  return get_global_preloader().get(key, safe_get_worker())
 
 def clear()->None:
   "Deletes all preloaded data. To be called following a ckpt."
-  get_global_preloader().clear(get_worker())
-
-
-
+  get_global_preloader().clear(safe_get_worker())

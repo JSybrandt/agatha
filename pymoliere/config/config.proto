@@ -161,6 +161,8 @@ message SentenceClassifierConfig {
   optional bool force_retrain = 7 [default=false];
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 message SemMedDBAddonConfig {
   optional MySqlConfig semmeddb = 1;
   optional RedisConfig pymolieredb = 2;

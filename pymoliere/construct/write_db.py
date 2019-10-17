@@ -5,7 +5,7 @@ from pymoliere.construct import dask_process_global as dpg
 from pymoliere.util.misc_util import Record
 from pymoliere.util.misc_util import iter_to_batches
 from redis import Redis
-from typing import Tuple, Iterable
+from typing import Tuple, Iterable, Any
 import json
 import pymoliere
 import networkx as nx
@@ -87,4 +87,20 @@ def get_meta_record(config:cpb.ConstructConfig)->Record:
   metadata["id"] = "__meta__"
   return metadata
 
+
+def set(key_values:Iterable[Tuple[Any, Any]])->Iterable[bool]:
+  redis_client = dpg.get("write_db:redis_client")
+  with redis_client.pipeline() as pipe:
+    for k, v in key_values:
+      pipe.set(k, v)
+    return pipe.execute()
+
+
+def get(keys:Iterable[Any])->Iterable[Any]:
+  redis_client = dpg.get("write_db:redis_client")
+  with redis_client.pipeline() as pipe:
+    for k in keys:
+      pipe.get(k)
+    #with dpg.safe_get_worker()._lock:
+    return pipe.execute()
 

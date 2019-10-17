@@ -172,7 +172,7 @@ if __name__ == "__main__":
     model.load_state_dict(torch.load(model_path))
 
   test_data = file_util.load_to_memory(
-      checkpoint_dir.joinpath("training_data")
+      checkpoint_dir.joinpath("test_data")
   )
   print("Evaluation")
   evaluate_model.evaluate_multiclass_model(

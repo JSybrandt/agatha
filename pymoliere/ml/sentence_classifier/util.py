@@ -31,7 +31,7 @@ SCIBERT_OUTPUT_DIM = 768
 class SentenceClassifier(torch.nn.Module):
   def __init__(self):
     super(SentenceClassifier, self).__init__()
-    769 - 512 - 512 - 256 - 6
+    # 769 - 512 - 512 - 256 - 6
     # input
     self.l1 = torch.nn.Linear(SCIBERT_OUTPUT_DIM+1, 512)
     self.r1 = torch.nn.ReLU(inplace=True)

@@ -69,10 +69,16 @@ def safe_get_worker():
   except:
     return LOCAL_MOCK_WORKER
 
-def add_global_preloader(client:Client, preloader:WorkerPreloader)->None:
+def add_global_preloader(
+    preloader:WorkerPreloader,
+    client:Client=None,
+)->None:
   with open(PRELOADER_PATH, 'wb') as f:
     cloudpickle.dump(preloader, f)
-  client.register_worker_plugin(preloader, name="global_preloader")
+  if client is not None:
+    client.register_worker_plugin(preloader, name="global_preloader")
+  LOCAL_MOCK_WORKER.plugins["global_preloader"] = preloader
+  LOCAL_MOCK_WORKER.plugins["global_preloader"].setup(LOCAL_MOCK_WORKER)
 
 
 def get_global_preloader():

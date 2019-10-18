@@ -128,3 +128,13 @@ data/
 *.swp
 *.pb
 .nfs*
+
+# Redis files
+*.rdb
+*.aof
+
+# Config files
+configs/
+
+# Compiled proto files
+*_pb2.py

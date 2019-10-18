@@ -120,7 +120,13 @@ def embed_records(
       batch_first=True,
     ).to(dev)
     with torch.no_grad():
-      embs = model(sequs)[-1].cpu().detach().numpy()
+      embs = (
+          model(sequs)[-2]
+          .mean(axis=1)
+          .cpu()
+          .detach()
+          .numpy()
+      )
     for record, emb in zip(batch, embs):
       record[out_embedding_field] = emb
       res.append(record)

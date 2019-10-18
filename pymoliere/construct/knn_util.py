@@ -4,7 +4,11 @@ import faiss
 from pathlib import Path
 import numpy as np
 from typing import Iterable, List, Dict, Any, Callable, Optional, Tuple
-from pymoliere.construct import embedding_util, file_util, write_db
+from pymoliere.construct import (
+    embedding_util,
+    file_util,
+    local_key_value_store as kv_store,
+)
 from pymoliere.util.misc_util import (
     iter_to_batches,
     hash_str_to_int64,
@@ -33,7 +37,8 @@ def get_faiss_index_initializer(
 
 ################################################################################
 
-def write_inverted_idx_to_db(records:dbag.Bag)->dbag.core.Item:
+def write_inverted_index_to_kvstore(records:dbag.Bag)->dbag.core.Item:
+  "Writes all hash-str pairs to local db, and returns count"
   return (
       records
       .map(
@@ -42,12 +47,13 @@ def write_inverted_idx_to_db(records:dbag.Bag)->dbag.core.Item:
           db_key_util.to_graph_key(rec["id"])
         )
       )
-      .map_partitions(write_db.set)
-      .map_partitions(lambda recs: "written")
+      .map_partitions(kv_store.put_many)
+      .count()
   )
 
 
 def nearest_neighbors_network_from_index(
+    records:dbag.Bag,
     hash_and_embedding:dbag.Bag,
     batch_size:int,
     num_neighbors:int,
@@ -58,8 +64,14 @@ def nearest_neighbors_network_from_index(
   Applies faiss and runs results through inverted index. Requires
   knn_util:faiss_index and knn_util:inverted_index to be initialized.
   """
-  def apply_faiss_to_edges(records:Iterable[Record])->Iterable[nx.Graph]:
-    # clearing makes it more likely that we're going to have available memory.
+  def apply_faiss_to_edges(
+      records:Iterable[Record],
+      total_written:int
+  )->Iterable[nx.Graph]:
+
+    # The only reason we need total_written is to make sure that the writing
+    # happens before this point
+
     index = dpg.get(f"knn_util:faiss_{faiss_index_name}")
 
     # we're going to cache the db calls
@@ -79,7 +91,7 @@ def nearest_neighbors_network_from_index(
       )
       for idx, val in zip(
           new_ids,
-          write_db.get(map(lambda x: np.int64(x).tobytes(), new_ids))
+          kv_store.get(map(lambda x: np.int64(x).tobytes(), new_ids))
       ):
         inverted_index[idx] = val
 
@@ -98,7 +110,13 @@ def nearest_neighbors_network_from_index(
           graph.add_edge(neigh, root, weight=weight)
     return [graph]
 
-  return hash_and_embedding.map_partitions(apply_faiss_to_edges)
+  return (
+      hash_and_embedding
+      .map_partitions(
+        apply_faiss_to_edges,
+        write_inverted_index_to_kvstore(records)
+      )
+  )
 
 
 def train_distributed_knn(

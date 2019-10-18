@@ -3,13 +3,14 @@ from pymoliere.config import (
     proto_util,
 )
 from pymoliere.construct import (
-    dask_process_global as dpg,
     dask_checkpoint,
+    dask_process_global as dpg,
     embedding_util,
     file_util,
     ftp_util,
     graph_util,
     knn_util,
+    local_key_value_store,
     parse_pubmed_xml,
     text_util,
     write_db,
@@ -111,6 +112,9 @@ if __name__ == "__main__":
   # Initialize Helper Objects ###
   print("Registering Helper Objects")
   preloader = dpg.WorkerPreloader()
+  preloader.register(*local_key_value_store.get_kv_server_initializer(
+    port=config.cluster.local_kvstore_port,
+  ))
   preloader.register(*text_util.get_scispacy_initalizer(
       scispacy_version=config.parser.scispacy_version,
   ))
@@ -356,6 +360,7 @@ if __name__ == "__main__":
   ckpt("write_inverted_idx_to_db", respect_partial_checkpoints=False)
 
   nearest_neighbors_edges = knn_util.nearest_neighbors_network_from_index(
+      records=final_sentence_records,
       hash_and_embedding=hash_and_embedding,
       batch_size=config.sys.batch_size,
       num_neighbors=config.sentence_knn.num_neighbors,

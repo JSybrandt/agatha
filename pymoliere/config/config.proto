@@ -23,6 +23,7 @@ message ClusterConfig {
   optional bool run_locally = 6 [default=false];
   optional bool clear_checkpoints = 7 [default=false];
   optional bool disable_checkpoints = 8 [default=false];
+  optional int32 local_kvstore_port = 9 [default=8790];
 }
 
 message TextParserConfig {

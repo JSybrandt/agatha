@@ -128,3 +128,7 @@ data/
 *.swp
 *.pb
 .nfs*
+
+# Redis files
+*.rdb
+*.aof

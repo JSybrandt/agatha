@@ -58,7 +58,7 @@ def parse_raw_file(raw_file_path:Path)->Iterable[Record]:
 
 if __name__ == "__main__":
   parser = ArgumentParser()
-  parser.add_argument("--bert_data_dir", type=Path)
+  parser.add_argument("--bert_model", type=str)
   parser.add_argument("--in_data_dir", type=Path)
   parser.add_argument("--out_data_dir", type=Path)
   parser.add_argument("--disable_gpu", action="store_true")
@@ -96,8 +96,8 @@ if __name__ == "__main__":
   preloader.register(*embedding_util.get_pytorch_device_initalizer(
       disable_gpu=args.disable_gpu,
   ))
-  preloader.register(*embedding_util.get_scibert_initializer(
-      scibert_data_dir=args.bert_data_dir,
+  preloader.register(*embedding_util.get_bert_initializer(
+      bert_model=args.bert_model,
   ))
   dpg.add_global_preloader(preloader=preloader)
 

@@ -27,7 +27,9 @@ message ClusterConfig {
 
 message TextParserConfig {
   optional string scispacy_version = 1;
-  optional string scibert_data_dir = 2;
+  // May be a path to a bert model, or any of the transformer pretrained models.
+  // Example: "./data/scibert" or "bert-base-uncased"
+  optional string bert_model = 2 [default="bert-base-uncased"];
   // Discard sentences that are too long/short
   optional int32 min_sentence_len = 3 [default=10];
   optional int32 max_sentence_len = 4 [default=1000];

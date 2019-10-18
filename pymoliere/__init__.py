@@ -13,5 +13,5 @@ def _get_git_head():
     "HEAD",
   ]).strip().decode()
 
-__VERSION__ = '19.10.1'
+__VERSION__ = '19.10.2'
 __GIT_HEAD__ = _get_git_head()

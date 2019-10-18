@@ -94,7 +94,7 @@ setup(
       "paramiko",
       "protobuf",
       "pymysql",
-      "pytorch-transformers",
+      "transformers",
       "redis",
       "scispacy",
       "sklearn",

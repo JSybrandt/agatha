@@ -31,13 +31,17 @@ def get_pytorch_device_initalizer(
       return torch.device("cpu")
   return "embedding_util:device", _init
 
-def get_scibert_initializer(
-    scibert_data_dir:Path,
+def get_bert_initializer(
+    bert_model:str,
 )->Tuple[str, dpg.Initializer]:
+  """
+  The bert_model may be a path or any provided by the transformers module.
+  For instance "bert-base-uncased"
+  """
   def _init():
     device = dpg.get("embedding_util:device")
-    tok = BertTokenizer.from_pretrained(scibert_data_dir)
-    model = BertModel.from_pretrained(scibert_data_dir)
+    tok = BertTokenizer.from_pretrained(bert_model)
+    model = BertModel.from_pretrained(bert_model)
     model.eval()
     model.to(device)
     return (tok, model)
@@ -96,7 +100,7 @@ def embed_records(
     show_pbar:bool=False,
 )->Iterable[Record]:
   """
-  Introduces an embedding field to each record, indicated the scibert embedding
+  Introduces an embedding field to each record, indicated the bert embedding
   of the supplied text field.
   """
 

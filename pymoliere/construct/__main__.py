@@ -10,7 +10,7 @@ from pymoliere.construct import (
     ftp_util,
     graph_util,
     knn_util,
-    local_key_value_store,
+    key_value_store,
     parse_pubmed_xml,
     text_util,
     write_db,
@@ -112,8 +112,8 @@ if __name__ == "__main__":
   # Initialize Helper Objects ###
   print("Registering Helper Objects")
   preloader = dpg.WorkerPreloader()
-  preloader.register(*local_key_value_store.get_kv_server_initializer(
-    port=config.cluster.local_kvstore_port,
+  preloader.register(*key_value_store.get_kv_server_initializer(
+    port=config.cluster.kvstore_port,
   ))
   preloader.register(*text_util.get_scispacy_initalizer(
       scispacy_version=config.parser.scispacy_version,
@@ -353,11 +353,6 @@ if __name__ == "__main__":
     ).compute()
   else:
     print("Using existing Faiss Index")
-
-  write_inverted_idx_to_db = knn_util.write_inverted_idx_to_db(
-      final_sentence_records
-  )
-  ckpt("write_inverted_idx_to_db", respect_partial_checkpoints=False)
 
   nearest_neighbors_edges = knn_util.nearest_neighbors_network_from_index(
       records=final_sentence_records,

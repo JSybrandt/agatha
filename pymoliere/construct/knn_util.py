@@ -7,7 +7,7 @@ from typing import Iterable, List, Dict, Any, Callable, Optional, Tuple
 from pymoliere.construct import (
     embedding_util,
     file_util,
-    local_key_value_store as kv_store,
+    key_value_store as kv_store,
 )
 from pymoliere.util.misc_util import (
     iter_to_batches,

@@ -29,7 +29,13 @@ def get_kv_server_initializer(port:str):
   def _init():
     # The init is only needed to tell workers where the server is located.
     return  f"tcp://{server_host}:{port}"
-  return "local_kv:conn_str", _init
+  return "kv_store:conn", _init
+
+
+async def _put_many(conn:str, kv_pairs:Iterable[Tuple[Any, Any]])->None:
+  with rpc(conn) as r:
+    for k, v in kv_pairs:
+      await r.put(key=k, value=v)
 
 
 def put(key:Any, value:Any)->bool:
@@ -37,19 +43,24 @@ def put(key:Any, value:Any)->bool:
   Sets the key-value pair in the local KV-Store. This requires
   get_kv_server_initializer to be added to dpg.
   """
-  with rpc(dpg.get("local_kv:conn_str")) as r:
-    rpc.put(key=key, value=value)
+  conn = dpg.get("kv_store:conn")
+  asyncio.get_event_loop().run_until_complete(_put_many(conn, [(key, value)]))
   return True
 
 
 def put_many(kv_pairs:Iterable[Tuple[Any, Any]])->Iterable[bool]:
   "Same as put, but writes all."
-  res = []
-  with rpc(dpg.get("local_kv:conn_str")) as r:
-    for key, value in kv_pairs:
-      rpc.put(key=key, value=value)
-      res.append(True)
-  return res
+  conn = dpg.get("kv_store:conn")
+  asyncio.get_event_loop().run_until_complete(_put_many(conn,kv_pairs))
+  return [True]*len(kv_pairs)
+
+
+async def _get_many(conn:str, keys:Iterable[Any])->Iterable[Any]:
+  vals = []
+  with rpc(conn) as r:
+    for key in keys:
+      vals.append(await r.get(key=key))
+  return vals
 
 
 def get(key)->Any:
@@ -57,13 +68,19 @@ def get(key)->Any:
   Gets a previously stored kv pair from the local store.  This requires
   get_kv_server_initializer to be added to dpg.
   """
-  with rpc(dpg.get("local_kv:conn_str")) as r:
-    return rpc.get(key=key)
+  conn = dpg.get("kv_store:conn")
+  return (
+      asyncio
+      .get_event_loop()
+      .run_until_complete(_get_many(conn,[key]))[0]
+  )
+
 
 def get_many(keys:Iterable[Any])->Iterable[Any]:
   "Same as get, but loads all."
-  res = []
-  with rpc(dpg.get("local_kv:conn_str")) as r:
-    for key in keys:
-      res.append(rpc.get(key=key))
-  return res
+  conn = dpg.get("kv_store:conn")
+  return list(
+      asyncio
+      .get_event_loop()
+      .run_until_complete(_get_many(conn, keys))
+  )

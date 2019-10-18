@@ -28,7 +28,9 @@ def checkpoint(
   part_dir.mkdir(parents=True, exist_ok=True)
   assert part_dir.is_dir()
 
-  if not file_util.is_result_saved(part_dir):
+  if file_util.is_result_saved(part_dir):
+    print("\t- Cached")
+  else:
     file_util.save(
         data,
         part_dir,

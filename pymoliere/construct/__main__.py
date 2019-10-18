@@ -120,8 +120,8 @@ if __name__ == "__main__":
   preloader.register(*embedding_util.get_pytorch_device_initalizer(
       disable_gpu=config.sys.disable_gpu,
   ))
-  preloader.register(*embedding_util.get_scibert_initializer(
-      scibert_data_dir=config.parser.scibert_data_dir,
+  preloader.register(*embedding_util.get_bert_initializer(
+      bert_model=config.parser.bert_model,
   ))
   preloader.register(*write_db.get_redis_client_initialzizer(
       host=config.db.address,

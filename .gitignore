@@ -132,3 +132,6 @@ data/
 # Redis files
 *.rdb
 *.aof
+
+# Config files
+configs/

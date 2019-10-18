@@ -83,7 +83,6 @@ def get_meta_record(config:cpb.ConstructConfig)->Record:
   metadata = MessageToDict(config)
   metadata["__date__"] = str(datetime.now())
   metadata["__version__"] = pymoliere.__VERSION__
-  metadata["__git_head__"] = pymoliere.__GIT_HEAD__
   metadata["id"] = "__meta__"
   return metadata
 

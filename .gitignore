@@ -135,3 +135,6 @@ data/
 
 # Config files
 configs/
+
+# Compiled proto files
+*_pb2.py

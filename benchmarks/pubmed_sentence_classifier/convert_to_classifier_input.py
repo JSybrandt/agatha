@@ -43,6 +43,12 @@ def parse_raw_file(raw_file_path:Path)->Iterable[Record]:
           "sent_type": label,
           "sent_idx": (idx+1),
           "sent_total": len(doc),
+          # It is important to select an invalid date that is larger than any
+          # other because some classifier might be expecting date-based
+          # training/validation/testing splits. However, because there is not
+          # really a date associated with this record, any function thats
+          # expecting a properly formatted YYYY-MM-DD date will fail, as
+          # opposed to any function that is simply sorting strings.
           "date": "9999-99-99",
         })
       except:

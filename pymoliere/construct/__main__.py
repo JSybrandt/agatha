@@ -17,7 +17,6 @@ from pymoliere.construct import (
 from pymoliere.util import misc_util
 from dask.distributed import (
   Client,
-  LocalCluster,
 )
 from pymoliere.ml.sentence_classifier import (
     SentenceClassifier,
@@ -57,26 +56,17 @@ if __name__ == "__main__":
   # Connect
   if config.cluster.run_locally:
     print("Running on local machine!")
-    cluster = LocalCluster()
-    dask_client = Client(cluster)
+    # Changes to dpg allow for a "none" dask client
+    dask_client = None
   else:
     cluster_address = f"{config.cluster.address}:{config.cluster.port}"
     print("Configuring Dask, attaching to cluster")
     print(f"\t- {cluster_address}")
     dask_client = Client(address=cluster_address)
-  if config.cluster.restart:
-    print("\t- Restarting cluster...")
-    dask_client.restart()
-  print(f"\t- Running on {len(dask_client.nthreads())} machines.")
-
-  # print("Configuring worker resources")
-  # for worker in dask_client.cluster.scheduler.workers.keys():
-    # dask_client.cluster.scheduler.add_resources(
-        # worker=worker,
-        # resources={
-          # "WholeCpu": 1,  # request this resource to ensure 1 task per worker
-        # }
-    # )
+    if config.cluster.restart:
+      print("\t- Restarting cluster...")
+      dask_client.restart()
+    print(f"\t- Running on {len(dask_client.nthreads())} machines.")
 
   # Configure Redis ##############
   print("Connecting to Redis...")
@@ -380,4 +370,4 @@ if __name__ == "__main__":
   final_tasks.append(sentences_with_bow.map_partitions(write_db.write_records))
 
   print("Writing everything to redis.")
-  dask_client.compute(final_tasks, sync=True)
+  dask.compute(final_tasks, sync=True)

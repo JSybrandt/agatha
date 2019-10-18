@@ -8,12 +8,14 @@ record, and converting the results into a mocked checkpoint directory.
 
 from argparse import ArgumentParser
 from pathlib import Path
-from pymoliere.ml.sentence_classifier import util as sent_class_util
+from pymoliere.ml.sentence_classifier import (
+    util as sent_class_util,
+    LABEL2IDX,
+)
 from pymoliere.construct import embedding_util
 from pymoliere.util.misc_util import Record
 from typing import Iterable
 from pymoliere.construct import dask_process_global as dpg
-from dask.distributed import Client, LocalCluster
 import pickle
 
 
@@ -33,14 +35,21 @@ def parse_raw_file(raw_file_path:Path)->Iterable[Record]:
   for doc in docs:
     for idx, line in enumerate(doc):
       try:
-        label, text = line.split(" ", 1)
+        label, text = line.split("\t", 1)
         label = f"abstract:{label.lower()}"
+        assert label in LABEL2IDX
         res.append({
           "text": text,
           "sent_type": label,
           "sent_idx": (idx+1),
           "sent_total": len(doc),
-          "date": "9999-99-99"
+          # It is important to select an invalid date that is larger than any
+          # other because some classifier might be expecting date-based
+          # training/validation/testing splits. However, because there is not
+          # really a date associated with this record, any function thats
+          # expecting a properly formatted YYYY-MM-DD date will fail, as
+          # opposed to any function that is simply sorting strings.
+          "date": "9999-99-99",
         })
       except:
         print(f"Err: '{line}'")
@@ -50,19 +59,37 @@ def parse_raw_file(raw_file_path:Path)->Iterable[Record]:
 if __name__ == "__main__":
   parser = ArgumentParser()
   parser.add_argument("--bert_data_dir", type=Path)
-  parser.add_argument("--raw_data_in", type=Path)
-  parser.add_argument("--eval_data_out", type=Path)
+  parser.add_argument("--in_data_dir", type=Path)
+  parser.add_argument("--out_data_dir", type=Path)
   parser.add_argument("--disable_gpu", action="store_true")
   parser.add_argument("--batch_size", type=int, default=32)
   parser.add_argument("--max_sequence_length", type=int, default=500)
   args = parser.parse_args()
 
-  assert args.raw_data_in.is_file()
-  args.eval_data_out.mkdir(parents=True, exist_ok=True)
 
-  # Client needed for dpg
-  cluster = LocalCluster(n_workers=1)
-  dask_client = Client(cluster)
+  # Prepare and check input data
+  in_train = args.in_data_dir.joinpath("train.txt")
+  in_validation = args.in_data_dir.joinpath("dev.txt")
+  in_test = args.in_data_dir.joinpath("test.txt")
+  assert in_train.is_file()
+  assert in_validation.is_file()
+  assert in_test.is_file()
+
+  # Prepare output data
+  out_train = args.out_data_dir.joinpath("training_data")
+  out_validation = args.out_data_dir.joinpath("validation_data")
+  out_test = args.out_data_dir.joinpath("testing_data")
+  out_train.mkdir(parents=True, exist_ok=True)
+  out_validation.mkdir(parents=True, exist_ok=True)
+  out_test.mkdir(parents=True, exist_ok=True)
+
+  print("Setting up mock all_data")
+  # The sentence classifier code is expecting an all_data checkpoint.
+  # We don't actually use this if we've already got the train/validation/test
+  # split
+  out_all = args.out_data_dir.joinpath("all_data")
+  out_all.mkdir(parents=True, exist_ok=True)
+  out_all.joinpath("__done__").touch()
 
   print("Prepping embedding")
   preloader = dpg.WorkerPreloader()
@@ -72,30 +99,39 @@ if __name__ == "__main__":
   preloader.register(*embedding_util.get_scibert_initializer(
       scibert_data_dir=args.bert_data_dir,
   ))
-  dpg.add_global_preloader(client=dask_client, preloader=preloader)
+  dpg.add_global_preloader(preloader=preloader)
 
-  print("Converting to records.")
-  records = parse_raw_file(args.raw_data_in)
+  for in_file, out_dir in [
+      (in_train, out_train),
+      (in_validation, out_validation),
+      (in_test, out_test),
+  ]:
+    print(f"Converting {in_file} to {out_dir}")
 
-  # Step 3: Embed Records
-  embedded_records = embedding_util.embed_records(
-      records,
-      batch_size=args.batch_size,
-      text_field="text",
-      max_sequence_length=args.max_sequence_length,
-  )
+    print("Converting to records.")
+    records = parse_raw_file(in_file)
 
-  # Step 4: Records to training data via util
-  print("Converting to sentence_classifier.util.TrainingData")
-  training_data = [
-      sent_class_util.record_to_training_tuple(r)
-      for r in embedded_records
-  ]
+    # Step 3: Embed Records
+    print("Embedding")
+    embedded_records = embedding_util.embed_records(
+        records,
+        batch_size=args.batch_size,
+        text_field="text",
+        max_sequence_length=args.max_sequence_length,
+        show_pbar=True,
+    )
 
-  print("Saving as mock ckpt")
-  done_file = args.eval_data_out.joinpath("__done__")
-  part_file = args.eval_data_out.joinpath("part-0.pkl")
-  with open(part_file, 'wb') as f:
-    pickle.dump(training_data, f)
-  with open(done_file, 'w') as f:
-    f.write(f"{part_file}\n")
+    # Step 4: Records to training data via util
+    print("Converting to sentence_classifier.util.TrainingData")
+    embedded_tuples = [
+        sent_class_util.record_to_training_tuple(r)
+        for r in embedded_records
+    ]
+
+    print("Saving as mock ckpt")
+    done_file = out_dir.joinpath("__done__")
+    part_file = out_dir.joinpath("part-0.pkl")
+    with open(part_file, 'wb') as f:
+      pickle.dump(embedded_tuples, f)
+    with open(done_file, 'w') as f:
+      f.write(f"{part_file.absolute()}\n")

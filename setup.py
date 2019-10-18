@@ -77,7 +77,7 @@ setup(
     packages=['pymoliere',],
     license='Creative Commons Attribution-Noncommercial-Share Alike license',
     long_description=open('README.md').read(),
-    cmdclass={ 'clean': clean, 'build': build_py },
+    cmdclass={ 'clean': clean, 'build_py': build_py },
     install_requires=[
       "bokeh",
       "dask",

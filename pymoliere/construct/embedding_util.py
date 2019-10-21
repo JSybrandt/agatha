@@ -7,7 +7,7 @@ from pymoliere.ml.sentence_classifier import (
 )
 from pymoliere.util.misc_util import Record
 from pymoliere.util.misc_util import iter_to_batches
-from pytorch_transformers import (
+from transformers import (
     BertModel,
     BertTokenizer,
 )

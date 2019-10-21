@@ -114,5 +114,6 @@ setup(
       "torchvision",
       "tqdm",
       "transformers",
+      "zmq",
     ],
 )

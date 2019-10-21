@@ -1,11 +1,13 @@
 from distutils.command.build_py import build_py as _build_py
 from distutils.command.clean import clean as _clean
 from distutils.spawn import find_executable
+from pymoliere import __VERSION__
 from setuptools import setup, Extension
+from setuptools.command.install import install as _install
 import os
 import subprocess
 import sys
-from pymoliere import __VERSION__
+
 
 proto_src_files = [
     "pymoliere/config/config.proto",
@@ -71,13 +73,22 @@ class build_py(_build_py):
       generate_proto(proto_src)
     _build_py.run(self)
 
+class Install(_install):
+  def run(self):
+    _install.do_egg_install(self)
+    import nltk
+    # Needed for split-sentences
+    nltk.download("punkt")
+
+
 setup(
     name='PyMoliere',
     version=__VERSION__,
     packages=['pymoliere',],
     license='Creative Commons Attribution-Noncommercial-Share Alike license',
     long_description=open('README.md').read(),
-    cmdclass={ 'clean': clean, 'build_py': build_py },
+    cmdclass={ 'clean': clean, 'build_py': build_py, "install":Install },
+    setup_requires=["nltk"],
     install_requires=[
       "bokeh",
       "dask",

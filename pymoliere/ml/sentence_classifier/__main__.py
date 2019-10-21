@@ -160,7 +160,7 @@ if __name__ == "__main__":
         data_ckpt_dir.joinpath("validation_data")
     )
     print("Beginning Training")
-    train_model.train_classifier(
+    train_model.train_model(
         training_data=[x.dense_data for x in training_data],
         training_labels=[x.label for x in training_data],
         validation_data=[x.dense_data for x in validation_data],
@@ -171,6 +171,7 @@ if __name__ == "__main__":
         optimizer=optimizer,
         num_epochs=config.sys.num_epochs,
         batch_size=config.sys.batch_size,
+        compute_accuracy=True,
     )
     del training_data
     del validation_data

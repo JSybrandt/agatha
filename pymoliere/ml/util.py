@@ -1,0 +1,1 @@
+BERT_EMB_DIM = 768

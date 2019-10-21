@@ -104,6 +104,7 @@ setup(
       "pandas",
       "paramiko",
       "partd",
+      "plotille",
       "protobuf",
       "pymysql",
       "redis",

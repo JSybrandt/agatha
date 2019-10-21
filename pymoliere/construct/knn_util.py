@@ -39,17 +39,16 @@ def get_faiss_index_initializer(
 
 def write_inverted_index_to_kvstore(records:dbag.Bag)->dbag.core.Item:
   "Writes all hash-str pairs to local db, and returns count"
-  return (
-      records
-      .map(
-        lambda rec: (
-          hash_str_to_int64(rec["id"]),
-          db_key_util.to_graph_key(rec["id"])
-        )
-      )
-      .map_partitions(kv_store.put_many)
-      .count()
-  )
+  def write_part_kv(records:Iterable[Record])->Iterable[bool]:
+    vals = []
+    for record in records:
+      vals.append((
+          hash_str_to_int64(record["id"]),
+          db_key_util.to_graph_key(record["id"]),
+      ))
+    kv_store.put_many(vals)
+    return [True]
+  return records.map_partitions(write_part_kv).count()
 
 
 def nearest_neighbors_network_from_index(

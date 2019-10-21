@@ -20,10 +20,10 @@ def get_kv_server_initializer(
   # It is important that we copy the address. Otherwise when we reference
   # "server.address" in the init, we will require that the dpg coordination
   # capture the whole server value. Becuase we cannot serialize the server
-  # using cloudpickle, that would cause an error. This way we only picle the
+  # using cloudpickle, that would cause an error. This way we only pickle the
   # address.
-  address = server.address.decode("utf-8")
-  print(f"\t- Starting KV Store at: {address}")
+  address = server.address
+  print(f"\t- Starting KV Store at: {address.decode('utf8')}")
 
   def _init():
     "Encodes data with Pickle, sends to server."
@@ -34,7 +34,7 @@ def get_kv_server_initializer(
     # compressed packets, each is unzipped, then unpickled, then concatenated
     # to our final output.  That last concatenation step requires that whatever
     # object we use implements "+"
-    client = partd.Pickle(partd.BZ2(partd.Client(address)))
+    client = partd.Pickle(partd.Client(address))
 
     # The test is to transmit an int and recover it
     key = random.randint(0, 10000)
@@ -44,20 +44,22 @@ def get_kv_server_initializer(
     return client
   return "kv_store:client", _init
 
-def put_many(kv_pairs:Iterable[Tuple[Any,Any]])->Iterable[bool]:
+def put_many(kv_pairs:Iterable[Tuple[Any,Any]])->None:
   client = dpg.get("kv_store:client")
-  for k, v in kv_pairs:
-    client.append({k: v})
-  # it is important that we follow the function signature of map_partitions for
-  # better dask compatibility.
-  return [True]
+  for b in iter_to_batches(kv_pairs, 64):
+    with dpg.get_worker_lock():
+      client.append({
+        # Must append lists
+        k: [v] for k, v in b
+      })
 
 def get_many(keys:Iterable[Any])->Iterable[Any]:
   client = dpg.get("kv_store:client")
-  print("Getting")
   res = []
-  for k in keys:
-    val = client.get(k)
-    res += None if len(val) == 0 else val[-1]
+  for b in iter_to_batches(keys, 64):
+    with dpg.get_worker_lock():
+      res += [
+          None if len(val) == 0 else val[-1]
+          for val in client.get(b)
+      ]
   return res
-

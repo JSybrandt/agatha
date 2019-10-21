@@ -32,11 +32,11 @@ def get_kv_server_initializer()->Tuple[str, dpg.Initializer]:
     # object we use implements "+"
     client = partd.Pickle(partd.Client(address))
 
-    # The test is to transmit an int and recover it
-    key = random.randint(0, 10000)
-    client.append({socket.gethostname(): [key]})
-    if client.get(socket.gethostname())[-1] != key:
-      raise Exception(f"{socket.gethostname()} failed to connect to {address}")
+    # # The test is to transmit an int and recover it
+    # key = random.randint(0, 10000)
+    # client.append({socket.gethostname(): [key]})
+    # if client.get(socket.gethostname())[-1] != key:
+      # raise Exception(f"{socket.gethostname()} failed to connect to {address}")
     return client
   return "kv_store:client", _init
 

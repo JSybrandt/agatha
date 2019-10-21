@@ -37,22 +37,18 @@ def get_faiss_index_initializer(
 
 ################################################################################
 
-def write_inverted_index_to_kvstore(records:dbag.Bag)->dbag.core.Item:
-  "Writes all hash-str pairs to local db, and returns count"
-  def write_part_kv(records:Iterable[Record])->Iterable[bool]:
-    vals = []
-    for record in records:
-      vals.append((
-          hash_str_to_int64(record["id"]),
-          db_key_util.to_graph_key(record["id"]),
-      ))
-    kv_store.put_many(vals)
-    return [True]
-  return records.map_partitions(write_part_kv).count()
+def to_inverted_index(records:Iterable[Record])->Iterable[Tuple[np.int64, str]]:
+  vals = []
+  for record in records:
+    vals.append((
+        hash_str_to_int64(record["id"]),
+        db_key_util.to_graph_key(record["id"]),
+    ))
+  return vals
 
 
 def nearest_neighbors_network_from_index(
-    records:dbag.Bag,
+    inverted_index_bag:dbag.Bag,
     hash_and_embedding:dbag.Bag,
     batch_size:int,
     num_neighbors:int,
@@ -63,13 +59,17 @@ def nearest_neighbors_network_from_index(
   Applies faiss and runs results through inverted index. Requires
   knn_util:faiss_index and knn_util:inverted_index to be initialized.
   """
+  def write_inv_idx_to_kv_store(inv_idx:Iterable[Tuple[np.int64, str]])->int:
+    "writes values, returns 1"
+    kv_store.put_many(list(inv_idx))
+    return 1
   def apply_faiss_to_edges(
       hash_and_embedding:Iterable[Record],
-      total_written:int
+      parts_written_to_db:int,
   )->Iterable[nx.Graph]:
 
-    # The only reason we need total_written is to make sure that the writing
-    # happens before this point
+    # The only reason we need parts_written_to_db is to make sure that the
+    # writing happens before this point
 
     index = dpg.get(f"knn_util:faiss_{faiss_index_name}")
     inverted_index = {}
@@ -103,11 +103,18 @@ def nearest_neighbors_network_from_index(
           graph.add_edge(neigh, root, weight=weight)
     return [graph]
 
+  num_parts_write_inv_idx = (
+      inverted_index_bag
+      .reduction(
+        perpartition=write_inv_idx_to_kv_store,
+        aggregate=sum
+      )
+  )
   return (
       hash_and_embedding
       .map_partitions(
         apply_faiss_to_edges,
-        write_inverted_index_to_kvstore(records),
+        num_parts_write_inv_idx,
       )
   )
 

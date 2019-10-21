@@ -352,8 +352,17 @@ if __name__ == "__main__":
   else:
     print("Using existing Faiss Index")
 
+  # This is a dask bag of (np.int64, str) pairs. We're going to load it to a
+  # shared kv-store next. But doing this step first should reduce the memory
+  # footprint. Furthermore, we get the inverted index off the "sentences" bag
+  # because it is the smallest dataset that contains the information we need.
+  # The difference is between 707GB (sentences with embedding) and 46GB
+  # (sentences)
+  inverted_index = sentences.map_partitions(knn_util.to_inverted_index)
+  ckpt("inverted_index")
+
   nearest_neighbors_edges = knn_util.nearest_neighbors_network_from_index(
-      records=final_sentence_records,
+      inverted_index_bag=inverted_index,
       hash_and_embedding=hash_and_embedding,
       batch_size=config.sys.batch_size,
       num_neighbors=config.sentence_knn.num_neighbors,

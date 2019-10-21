@@ -14,8 +14,8 @@ from torch.nn.utils.rnn import pad_sequence
 import redis
 import numpy as np
 
-REDIS_SERVER = "node1398"
-SHARED_SCRATCH_ROOT = Path("/scratch4/jsybran/pymoliere_scratch")
+REDIS_SERVER = "nodecugi"
+SHARED_SCRATCH_ROOT = Path("/scratch4/jsybran/pymoliere_avg_hidden_emb_scratch")
 BERT_ROOT = Path(
     "/zfs/safrolab/users/jsybran/pymoliere/data/scibert_scivocab_uncased"
 )
@@ -47,7 +47,7 @@ for line in sys.stdin:
     ],
     batch_first=True,
   )
-  embs = bert_model(sequs)[-1].cpu().detach().numpy()
+  embs = bert_model(sequs)[0].mean(axis=1).cpu().detach().numpy()
   _, neighs = faiss_index.search(embs, 30)
   with redis_client.pipeline() as pipe:
     for neigh_idx in neighs[0]:

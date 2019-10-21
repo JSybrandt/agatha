@@ -43,7 +43,7 @@ def write_inverted_index_to_kvstore(records:dbag.Bag)->dbag.core.Item:
       records
       .map(
         lambda rec: (
-          hash_str_to_int64(rec["id"]).tobytes(),
+          hash_str_to_int64(rec["id"]),
           db_key_util.to_graph_key(rec["id"])
         )
       )
@@ -65,7 +65,7 @@ def nearest_neighbors_network_from_index(
   knn_util:faiss_index and knn_util:inverted_index to be initialized.
   """
   def apply_faiss_to_edges(
-      records:Iterable[Record],
+      hash_and_embedding:Iterable[Record],
       total_written:int
   )->Iterable[nx.Graph]:
 
@@ -73,30 +73,24 @@ def nearest_neighbors_network_from_index(
     # happens before this point
 
     index = dpg.get(f"knn_util:faiss_{faiss_index_name}")
-
-    # we're going to cache the db calls
     inverted_index = {}
 
     graph = nx.Graph()
-    for batch in iter_to_batches(records, batch_size):
-      ids, embeddings = records_to_ids_and_embeddings(
+    for batch in iter_to_batches(hash_and_embedding, batch_size):
+      hashes, embeddings = records_to_ids_and_embeddings(
           records=batch,
       )
       _, neighs_per_root = index.search(embeddings, num_neighbors)
 
-      # Download a batch of ids
-      new_ids = list(
-          set(ids.tolist() + flatten_list(neighs_per_root.tolist()))
-          - set(inverted_index.keys())
-      )
-      for idx, val in zip(
-          new_ids,
-          kv_store.get(map(lambda x: np.int64(x).tobytes(), new_ids))
-      ):
-        inverted_index[idx] = val
+      hashes = hashes.tolist() + flatten_list(neighs_per_root.tolist())
+      hashes = list(set(hashes) - set(inverted_index.keys()))
+
+      graph_keys = kv_store.get_many(hashes)
+      for k, v in zip(hashes, graph_keys):
+        inverted_index[k] = v
 
       # Create records
-      for root_idx, neigh_indices in zip(ids, neighs_per_root):
+      for root_idx, neigh_indices in zip(hashes, neighs_per_root):
         root = inverted_index[root_idx]
         if root is None:
           continue
@@ -114,7 +108,7 @@ def nearest_neighbors_network_from_index(
       hash_and_embedding
       .map_partitions(
         apply_faiss_to_edges,
-        write_inverted_index_to_kvstore(records)
+        write_inverted_index_to_kvstore(records),
       )
   )
 

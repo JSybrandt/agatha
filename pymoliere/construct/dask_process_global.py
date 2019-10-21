@@ -6,7 +6,7 @@ startup, and we don't want to reload each function call.
 """
 
 from typing import Callable, Any
-from dask.distributed import Lock, Worker, Client, get_worker
+from dask.distributed import Worker, Client, get_worker
 import cloudpickle
 from pathlib import Path
 from multiprocessing import Lock
@@ -21,11 +21,9 @@ class WorkerPreloader(object):
     self.initializers = {}
 
   def setup(self, worker:Worker):
-    print("setup")
     worker._preloader_data = {}
 
   def teardown(self, worker:Worker):
-    print("teardown")
     del worker._preloader_data
 
   def register(self, key:str, init:Callable)->None:
@@ -98,3 +96,6 @@ def get(key:str)->Any:
 def clear()->None:
   "Deletes all preloaded data. To be called following a ckpt."
   get_global_preloader().clear(safe_get_worker())
+
+def get_worker_lock():
+  return safe_get_worker()._lock

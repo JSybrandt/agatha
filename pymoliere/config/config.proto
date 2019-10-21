@@ -23,7 +23,15 @@ message ClusterConfig {
   optional bool run_locally = 6 [default=false];
   optional bool clear_checkpoints = 7 [default=false];
   optional bool disable_checkpoints = 8 [default=false];
-  optional int32 kvstore_port = 9 [default=8790];
+
+  message KVStoreConfig {
+    // Determines the file path of the shared KV Store. This is relative to shared_scratch.
+    optional string db_name = 1 [default="temp_kv_store"];
+    // The amount of memory allocated by the master node to keep data.
+    // Default is 2GB = 2e9
+    optional int64 memory_buffer = 2 [default=2000000000];
+  }
+  optional KVStoreConfig kv_store = 9;
 }
 
 message TextParserConfig {

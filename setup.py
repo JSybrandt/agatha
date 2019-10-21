@@ -92,9 +92,9 @@ setup(
       "numpy",
       "pandas",
       "paramiko",
+      "partd",
       "protobuf",
       "pymysql",
-      "transformers",
       "redis",
       "scispacy",
       "sklearn",
@@ -102,5 +102,6 @@ setup(
       "torch",
       "torchvision",
       "tqdm",
+      "transformers",
     ],
 )

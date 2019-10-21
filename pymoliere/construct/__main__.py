@@ -113,7 +113,11 @@ if __name__ == "__main__":
   print("Registering Helper Objects")
   preloader = dpg.WorkerPreloader()
   preloader.register(*key_value_store.get_kv_server_initializer(
-    port=config.cluster.kvstore_port,
+    server_file_path=(
+      shared_scratch_root
+      .joinpath(config.cluster.kv_store.db_name)
+    ),
+    server_buffer_size=config.cluster.kv_store.memory_buffer,
   ))
   preloader.register(*text_util.get_scispacy_initalizer(
       scispacy_version=config.parser.scispacy_version,

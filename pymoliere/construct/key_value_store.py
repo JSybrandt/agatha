@@ -6,11 +6,7 @@ import socket
 import random
 from pymoliere.util.misc_util import iter_to_batches
 
-def get_kv_server_initializer(
-    server_file_path:Path,
-    server_buffer_size:int,
-
-)->Tuple[str, dpg.Initializer]:
+def get_kv_server_initializer()->Tuple[str, dpg.Initializer]:
   """
   Starts the KV server in the background on whatever host calls this function.
   Returns an initializer that allows for other machines to contact the KV store.

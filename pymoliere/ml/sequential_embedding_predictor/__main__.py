@@ -14,6 +14,7 @@ import numpy as np
 from pymoliere.ml.util import BERT_EMB_DIM
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
+from random import randint
 
 
 class SequentialEmbeddingPredictor(torch.nn.Module):
@@ -68,12 +69,13 @@ def group_sentences_into_sequential_abstract_embeddings(
         lambda idx_emb:idx_emb[1],
         sorted(idx2emb.items())
       )))
-      for r in range(1, mat.shape[0]-1):
-        # 0-r-1, r
-        data.append((
-          torch.FloatTensor(mat[:r, :]),
-          torch.FloatTensor(mat[r, :]),
-        ))
+      # for r in range(1, mat.shape[0]-1):
+        # # 0-r-1, r
+        # data.append((
+          # torch.FloatTensor(mat[:r, :]),
+          # torch.FloatTensor(mat[r, :]),
+        # ))
+      data.append(mat)
   return data
 
 if __name__ == "__main__":
@@ -158,24 +160,40 @@ if __name__ == "__main__":
 
   print("Loading")
   data = file_util.load_to_memory(data_ckpt_dir.joinpath("all_data"))
-  training_data, validation_data = train_test_split(
+  training, validation = train_test_split(
       data,
       test_size=config.validation_set_ratio,
   )
 
-  train_model.train_model(
-      training_data=list(map(lambda x: x[0], training_data)),
-      training_labels=list(map(lambda x: x[1], training_data)),
-      validation_data=list(map(lambda x: x[0], validation_data)),
-      validation_labels=list(map(lambda x: x[1], validation_data)),
-      model=model,
-      device=device,
-      loss_fn=loss_fn,
-      optimizer=optimizer,
-      num_epochs=config.sys.num_epochs,
-      batch_size=config.sys.batch_size,
-      input_is_sequences=True,
-  )
+  def splits(data):
+    a = []; b = []
+    for mat in data:
+      r = randint(1, mat.shape[0]-1)
+      a.append(mat[:r, :])
+      b.append(mat[r, :])
+    return a, b
+
+
+  for epoch in config.sys.num_epochs:
+    shuffle(training)
+    shuffle(validation)
+    training_data, training_labels = splits(training)
+    validation_data, validation_labels = splits(validation)
+
+    train_model.train_model(
+        training_data=training_data,
+        training_labels=training_labels,
+        validation_data=validation_data,
+        validation_labels=validation_labels,
+        model=model,
+        device=device,
+        loss_fn=loss_fn,
+        optimizer=optimizer,
+        #num_epochs=config.sys.num_epochs,
+        batch_size=config.sys.batch_size,
+        input_is_sequences=True,
+        show_plots=False,
+    )
 
   print("Saving model")
   torch.save(model.state_dict(), model_path)

@@ -9,7 +9,6 @@ from pymoliere.util.misc_util import iter_to_batches
 from torch.nn.utils.rnn import pad_sequence
 
 
-
 def train_model(
     model:nn.Module,
     device:torch.device,
@@ -24,6 +23,7 @@ def train_model(
     shuffle_batch:bool=True,
     compute_accuracy:bool=False,
     input_is_sequences:bool=False,
+    show_plots:bool=True,
 )->None:
   training_losses = []
   validation_losses = []
@@ -31,22 +31,23 @@ def train_model(
   validation_accuracies = []
 
   def print_training_plot(training_data, validation_data):
-    fig = plotille.Figure()
-    fig.height = 10
-    fig.set_x_limits(min_=0)
-    fig.plot(
-        list(range(len(training_data))),
-        training_data,
-        label="Training",
-        lc="bright_blue",
-    )
-    fig.plot(
-        list(range(len(validation_data))),
-        validation_data,
-        label="Validation",
-        lc="bright_magenta",
-    )
-    print(fig.show(legend=True))
+    if show_plots:
+      fig = plotille.Figure()
+      fig.height = 10
+      fig.set_x_limits(min_=0)
+      fig.plot(
+          list(range(len(training_data))),
+          training_data,
+          label="Training",
+          lc="bright_blue",
+      )
+      fig.plot(
+          list(range(len(validation_data))),
+          validation_data,
+          label="Validation",
+          lc="bright_magenta",
+      )
+      print(fig.show(legend=True))
 
   for epoch in range(num_epochs):
     if shuffle_batch:

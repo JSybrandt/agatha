@@ -11,7 +11,8 @@ from pymoliere.construct.dask_checkpoint import checkpoint
 from pymoliere.util.misc_util import Record
 from typing import Iterable
 import numpy as np
-from pymoliere.ml.util import BERT_EMB_DIM
+from pymoliere.ml.util import BERT_EMB_DIM, load_random_sample
+from pymoliere.ml.train_model import train_model
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
 from random import randint
@@ -36,16 +37,18 @@ class SequentialEmbeddingPredictor(torch.nn.Module):
 
   def init_hidden(self, batch_size):
     arbitrary_weight=next(self.parameters()).data
-    return Variable(
+    return torch.autograd.Variable(
         arbitrary_weight
-        .new(batch_size,self.num_layers, self.hidden_size)
+        .new(self.num_layers, batch_size, self.hidden_size)
         .zero_()
     )
 
-  def forward(self, x, hidden):
-    x, hidden = self.gru(x, hidden)
+  def forward(self, x):
+    hidden = self.init_hidden(x.shape[0])
+    x, _ = self.gru(x, hidden)
+    x = x[:, -1, :]
     x = self.out(x)
-    return x, hidden
+    return x
 
 
 def group_sentences_into_sequential_abstract_embeddings(
@@ -158,38 +161,29 @@ if __name__ == "__main__":
       lr=0.002,
   )
 
-  print("Loading")
-  data = file_util.load_to_memory(data_ckpt_dir.joinpath("all_data"))
-  training, validation = train_test_split(
-      data,
-      test_size=config.validation_set_ratio,
-  )
-
   def splits(data):
     a = []; b = []
     for mat in data:
       r = randint(1, mat.shape[0]-1)
-      a.append(mat[:r, :])
-      b.append(mat[r, :])
+      a.append(torch.FloatTensor(mat[:r, :]))
+      b.append(torch.FloatTensor(mat[r, :]))
     return a, b
 
-
-  for epoch in config.sys.num_epochs:
-    shuffle(training)
-    shuffle(validation)
-    training_data, training_labels = splits(training)
-    validation_data, validation_labels = splits(validation)
-
-    train_model.train_model(
+  for epoch in range(config.sys.num_epochs):
+    print("Epoch:", epoch)
+    print("Loading Sample")
+    data = list(load_random_sample(data_ckpt_dir.joinpath("all_data"), 0.2, 0.2))
+    shuffle(data)
+    training_data, training_labels = splits(data)
+    print("Performing training step")
+    train_model(
         training_data=training_data,
         training_labels=training_labels,
-        validation_data=validation_data,
-        validation_labels=validation_labels,
         model=model,
         device=device,
         loss_fn=loss_fn,
         optimizer=optimizer,
-        #num_epochs=config.sys.num_epochs,
+        num_epochs=1,
         batch_size=config.sys.batch_size,
         input_is_sequences=True,
         show_plots=False,

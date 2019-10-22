@@ -15,11 +15,11 @@ def train_model(
     loss_fn:nn.modules.loss._Loss,
     optimizer:torch.optim.Optimizer,
     num_epochs:int,
-    training_data:List[torch.Tensor],
-    validation_data:List[torch.Tensor],
-    training_labels:List[torch.Tensor],
-    validation_labels:List[torch.Tensor],
     batch_size:int,
+    training_data:List[torch.Tensor],
+    training_labels:List[torch.Tensor],
+    validation_data:List[torch.Tensor]=None,
+    validation_labels:List[torch.Tensor]=None,
     shuffle_batch:bool=True,
     compute_accuracy:bool=False,
     input_is_sequences:bool=False,
@@ -29,39 +29,42 @@ def train_model(
   validation_losses = []
   training_accuracies = []
   validation_accuracies = []
+  phases = ["train"]
+  if validation_data is not None and validation_labels is not None:
+    phases.append("validation")
 
   def print_training_plot(training_data, validation_data):
-    if show_plots:
-      fig = plotille.Figure()
-      fig.height = 10
-      fig.set_x_limits(min_=0)
-      fig.plot(
-          list(range(len(training_data))),
-          training_data,
-          label="Training",
-          lc="bright_blue",
-      )
-      fig.plot(
-          list(range(len(validation_data))),
-          validation_data,
-          label="Validation",
-          lc="bright_magenta",
-      )
-      print(fig.show(legend=True))
+    fig = plotille.Figure()
+    fig.height = 10
+    fig.set_x_limits(min_=0)
+    fig.plot(
+        list(range(len(training_data))),
+        training_data,
+        label="Training",
+        lc="bright_blue",
+    )
+    fig.plot(
+        list(range(len(validation_data))),
+        validation_data,
+        label="Validation",
+        lc="bright_magenta",
+    )
+    print(fig.show(legend=True))
 
   for epoch in range(num_epochs):
     if shuffle_batch:
       print("Shuffling...")
       training_data, training_labels = shuffle(training_data, training_labels)
-    for phase in ["train", "validation"]:
-      system("clear")
-      print(f"Epoch: {epoch}/{num_epochs} -- {phase}")
-      print("Loss")
-      print_training_plot(training_losses, validation_losses)
-      if compute_accuracy:
-        print("Accuracy")
-        print_training_plot(training_accuracies, validation_accuracies)
-      print()
+    for phase in phases:
+      if show_plots:
+        system("clear")
+        print(f"Epoch: {epoch}/{num_epochs} -- {phase}")
+        print("Loss")
+        print_training_plot(training_losses, validation_losses)
+        if compute_accuracy:
+          print("Accuracy")
+          print_training_plot(training_accuracies, validation_accuracies)
+        print()
 
       if phase == "train":
         model.train()

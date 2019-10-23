@@ -167,14 +167,6 @@ message SentenceClassifierConfig {
   optional string custom_data_dir = 8;
 }
 
-message SequentialEmbeddingPredictorConfig {
-  // Root to the scratch directory
-  optional ClusterConfig cluster = 1;
-  optional string shared_scratch = 2;
-  optional MlConfig sys = 3;
-  optional float validation_set_ratio = 6 [default=0.3];
-  optional bool force_retrain = 7 [default=false];
-}
 ////////////////////////////////////////////////////////////////////////////////
 
 message SemMedDBAddonConfig {

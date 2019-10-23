@@ -107,6 +107,7 @@ setup(
       "plotille",
       "protobuf",
       "pymysql",
+      "pytest",
       "redis",
       "scispacy",
       "sklearn",

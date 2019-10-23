@@ -91,7 +91,6 @@ def generate_sentence_mask(
   assert mid_sep_idx < len(sequence)-1
   # init mask to 0
   mask = [False] * len(sequence)
-  print(len(range(mid_sep_idx+1, len(sequence)-1)))
   for idx in range(mid_sep_idx+1, len(sequence)-1):
     if np.random.random() <= per_token_mask_prob:
       mask[idx] = True

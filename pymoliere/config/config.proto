@@ -167,6 +167,20 @@ message SentenceClassifierConfig {
   optional string custom_data_dir = 8;
 }
 
+message AbstractGeneratorConfig {
+  optional ClusterConfig cluster = 1;
+  optional TextParserConfig parser = 2;
+  optional MlConfig sys = 3;
+  // The following effect how often the second training sentence is modified.
+  // This is the probability that the 2nd sentence is unchanged
+  optional float unchanged_prob = 4 [default=0.1];
+  // This is the probability that the whole 2nd sentence is dropped
+  optional float full_mask_prob = 5 [default=0.1];
+  // This is the per-token probability that a single word is dropped (provided
+  // the above conditions have not happened)
+  optional float mask_per_token_prob = 6 [default=0.1];
+  // Note unchanged_prob + full_mask_prob <= 1
+}
 ////////////////////////////////////////////////////////////////////////////////
 
 message SemMedDBAddonConfig {

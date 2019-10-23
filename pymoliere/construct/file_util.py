@@ -137,3 +137,21 @@ def load_value(path:Path)->Any:
   """
   with open(path, 'rb') as f:
     return pickle.load(f)
+
+def load_random_sample_to_memory(
+    data_dir:Path,
+    value_sample_rate:float=1,
+    partition_sample_rate:float=1
+)->List[Any]:
+  assert value_sample_rate > 0
+  assert value_sample_rate <= 1
+  assert partition_sample_rate > 0
+  assert partition_sample_rate <= 1
+  assert is_result_saved(data_dir)
+  res = []
+  for part in tqdm(get_part_files(data_dir)):
+    if random.random() < partition_sample_rate:
+      for rec in load_part(part):
+        if random.random() < value_sample_rate:
+          res.append(rec)
+  return res

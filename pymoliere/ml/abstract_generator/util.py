@@ -118,9 +118,56 @@ def sentence_pairs_to_tensor_batch(
     mask_per_token_prob: number from 0 - 1. This is the chance that we mask
     each word, provided this sentence isn't ignored or totally masked.
   Output:
-    (model_input, expected_output)
+    (modified_data, original_data)
     Model input is a batch of padded sequences wherein the second sentence may
     have been modified.  Expected output is the original padded sequences with
     no modification.
   """
-  
+  assert unchanged_prob + full_mask_prob <= 1
+
+  def pick_mask_prob():
+    r = np.random.random()
+    if r < unchanged_prob:
+      return 0
+    r -= unchanged_prob
+    if r < full_mask_prob:
+      return 1
+    return mask_per_token_prob
+
+  original_sequences = [
+      tokenizer.encode(
+        text=first,
+        text_pair=second,
+        add_special_tokens=True,
+        max_length=max_sequence_length
+      )
+      for first, second in batch_pairs
+  ]
+
+  masked_sequences = [
+      mask_sequence(
+        tokenizer=tokenizer,
+        sequence=sequence,
+        mask=generate_sentence_mask(
+          tokenizer=tokenizer,
+          sequence=sequence,
+          per_token_mask_prob=pick_mask_prob()
+        )
+      )
+      for sequence in original_sequences
+  ]
+
+  original_sequences = list(map(torch.tensor, original_sequences))
+  masked_sequences = list(map(torch.tensor, masked_sequences))
+
+  modified_data = torch.nn.utils.rnn.pad_sequence(
+      sequences=masked_sequences,
+      batch_first=True,
+      padding_value=tokenizer.pad_token_id,
+  )
+  original_data = torch.nn.utils.rnn.pad_sequence(
+      sequences=original_sequences,
+      batch_first=True,
+      padding_value=tokenizer.pad_token_id,
+  )
+  return modified_data, original_data

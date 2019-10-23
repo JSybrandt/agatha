@@ -295,3 +295,24 @@ def test_group_sentences_into_pairs_separate_versions():
       ("v2 title", "v2 first"),
   ]
   assert set(actual) == set(expected)
+
+def test_sentence_pairs_to_batch():
+  sentence_pairs = [
+      (SENTENCE_1, SENTENCE_2),
+      (SENTENCE_2, SENTENCE_3),
+  ]
+  tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+  in_data, out_data = util.sentence_pairs_to_tensor_batch(
+      tokenizer=tokenizer,
+      batch_pairs=sentence_pairs,
+      unchanged_prob=0,
+      full_mask_prob=0,
+      mask_per_token_prob=0.8,
+      max_sequence_length=500,
+  )
+  # same shape
+  assert in_data.shape == out_data.shape
+  # batch size = 2 (two pairs)
+  assert in_data.shape[0] == 2
+  # Not the same
+  assert not torch.all(torch.eq(in_data, out_data))

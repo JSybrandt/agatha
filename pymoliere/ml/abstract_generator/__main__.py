@@ -99,10 +99,8 @@ if __name__ == "__main__":
 
   # Prep for training
   print("Loading Data")
-  data = file_util.load_random_sample_to_memory(
+  data = file_util.load_to_memory(
       data_ckpt_dir.joinpath("sentence_pairs"),
-      partition_sample_rate=0.05,
-      value_sample_rate=0.1,
   )
 
   def shuffle_data():

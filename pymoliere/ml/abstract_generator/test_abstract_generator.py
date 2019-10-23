@@ -129,7 +129,7 @@ def test_mask_sentence():
   assert actual == expected
 
 
-def generate_sentence_mask():
+def test_generate_sentence_mask():
   tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
   first_sent_seq = tokenizer.encode(SENTENCE_1, add_special_tokens=True)
   full_sequence = tokenizer.encode(
@@ -137,14 +137,42 @@ def generate_sentence_mask():
       text_pair=SENTENCE_2,
       add_special_tokens=True
   )
-  valid_mask_values = set(range(len(first_sent_seq), len(full_sequence)))
+  valid_mask_values = set(range(len(first_sent_seq), len(full_sequence)-1))
   # MASK EVERYTHING
   mask = util.generate_sentence_mask(tokenizer, full_sequence, 1)
   assert len(mask) == len(full_sequence)
+  # only marks those listed as valid
   for idx, is_masked in enumerate(mask):
     if is_masked:
       assert idx in valid_mask_values
+  # marks all of the valid
+  for idx in valid_mask_values:
+    assert mask[idx]
 
+def test_generate_sentence_mask_random():
+  tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+  first_sent_seq = tokenizer.encode(SENTENCE_1, add_special_tokens=True)
+  full_sequence = tokenizer.encode(
+      text=SENTENCE_1,
+      text_pair=SENTENCE_2,
+      add_special_tokens=True
+  )
+  print(full_sequence)
+  valid_mask_values = set(range(len(first_sent_seq), len(full_sequence)-1))
+  print(valid_mask_values)
+  # only marks those listed as valid
+  avg_marked_per_trial = []
+  # run 1000 trials, we want to see if the result is close to 0.5
+  for _ in range(1000):
+    mask = util.generate_sentence_mask(tokenizer, full_sequence, 0.5)
+    assert len(mask) == len(full_sequence)
+    num_marked = 0
+    for idx, is_masked in enumerate(mask):
+      if is_masked:
+        assert idx in valid_mask_values
+        num_marked += 1
+    avg_marked_per_trial.append(num_marked/len(valid_mask_values))
+  assert np.isclose(np.mean(avg_marked_per_trial), 0.5, atol=0.01)
 
 def test_group_sentences_into_pairs_sorted():
   records = [{

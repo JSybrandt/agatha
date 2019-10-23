@@ -1,10 +1,10 @@
-from typing import Dict, Any, Iterable
+from typing import Dict, Any, Iterable, Tuple
 from pymoliere.util.misc_util import Record
 from transformers import BertModel, BertTokenizer
 import torch
 from copy import copy
 from typing import List
-from random import random
+import numpy as np
 
 class AbstractGenerator(BertModel):
   def __init__(self, config:Dict[str, Any]):
@@ -86,12 +86,41 @@ def generate_sentence_mask(
   assert per_token_mask_prob <= 1
   assert sequence[0] == tokenizer.cls_token_id
   assert sequence[-1] == tokenizer.sep_token_id
-  mid_sep_idx = sequence.find(tokenizer.sep_token_id)
+  mid_sep_idx = sequence.index(tokenizer.sep_token_id)
   # Must find a separation token between the start and end
   assert mid_sep_idx < len(sequence)-1
   # init mask to 0
   mask = [False] * len(sequence)
+  print(len(range(mid_sep_idx+1, len(sequence)-1)))
   for idx in range(mid_sep_idx+1, len(sequence)-1):
-    if random() <= per_token_mask_prob:
+    if np.random.random() <= per_token_mask_prob:
       mask[idx] = True
   return mask
+
+def sentence_pairs_to_tensor_batch(
+    tokenizer:BertTokenizer,
+    batch_pairs:List[Tuple[str, str]],
+    unchanged_prob:float,
+    full_mask_prob:float,
+    mask_per_token_prob:float,
+    max_sequence_length:int,
+)->Tuple[torch.Tensor, torch.Tensor]:
+  """
+  Converts the sentence pairs into training batches.
+  Input:
+    tokenizer: the object that we will use to convert raw text into sequences
+    sentence_pairs: the raw textual data. The second sentence of each pair is
+    the one we would like to predict.
+    unchanged_prob: number from 0 - 1. This is the chance that we do not mask
+    the second sentence at all. unchanged_prob + full_mask_prob < 1
+    full_mask_prob: number from 0 - 1. This is the chance that we mask the
+    entire sentence. unchanged_prob + full_mask_prob < 1.
+    mask_per_token_prob: number from 0 - 1. This is the chance that we mask
+    each word, provided this sentence isn't ignored or totally masked.
+  Output:
+    (model_input, expected_output)
+    Model input is a batch of padded sequences wherein the second sentence may
+    have been modified.  Expected output is the original padded sequences with
+    no modification.
+  """
+  

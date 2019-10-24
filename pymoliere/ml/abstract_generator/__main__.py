@@ -124,7 +124,7 @@ if __name__ == "__main__":
     if epoch_num == 1:
       for param in model.parameters():
         param.requires_grad = True
-    if epoch_num >= 0:
+    if epoch_num > 0:
       print("Saving model")
       torch.save(model.state_dict(), model_path)
 

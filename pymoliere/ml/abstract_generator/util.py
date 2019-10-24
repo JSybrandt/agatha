@@ -4,9 +4,9 @@ from transformers import BertModel, BertTokenizer
 import torch
 from copy import copy
 from typing import List
-import numpy as np
 from pymoliere.ml.train_model import get_device_from_model
 from pymoliere.util.misc_util import flatten_list
+from random import random
 
 class AbstractGenerator(BertModel):
   def __init__(self, config:Dict[str, Any], freeze_bert_layers=False):
@@ -21,11 +21,11 @@ class AbstractGenerator(BertModel):
     # Then we pick the word
     self.last_softmax = torch.nn.LogSoftmax(dim=1)
 
-  def forward(self, x):
+  def forward(self, *args, **kwargs):
+    x = super(AbstractGenerator, self).forward(*args, **kwargs)[0]
+
     # x is batch_first
-    batch_size, seq_len = x.shape
-    # The 0th element is the hidden layer per-word
-    x = super(AbstractGenerator, self).forward(x)[0]
+    batch_size, seq_len, emb_size = x.shape
 
     # Convert to (batch_size*seq_len), hidden_size to apply linear layer to
     # each row
@@ -36,6 +36,7 @@ class AbstractGenerator(BertModel):
     # reconstitute correct shape
     x = x.view(batch_size, seq_len, self.config.vocab_size)
     return x
+
 
 def group_sentences_into_pairs(records:Iterable[Record])->Iterable[Record]:
   """
@@ -62,43 +63,40 @@ def group_sentences_into_pairs(records:Iterable[Record])->Iterable[Record]:
       res.append((key2text[key], key2text[next_key]))
   return res
 
-def mask_sequence(
+def apply_mask_to_token_ids(
     tokenizer:BertTokenizer,
-    sequence:List[int],
+    input_ids:List[int],
     mask:List[bool],
 )->List[int]:
   """
-  If mask[i] is True, then we replace sequence[i] with tokenizer.mask_token_id.
+  If mask[i] is True, then we replace input_ids[i] with tokenizer.mask_token_id.
   Returns a COPY
   """
-
-  sequence = copy(sequence)
-  assert len(sequence) == len(mask)
-  for idx in range(len(sequence)):
+  input_ids = copy(input_ids)
+  assert len(input_ids) == len(mask)
+  for idx in range(len(input_ids)):
     if mask[idx]:
-      sequence[idx] = tokenizer.mask_token_id
-  return sequence
+      input_ids[idx] = tokenizer.mask_token_id
+  return input_ids
+
 
 def generate_sentence_mask(
-    tokenizer:BertTokenizer,
-    sequence:List[int],
+    segment_mask:List[int],
     per_token_mask_prob:float,
 )->List[bool]:
+  "Selectively chooses words in the 2nd sentence to mask out"
   assert per_token_mask_prob >= 0
   assert per_token_mask_prob <= 1
-  assert sequence[0] == tokenizer.cls_token_id
-  assert sequence[-1] == tokenizer.sep_token_id
-  mid_sep_idx = sequence.index(tokenizer.sep_token_id)
-  # Must find a separation token between the start and end
-  assert mid_sep_idx < len(sequence)-1
-  # init mask to 0
-  mask = [False] * len(sequence)
-  for idx in range(mid_sep_idx+1, len(sequence)-1):
-    if np.random.random() <= per_token_mask_prob:
-      mask[idx] = True
-  return mask
+  mask = copy(segment_mask)
+  # Can't mask the last value
+  mask[-1] = 0
+  return [
+      False if m == 0 or random() >= per_token_mask_prob else True
+      for m in mask
+  ]
 
-def sentence_pairs_to_tensor_batch(
+
+def sentence_pairs_to_model_io(
     tokenizer:BertTokenizer,
     batch_pairs:List[Tuple[str, str]],
     unchanged_prob:float,
@@ -119,15 +117,20 @@ def sentence_pairs_to_tensor_batch(
     mask_per_token_prob: number from 0 - 1. This is the chance that we mask
     each word, provided this sentence isn't ignored or totally masked.
   Output:
-    (modified_data, original_data)
+    (model_kwargs, original_data)
     Model input is a batch of padded sequences wherein the second sentence may
     have been modified.  Expected output is the original padded sequences with
     no modification.
+
+    model kwargs contains:
+      input_ids: the set of tokens for two sentences. Starts with [CLS] and [SEP] denotes the end as well as the intermediate sentence.
+      attention_mask: all 1's until padding tokens. Avoids running attention on padding.
+      token_type_ids: all 0's until we reach the 2nd sentence (starting after the middle [SEP]) and then all 1's.
   """
   assert unchanged_prob + full_mask_prob <= 1
 
   def pick_mask_prob():
-    r = np.random.random()
+    r = random()
     if r < unchanged_prob:
       return 0
     r -= unchanged_prob
@@ -135,8 +138,10 @@ def sentence_pairs_to_tensor_batch(
       return 1
     return mask_per_token_prob
 
-  original_sequences = [
-      tokenizer.encode(
+  # Original inputs contains:
+  # 'input_ids' 'token_type_ids' and 'special_tokens_mask'
+  model_inputs = [
+      tokenizer.encode_plus(
         text=first,
         text_pair=second,
         add_special_tokens=True,
@@ -145,33 +150,48 @@ def sentence_pairs_to_tensor_batch(
       for first, second in batch_pairs
   ]
 
-  masked_sequences = [
-      mask_sequence(
+  modified_input_ids = [
+      apply_mask_to_token_ids(
         tokenizer=tokenizer,
-        sequence=sequence,
+        input_ids=kwargs["input_ids"],
         mask=generate_sentence_mask(
-          tokenizer=tokenizer,
-          sequence=sequence,
+          segment_mask=kwargs["token_type_ids"],
           per_token_mask_prob=pick_mask_prob()
         )
       )
-      for sequence in original_sequences
+      for kwargs in model_inputs
   ]
 
-  original_sequences = list(map(torch.tensor, original_sequences))
-  masked_sequences = list(map(torch.tensor, masked_sequences))
+  original_token_ids = [
+      torch.tensor(arg['input_ids'])
+      for arg in model_inputs
+  ]
+  token_type_ids = [
+      torch.tensor(arg['token_type_ids'])
+      for arg in model_inputs
+  ]
+  modified_input_ids = [torch.tensor(ids) for ids in modified_input_ids]
 
-  modified_data = torch.nn.utils.rnn.pad_sequence(
-      sequences=masked_sequences,
-      batch_first=True,
-      padding_value=tokenizer.pad_token_id,
-  )
-  original_data = torch.nn.utils.rnn.pad_sequence(
-      sequences=original_sequences,
-      batch_first=True,
-      padding_value=tokenizer.pad_token_id,
-  )
-  return modified_data, original_data
+  def pad(x):
+    return torch.nn.utils.rnn.pad_sequence(
+        sequences=x,
+        batch_first=True,
+        padding_value=tokenizer.pad_token_id,
+    )
+  original_token_ids = pad(original_token_ids)
+  token_type_ids = pad(token_type_ids)
+  modified_input_ids = pad(modified_input_ids)
+  attention_mask = torch.ones(original_token_ids.shape)
+  attention_mask[original_token_ids == tokenizer.pad_token_id] = 1
+
+  return (
+      {
+        "input_ids": modified_input_ids,
+        "token_type_ids": token_type_ids,
+        'attention_mask': attention_mask,
+      },
+      original_token_ids)
+  return (modified_data, token_types), original_data
 
 
 def generate_sentence(
@@ -182,7 +202,7 @@ def generate_sentence(
 )->str:
   device = get_device_from_model(model)
   # Sequence holds the tokens for both input and mask
-  sequence, _ = sentence_pairs_to_tensor_batch(
+  model_kwargs, _ = sentence_pairs_to_model_io(
       tokenizer=tokenizer,
       batch_pairs=[(sentence, sentence)],
       unchanged_prob=0,
@@ -190,19 +210,26 @@ def generate_sentence(
       mask_per_token_prob=1,
       max_sequence_length=max_sequence_length,
   )
-  sequence = sequence.to(device)
 
-  # Get where the separation between sequences happens
-  sep_indices = (sequence == tokenizer.sep_token_id).nonzero().tolist()
-  first_predicted_idx = 1 + min([c for r, c in sep_indices])
-
-  # False for each element in the 2nd half of the sequence
-  complete_mask = [False] * (sequence.shape[1]-1-first_predicted_idx)
+  print(model_kwargs)
+  first_predicted_idx = (
+      model_kwargs["token_type_ids"]
+      .view(-1)
+      .tolist()
+      .index(1)
+  )
+  print(first_predicted_idx)
+  complete_mask = (
+      [False]
+      * (model_kwargs["input_ids"].shape[1] - first_predicted_idx - 1)
+  )
+  print(complete_mask)
+  print(len(complete_mask))
 
   while False in complete_mask:
     # Predict based off what we have currently
     # make a list of softmax results (seq_len x voccab_size)
-    predicted = model(sequence).view(-1, tokenizer.vocab_size)[first_predicted_idx:-1]
+    predicted = model(**model_kwargs).view(-1, tokenizer.vocab_size)[first_predicted_idx:-1]
     # how confident were we at each token?
     confidence_per_token, token_indices = torch.max(predicted, dim=1)
     # If we've already settled on a word, ignore it
@@ -211,9 +238,9 @@ def generate_sentence(
     selected_idx = torch.argmax(confidence_per_token)
     complete_mask[selected_idx] = True
     # Remember this index!
-    sequence[0, selected_idx + first_predicted_idx] = token_indices[selected_idx]
+    model_kwargs['input_ids'][0, selected_idx + first_predicted_idx] = token_indices[selected_idx]
 
-  return tokenizer.decode(sequence[0, first_predicted_idx:-1].tolist())
+  return tokenizer.decode(model_kwargs['input_ids'][0, first_predicted_idx:-1].tolist())
 
 
 

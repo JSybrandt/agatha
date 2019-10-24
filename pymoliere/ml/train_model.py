@@ -1,19 +1,20 @@
 import plotille
 import torch
-from typing import List, Tuple, Any, Callable, Generator
+from typing import List, Tuple, Any, Callable, Generator, Dict
 from os import system
 from tqdm import tqdm
 from sklearn.utils import shuffle
 from torch.nn.utils.rnn import pad_sequence
 
-# We call this on epoch start
-OnEpochStartFn = Callable[[], None]
+# We call this on epoch start, starts with epoch number
+OnEpochStartFn = Callable[[int], None]
 # Called after calculating loss on training batch.
 # Input is the loss value.
 AfterLossCalculationFn = Callable[[torch.Tensor], None]
 # A generator is created per-epoch. We're going to call this #batches times.
 # We're going to assume this batch generator could go on forever
-BatchGenerator = Generator[Tuple[torch.Tensor, torch.Tensor], None, None]
+# Outputs the kwargs for the model, and the tensor we're comparing against
+BatchGenerator = Generator[Tuple[Dict[Any, Any], torch.Tensor], None, None]
 # Params are yield, send, return
 
 # Given predicted batch and actual batch, produce a value. These are averaged
@@ -126,7 +127,7 @@ def train_model(
     system("clear")
     print(f"Epoch {epoch}/{num_epochs}")
     if on_epoch_start is not None:
-      on_epoch_start()
+      on_epoch_start(epoch)
     for metric, phase2valuses in metric2phase2values.items():
       print(metric)
       print_line_plots(list(phase2valuses.items()))
@@ -147,12 +148,8 @@ def train_model(
       device = get_device_from_model(model)
 
       pbar = tqdm(gen(), total=num)
-      for batch_idx, (input_data, expected_output) in enumerate(pbar):
-
-        input_data = input_data.to(device)
-        expected_output = expected_output.to(device)
-
-        predicted_output = model(input_data)
+      for batch_idx, (in_kwargs, expected_output) in enumerate(pbar):
+        predicted_output = model(**in_kwargs)
 
         for metric_name, metric_fn in metrics:
           metric_val = metric_fn(predicted_output, expected_output)

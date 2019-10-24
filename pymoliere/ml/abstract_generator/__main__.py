@@ -95,8 +95,12 @@ if __name__ == "__main__":
     print("Loading Model")
     model.load_state_dict(torch.load(model_path))
 
-  print("Model -> Device")
-  model.to(device)
+  if torch.cuda.device_count() > 1:
+    print("Expanding to multiple GPUs")
+    model = torch.nn.DataParallel(model).cuda()
+  else:
+    print("Model -> Device")
+    model.to(device)
 
   loss_fn = torch.nn.NLLLoss()
   optimizer = AdamW(
@@ -107,18 +111,26 @@ if __name__ == "__main__":
 
   # Prep for training
   print("Loading Data")
-  data = file_util.load_to_memory(
+  data = file_util.load_random_sample_to_memory(
       data_ckpt_dir.joinpath("sentence_pairs"),
+      partition_sample_rate=0.1,
   )
 
-  def start_epoch():
-    print("Saving model")
-    torch.save(model.state_dict(), model_path)
+  def start_epoch(epoch_num:int):
+    print("Shuffling")
     shuffle(data)
+    # We're going fine-tune the softmax layer in the first epoch,
+    # and then all is fair game
+    if epoch_num == 1:
+      for param in model.parameters():
+        param.requires_grad = True
+    if epoch_num >= 0:
+      print("Saving model")
+      torch.save(model.state_dict(), model_path)
 
   def gen_batch():
-    for batch in iter_to_batches(data[:100000], config.sys.batch_size):
-      yield util.sentence_pairs_to_tensor_batch(
+    for batch in iter_to_batches(data, config.sys.batch_size):
+      in_kwargs, expected_out = util.sentence_pairs_to_model_io(
           tokenizer=tokenizer,
           batch_pairs=batch,
           unchanged_prob=config.unchanged_prob,
@@ -126,7 +138,9 @@ if __name__ == "__main__":
           mask_per_token_prob=config.mask_per_token_prob,
           max_sequence_length=config.parser.max_sequence_length,
       )
-  total_batches = int(len(data) / config.sys.batch_size)
+      in_kwargs = {k: v.to(device) for k, v in in_kwargs.items()}
+      yield in_kwargs, expected_out.to(device)
+  #total_batches = int(len(data) / config.sys.batch_size)
 
   def after_loss_calculation(loss):
     optimizer.zero_grad()
@@ -152,8 +166,8 @@ if __name__ == "__main__":
       num_epochs=config.sys.num_epochs,
       on_epoch_start=start_epoch,
       batch_generator=gen_batch,
+      num_batches=100000,
       after_loss_calculation=after_loss_calculation,
-      num_batches=total_batches,
       metrics=[
           ("accuracy", calc_accuracy)
       ]

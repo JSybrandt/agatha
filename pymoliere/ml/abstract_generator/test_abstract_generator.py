@@ -105,7 +105,7 @@ def test_bert_generator_backwards():
   assert not np.allclose(init_hidden_values, final_hidden_values)
 
 
-def test_mask_sentence():
+def test_apply_mask():
   tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
   original_sequence = tokenizer.encode(
       text=SENTENCE_1,
@@ -119,9 +119,9 @@ def test_mask_sentence():
   expected[-2] = expected[2] = tokenizer.mask_token_id
   expected[2] = tokenizer.mask_token_id
   # get actual
-  actual = util.mask_sequence(
+  actual = util.apply_mask_to_token_ids(
       tokenizer=tokenizer,
-      sequence=original_sequence,
+      input_ids=original_sequence,
       mask=mask
   )
   # require that actual is a modified copy
@@ -131,16 +131,23 @@ def test_mask_sentence():
 
 def test_generate_sentence_mask():
   tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-  first_sent_seq = tokenizer.encode(SENTENCE_1, add_special_tokens=True)
-  full_sequence = tokenizer.encode(
+  model_inputs = tokenizer.encode_plus(
       text=SENTENCE_1,
       text_pair=SENTENCE_2,
       add_special_tokens=True
   )
-  valid_mask_values = set(range(len(first_sent_seq), len(full_sequence)-1))
+  input_ids = model_inputs['input_ids']
+  segment_mask = model_inputs['token_type_ids']
+  valid_mask_values = set([
+    idx for idx, val in enumerate(segment_mask)
+    if val == 1 and idx < len(segment_mask)-1
+  ])
   # MASK EVERYTHING
-  mask = util.generate_sentence_mask(tokenizer, full_sequence, 1)
-  assert len(mask) == len(full_sequence)
+  mask = util.generate_sentence_mask(
+      segment_mask=segment_mask,
+      per_token_mask_prob=1,
+  )
+  assert len(mask) == len(input_ids)
   # only marks those listed as valid
   for idx, is_masked in enumerate(mask):
     if is_masked:
@@ -151,28 +158,38 @@ def test_generate_sentence_mask():
 
 def test_generate_sentence_mask_random():
   tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-  first_sent_seq = tokenizer.encode(SENTENCE_1, add_special_tokens=True)
-  full_sequence = tokenizer.encode(
+  model_inputs = tokenizer.encode_plus(
       text=SENTENCE_1,
       text_pair=SENTENCE_2,
       add_special_tokens=True
   )
-  print(full_sequence)
-  valid_mask_values = set(range(len(first_sent_seq), len(full_sequence)-1))
-  print(valid_mask_values)
+  input_ids = model_inputs['input_ids']
+  segment_mask = model_inputs['token_type_ids']
+  valid_mask_values = set([
+    idx for idx, val in enumerate(segment_mask)
+    if val == 1 and idx < len(segment_mask)-1
+  ])
   # only marks those listed as valid
+  expected_mask_prob = 0.25
   avg_marked_per_trial = []
   # run 1000 trials, we want to see if the result is close to 0.5
   for _ in range(1000):
-    mask = util.generate_sentence_mask(tokenizer, full_sequence, 0.5)
-    assert len(mask) == len(full_sequence)
+    mask = util.generate_sentence_mask(
+        segment_mask=segment_mask,
+        per_token_mask_prob=expected_mask_prob,
+    )
+    assert len(mask) == len(input_ids)
     num_marked = 0
     for idx, is_masked in enumerate(mask):
       if is_masked:
         assert idx in valid_mask_values
         num_marked += 1
     avg_marked_per_trial.append(num_marked/len(valid_mask_values))
-  assert np.isclose(np.mean(avg_marked_per_trial), 0.5, atol=0.01)
+  assert np.isclose(
+      np.mean(avg_marked_per_trial),
+      expected_mask_prob,
+      atol=0.02
+  )
 
 def test_group_sentences_into_pairs_sorted():
   records = [{
@@ -296,13 +313,13 @@ def test_group_sentences_into_pairs_separate_versions():
   ]
   assert set(actual) == set(expected)
 
-def test_sentence_pairs_to_batch():
+def test_sentence_pairs_to_model_io():
   sentence_pairs = [
       (SENTENCE_1, SENTENCE_2),
       (SENTENCE_2, SENTENCE_3),
   ]
   tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-  in_data, out_data = util.sentence_pairs_to_tensor_batch(
+  model_kwargs, out_data = util.sentence_pairs_to_model_io(
       tokenizer=tokenizer,
       batch_pairs=sentence_pairs,
       unchanged_prob=0,
@@ -310,12 +327,12 @@ def test_sentence_pairs_to_batch():
       mask_per_token_prob=0.8,
       max_sequence_length=500,
   )
-  # same shape
-  assert in_data.shape == out_data.shape
-  # batch size = 2 (two pairs)
-  assert in_data.shape[0] == 2
-  # Not the same
-  assert not torch.all(torch.eq(in_data, out_data))
+  required_model_inputs = [
+      'input_ids', 'attention_mask', 'token_type_ids',
+  ]
+  for val in required_model_inputs:
+    assert val in model_kwargs
+    assert model_kwargs[val].shape == out_data.shape
 
 
 def test_generate_sentence():

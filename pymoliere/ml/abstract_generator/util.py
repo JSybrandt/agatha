@@ -9,10 +9,10 @@ from pymoliere.ml.train_model import get_device_from_model
 from pymoliere.util.misc_util import flatten_list
 
 class AbstractGenerator(BertModel):
-  def __init__(self, config:Dict[str, Any]):
+  def __init__(self, config:Dict[str, Any], freeze_bert_layers=False):
     super(AbstractGenerator, self).__init__(config)
     for param in self.parameters():
-      param.requires_grad = False
+      param.requires_grad = not freeze_bert_layers
     # This last layer converts the hidden layer to a predicted word
     self.last_hidden2voccab = torch.nn.Linear(
         config.hidden_size,

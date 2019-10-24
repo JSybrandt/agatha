@@ -5,6 +5,8 @@ import torch
 from copy import copy
 from typing import List
 import numpy as np
+from pymoliere.ml.train_model import get_device_from_model
+from pymoliere.util.misc_util import flatten_list
 
 class AbstractGenerator(BertModel):
   def __init__(self, config:Dict[str, Any]):
@@ -170,3 +172,49 @@ def sentence_pairs_to_tensor_batch(
       padding_value=tokenizer.pad_token_id,
   )
   return modified_data, original_data
+
+
+def generate_sentence(
+    sentence:str,
+    model:AbstractGenerator,
+    tokenizer:BertTokenizer,
+    max_sequence_length:int,
+)->str:
+  device = get_device_from_model(model)
+  # Sequence holds the tokens for both input and mask
+  sequence, _ = sentence_pairs_to_tensor_batch(
+      tokenizer=tokenizer,
+      batch_pairs=[(sentence, sentence)],
+      unchanged_prob=0,
+      full_mask_prob=1,
+      mask_per_token_prob=1,
+      max_sequence_length=max_sequence_length,
+  )
+  sequence = sequence.to(device)
+
+  # Get where the separation between sequences happens
+  sep_indices = (sequence == tokenizer.sep_token_id).nonzero().tolist()
+  first_predicted_idx = 1 + min([c for r, c in sep_indices])
+
+  # False for each element in the 2nd half of the sequence
+  complete_mask = [False] * (sequence.shape[1]-1-first_predicted_idx)
+
+  while False in complete_mask:
+    # Predict based off what we have currently
+    # make a list of softmax results (seq_len x voccab_size)
+    predicted = model(sequence).view(-1, tokenizer.vocab_size)[first_predicted_idx:-1]
+    # how confident were we at each token?
+    confidence_per_token, token_indices = torch.max(predicted, dim=1)
+    # If we've already settled on a word, ignore it
+    confidence_per_token[complete_mask] = -float("inf")
+    # Which word are we the most confident about?
+    selected_idx = torch.argmax(confidence_per_token)
+    complete_mask[selected_idx] = True
+    # Remember this index!
+    sequence[0, selected_idx + first_predicted_idx] = token_indices[selected_idx]
+
+  return tokenizer.decode(sequence[0, first_predicted_idx:-1].tolist())
+
+
+
+

@@ -316,3 +316,21 @@ def test_sentence_pairs_to_batch():
   assert in_data.shape[0] == 2
   # Not the same
   assert not torch.all(torch.eq(in_data, out_data))
+
+
+def test_generate_sentence():
+  model = util.AbstractGenerator.from_pretrained("bert-base-uncased")
+  tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+
+  next_sentence = util.generate_sentence(
+      sentence=SENTENCE_1,
+      model=model,
+      tokenizer=tokenizer,
+      max_sequence_length=500,
+  )
+
+  assert tokenizer.mask_token not in next_sentence
+  assert tokenizer.unk_token not in next_sentence
+  assert next_sentence != SENTENCE_1
+  assert len(next_sentence.strip()) > 0
+

@@ -13,6 +13,7 @@ from pymoliere.ml.train_model import train_model
 from sklearn.utils import shuffle
 from transformers import BertTokenizer, AdamW
 from pymoliere.util.misc_util import iter_to_batches
+import sys
 
 
 if __name__ == "__main__":
@@ -87,67 +88,85 @@ if __name__ == "__main__":
   model = util.AbstractGenerator.from_pretrained(config.parser.bert_model)
   tokenizer = BertTokenizer.from_pretrained(config.parser.bert_model)
 
-  print("Model -> Device")
-  model.to(device)
+  if not model_path.is_file():
+    print("Model -> Device")
+    model.to(device)
 
-  loss_fn = torch.nn.NLLLoss()
-  optimizer = AdamW(
-      filter(lambda x: x.requires_grad, model.parameters()),
-      lr=0.002,
-      correct_bias=False,
-  )
-
-  # Prep for training
-  print("Loading Data")
-  data = file_util.load_to_memory(
-      data_ckpt_dir.joinpath("sentence_pairs"),
-  )
-
-  def shuffle_data():
-    shuffle(data)
-
-  def gen_batch():
-    for batch in iter_to_batches(data, config.sys.batch_size):
-      yield util.sentence_pairs_to_tensor_batch(
-          tokenizer=tokenizer,
-          batch_pairs=batch,
-          unchanged_prob=config.unchanged_prob,
-          full_mask_prob=config.full_mask_prob,
-          mask_per_token_prob=config.mask_per_token_prob,
-          max_sequence_length=config.parser.max_sequence_length,
-      )
-  total_batches = int(len(data) / config.sys.batch_size)
-
-  def after_loss_calculation(loss):
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-
-  def calc_accuracy(predicted, expected):
-    expanded_size = expected.shape[0] * expected.shape[1]
-    predicted_labels = torch.argmax(predicted.view(expanded_size, -1), dim=1)
-    num_correct = (predicted_labels == expected.view(-1)).sum().float()
-    return num_correct / expanded_size
-
-  def loss_wrapper(predicted, expected):
-    expanded_size = expected.shape[0] * expected.shape[1]
-    return loss_fn(
-        predicted.view(expanded_size, -1),
-        expected.view(-1),
+    loss_fn = torch.nn.NLLLoss()
+    optimizer = AdamW(
+        filter(lambda x: x.requires_grad, model.parameters()),
+        lr=0.002,
+        correct_bias=False,
     )
 
-  train_model(
-      model=model,
-      loss_fn=loss_wrapper,
-      num_epochs=config.sys.num_epochs,
-      on_epoch_start=shuffle_data,
-      batch_generator=gen_batch,
-      after_loss_calculation=after_loss_calculation,
-      num_batches=total_batches,
-      metrics=[
-          ("accuracy", calc_accuracy)
-      ]
-  )
+    # Prep for training
+    print("Loading Data")
+    data = file_util.load_to_memory(
+        data_ckpt_dir.joinpath("sentence_pairs"),
+    )
 
-  print("Saving model")
-  torch.save(model.state_dict(), model_path)
+    def shuffle_data():
+      shuffle(data)
+
+    def gen_batch():
+      for batch in iter_to_batches(data[:100000], config.sys.batch_size):
+        yield util.sentence_pairs_to_tensor_batch(
+            tokenizer=tokenizer,
+            batch_pairs=batch,
+            unchanged_prob=config.unchanged_prob,
+            full_mask_prob=config.full_mask_prob,
+            mask_per_token_prob=config.mask_per_token_prob,
+            max_sequence_length=config.parser.max_sequence_length,
+        )
+    total_batches = int(len(data) / config.sys.batch_size)
+
+    def after_loss_calculation(loss):
+      optimizer.zero_grad()
+      loss.backward()
+      optimizer.step()
+
+    def calc_accuracy(predicted, expected):
+      expanded_size = expected.shape[0] * expected.shape[1]
+      predicted_labels = torch.argmax(predicted.view(expanded_size, -1), dim=1)
+      num_correct = (predicted_labels == expected.view(-1)).sum().float()
+      return num_correct / expanded_size
+
+    def loss_wrapper(predicted, expected):
+      expanded_size = expected.shape[0] * expected.shape[1]
+      return loss_fn(
+          predicted.view(expanded_size, -1),
+          expected.view(-1),
+      )
+
+    train_model(
+        model=model,
+        loss_fn=loss_wrapper,
+        num_epochs=config.sys.num_epochs,
+        on_epoch_start=shuffle_data,
+        batch_generator=gen_batch,
+        after_loss_calculation=after_loss_calculation,
+        num_batches=total_batches,
+        metrics=[
+            ("accuracy", calc_accuracy)
+        ]
+    )
+    print("Saving model")
+    torch.save(model.state_dict(), model_path)
+  else:
+    print("Loading Model")
+    model.load_state_dict(torch.load(model_path))
+    model.eval()
+    print("Model -> Device")
+    model.to(device)
+
+  print("Play with the model!")
+  for sentence in sys.stdin:
+    sentence = sentence.strip()
+    for _ in range(4):
+      sentence = util.generate_sentence(
+          sentence=sentence,
+          max_sequence_length=config.parser.max_sequence_length,
+          model=model,
+          tokenizer=tokenizer,
+      )
+      print(sentence)

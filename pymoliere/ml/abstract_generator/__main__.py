@@ -14,6 +14,7 @@ from sklearn.utils import shuffle
 from transformers import BertTokenizer, AdamW
 from pymoliere.util.misc_util import iter_to_batches
 import sys
+import horovod.torch as hvd
 
 
 if __name__ == "__main__":
@@ -22,20 +23,6 @@ if __name__ == "__main__":
   # Creates a parser with arguments corresponding to all of the provided fields.
   # Copy any command-line specified args to the config
   proto_util.parse_args_to_config_proto(config)
-  print("Running pymoliere sentence_classifier with the following parameters:")
-  print(config)
-
-  # Potential cluster
-  if config.cluster.run_locally or config.cluster.address == "localhost":
-    print("Running on local machine!")
-  else:
-    cluster_address = f"{config.cluster.address}:{config.cluster.port}"
-    print("Configuring Dask, attaching to cluster")
-    print(f"\t- {cluster_address}")
-    dask_client = Client(address=cluster_address)
-    if config.cluster.restart:
-      print("\t- Restarting cluster...")
-      dask_client.restart()
 
   # Prep scratches
   shared_scratch = Path(config.cluster.shared_scratch)
@@ -50,9 +37,6 @@ if __name__ == "__main__":
       .joinpath(model_name)
       .joinpath("model.pt")
   )
-  # Need to make sure model_path is writable
-  model_path.parent.mkdir(parents=True, exist_ok=True)
-
   # We're going to store model-specific checkpoints separately
   data_ckpt_dir = (
       shared_scratch
@@ -60,61 +44,114 @@ if __name__ == "__main__":
       .joinpath(model_name)
       .joinpath("dask_checkpoints")
   )
-  data_ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+  if config.use_horovod:
+    seed = 42
+    hvd.init()
+
+  # We only want to do prep on the first machine
+  if not config.use_horovod or hvd.rank() == 0:
+    print("Running pymoliere sentence_classifier with the following parameters:")
+    print(config)
+
+    # Potential cluster
+    if config.cluster.run_locally or config.cluster.address == "localhost":
+      print("Running on local machine!")
+    else:
+      cluster_address = f"{config.cluster.address}:{config.cluster.port}"
+      print("Configuring Dask, attaching to cluster")
+      print(f"\t- {cluster_address}")
+      dask_client = Client(address=cluster_address)
+      if config.cluster.restart:
+        print("\t- Restarting cluster...")
+        dask_client.restart()
+
+    # Need to make sure model_path is writable
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    data_ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    # All data, this is the checkpoint we depend on
+    sentences = file_util.load(
+        default_ckpt_dir.joinpath("sentences")
+    )
+    # Gets all data, returns a list of 2d arrays (sentences x embedding)
+    sentence_pairs = sentences.map_partitions(
+        util.group_sentences_into_pairs
+    )
+    print("Checkpoint: sentence_pairs")
+    checkpoint(
+        sentence_pairs,
+        name="sentence_pairs",
+        checkpoint_dir=data_ckpt_dir,
+    )
 
 
-  # All data, this is the checkpoint we depend on
-  sentences = file_util.load(
-      default_ckpt_dir.joinpath("sentences")
-  )
-  # Gets all data, returns a list of 2d arrays (sentences x embedding)
-  sentence_pairs = sentences.map_partitions(
-      util.group_sentences_into_pairs
-  )
-  print("Checkpoint: sentence_pairs")
-  checkpoint(
-      sentence_pairs,
-      name="sentence_pairs",
-      checkpoint_dir=data_ckpt_dir,
-  )
+  ##############################################################################
+
+  if config.use_horovod:
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.set_num_threads(1)
+    torch.cuda.set_device(hvd.local_rank())
 
   # Training data is ready, time to go!
   print("Prepping model")
   if torch.cuda.is_available() and not config.sys.disable_gpu:
-    device = torch.device("cuda:0")
+    device = torch.device("cuda")
+
   else:
     device = torch.device("cpu")
 
   model = util.AbstractGenerator.from_pretrained(
       config.parser.bert_model,
-      freeze_bert_layers=False,
+      freeze_bert_layers=True,
   )
   tokenizer = BertTokenizer.from_pretrained(config.parser.bert_model)
 
-  if model_path.is_file():
-    print("Loading Model")
-    model.load_state_dict(torch.load(model_path))
-
-  if torch.cuda.device_count() > 1 and not config.sys.single_gpu:
-    print("Expanding to multiple GPUs")
-    model = torch.nn.DataParallel(model).cuda()
-  else:
+  if torch.cuda.is_available and not config.sys.disable_gpu:
     print("Model -> Device")
-    model.to(device)
+    model = model.to(device)
 
   loss_fn = torch.nn.NLLLoss()
+
+  lr = 0.002
+  if config.use_horovod:
+    lr *= hvd.size()
   optimizer = AdamW(
       filter(lambda x: x.requires_grad, model.parameters()),
-      lr=0.002,
+      lr=lr,
       correct_bias=False,
   )
+  if config.use_horovod:
+    hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+    hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+    compression = hvd.Compression.fp16
+    optimizer = hvd.DistributedOptimizer(
+        optimizer,
+        named_parameters=model.named_parameters(),
+        compression=compression,
+    )
+
+
 
   # Prep for training
   print("Loading Data")
-  data = file_util.load_random_sample_to_memory(
+  data = file_util.load_to_memory(
       data_ckpt_dir.joinpath("sentence_pairs"),
-      partition_sample_rate=0.1,
+      disable_pbar=config.use_horovod, # Don't show pbar if distributed
   )
+
+  if config.use_horovod:
+    # Need to split input into just my section
+    vals_per_part = int(len(data) / hvd.size())
+    my_start_idx = hvd.rank() * vals_per_part
+    if hvd.rank() == hvd.size() - 1:
+      # Last one goes to the end
+      data = data[my_start_idx:]
+    else:
+      # This one takes a chunk
+      data = data[my_start_idx:my_start_idx+vals_per_part]
+    print("Taking chunk:", my_start_idx, my_start_idx+len(data), len(data))
 
   def start_epoch(epoch_num:int):
     print("Shuffling")
@@ -125,8 +162,9 @@ if __name__ == "__main__":
       for param in model.parameters():
         param.requires_grad = True
     if epoch_num > 0:
-      print("Saving model")
-      torch.save(model.state_dict(), model_path)
+      if not config.use_horovod or hvd.rank() == 0:
+        print("Saving model")
+        torch.save(model.state_dict(), model_path)
 
   def gen_batch():
     for batch in iter_to_batches(data, config.sys.batch_size):
@@ -145,7 +183,10 @@ if __name__ == "__main__":
   def after_loss_calculation(loss):
     optimizer.zero_grad()
     loss.backward()
-    optimizer.step()
+    optimizer.synchronize()
+    torch.nn.utils.clip_grad_norm(model.parameters(), 1.0)
+    with optimizer.skip_synchronize():
+      optimizer.step()
 
   def calc_accuracy(predicted, expected):
     expanded_size = expected.shape[0] * expected.shape[1]
@@ -166,24 +207,30 @@ if __name__ == "__main__":
       num_epochs=config.sys.num_epochs,
       on_epoch_start=start_epoch,
       batch_generator=gen_batch,
-      num_batches=100000,
       after_loss_calculation=after_loss_calculation,
       metrics=[
           ("accuracy", calc_accuracy)
-      ]
+      ],
+      disable_pbar=config.use_horovod, # Don't show pbar if distributed
+      # Turns out transmitting the plots over horovod will break the pipeline :P
+      disable_plots=config.use_horovod,
   )
-  print("Saving model")
-  torch.save(model.state_dict(), model_path)
 
-  print("Play with the model!")
-  model.eval()
-  for sentence in sys.stdin:
-    sentence = sentence.strip()
-    for _ in range(4):
-      sentence = util.generate_sentence(
-          sentence=sentence,
-          max_sequence_length=config.parser.max_sequence_length,
-          model=model,
-          tokenizer=tokenizer,
-      )
-      print(sentence)
+  ##############################################################################
+
+  if not config.use_horovod or hvd.rank() == 0:
+    print("Saving model")
+    torch.save(model.state_dict(), model_path)
+
+    print("Play with the model!")
+    model.eval()
+    for sentence in sys.stdin:
+      sentence = sentence.strip()
+      for _ in range(4):
+        sentence = util.generate_sentence(
+            sentence=sentence,
+            max_sequence_length=config.parser.max_sequence_length,
+            model=model,
+            tokenizer=tokenizer,
+        )
+        print(sentence)

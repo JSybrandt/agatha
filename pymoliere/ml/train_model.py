@@ -67,6 +67,8 @@ def train_model(
     validation_num_batches:int=None,
     validation_batch_generator:BatchGenerator=None,
     metrics:Tuple[str, MetricFn]=None,
+    disable_pbar:bool=False,
+    disable_plots:bool=False,
 )->None:
   """
   A generic training harness for pytorch models.
@@ -124,13 +126,14 @@ def train_model(
   }
 
   for epoch in range(num_epochs):
-    system("clear")
     print(f"Epoch {epoch}/{num_epochs}")
     if on_epoch_start is not None:
       on_epoch_start(epoch)
-    for metric, phase2valuses in metric2phase2values.items():
-      print(metric)
-      print_line_plots(list(phase2valuses.items()))
+    if not disable_plots:
+      system("clear")
+      for metric, phase2valuses in metric2phase2values.items():
+        print(metric)
+        print_line_plots(list(phase2valuses.items()))
 
     for phase in phases:
       if phase == "train":
@@ -147,8 +150,9 @@ def train_model(
 
       device = get_device_from_model(model)
 
-      pbar = tqdm(gen(), total=num)
+      pbar = tqdm(gen(), total=num, disable=disable_pbar)
       for batch_idx, (in_kwargs, expected_output) in enumerate(pbar):
+
         predicted_output = model(**in_kwargs)
 
         for metric_name, metric_fn in metrics:
@@ -165,7 +169,11 @@ def train_model(
           f"{name}:{metric2running_sum[name]/running_total:0.4f}"
           for name in metric2running_sum
         ])
-        pbar.set_description(f"{phase} -- {metric_desc_str}")
+        desc = f"{phase} -- {metric_desc_str}"
+        if not disable_pbar:
+          pbar.set_description(desc)
+        else:
+          print(batch_idx, desc)
 
-        if batch_idx >= num_batches - 1:
+        if num_batches is not None and batch_idx >= num_batches - 1:
           break

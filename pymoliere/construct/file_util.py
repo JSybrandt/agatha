@@ -35,11 +35,11 @@ def prep_scratches(
   shared.mkdir(parents=True, exist_ok=True)
   return local, shared
 
-def load_to_memory(dir_path:Path)->List[Any]:
+def load_to_memory(dir_path:Path, disable_pbar:bool=False)->List[Any]:
   "Performs loading right now, without dask"
   assert is_result_saved(dir_path)
   result = []
-  for path in tqdm(get_part_files(dir_path)):
+  for path in tqdm(get_part_files(dir_path), disable=disable_pbar):
     if path.is_file():
       result += load_part(path)
     else:
@@ -141,7 +141,8 @@ def load_value(path:Path)->Any:
 def load_random_sample_to_memory(
     data_dir:Path,
     value_sample_rate:float=1,
-    partition_sample_rate:float=1
+    partition_sample_rate:float=1,
+    disable_pbar:bool=False,
 )->List[Any]:
   assert value_sample_rate > 0
   assert value_sample_rate <= 1
@@ -149,7 +150,7 @@ def load_random_sample_to_memory(
   assert partition_sample_rate <= 1
   assert is_result_saved(data_dir)
   res = []
-  for part in tqdm(get_part_files(data_dir)):
+  for part in tqdm(get_part_files(data_dir), disable=disable_pbar):
     if random.random() < partition_sample_rate:
       for rec in load_part(part):
         if random.random() < value_sample_rate:

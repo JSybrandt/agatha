@@ -97,6 +97,7 @@ setup(
       "fsspec",
       "gensim",
       "heapdict",
+      "horovod",
       "lxml",
       "networkx",
       "nltk",

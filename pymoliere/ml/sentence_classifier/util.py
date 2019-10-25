@@ -5,7 +5,6 @@ from torch import nn
 from torch.nn import functional as F
 import numpy as np
 from typing import List, Tuple, Any, Iterable
-from pymoliere.ml.util import BERT_EMB_DIM
 
 # NamedTuples did not play well with distributed pickles
 class TrainingData():
@@ -33,7 +32,7 @@ class SentenceClassifier(torch.nn.Module):
     super(SentenceClassifier, self).__init__()
     # 769 - 512 - 512 - 256 - 6
     # input
-    self.l1 = torch.nn.Linear(BERT_EMB_DIM+1, 512)
+    self.l1 = torch.nn.Linear(768+1, 512)
     self.r1 = torch.nn.ReLU(inplace=True)
     # batch 1
     self.l2 = torch.nn.Linear(512, 512)

@@ -89,6 +89,7 @@ message MlConfig {
   // only used for training
   optional int32 num_epochs = 3 [default=10];
   optional float validation_ratio = 4 [default=0.1];
+  optional bool single_gpu = 5 [default=false];
 }
 
 message ConstructDebugConfig {

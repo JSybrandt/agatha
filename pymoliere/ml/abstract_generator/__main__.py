@@ -81,7 +81,7 @@ if __name__ == "__main__":
   # Training data is ready, time to go!
   print("Prepping model")
   if torch.cuda.is_available() and not config.sys.disable_gpu:
-    device = torch.device("cuda")
+    device = torch.device("cuda:0")
   else:
     device = torch.device("cpu")
 
@@ -95,7 +95,7 @@ if __name__ == "__main__":
     print("Loading Model")
     model.load_state_dict(torch.load(model_path))
 
-  if torch.cuda.device_count() > 1:
+  if torch.cuda.device_count() > 1 and not config.sys.single_gpu:
     print("Expanding to multiple GPUs")
     model = torch.nn.DataParallel(model).cuda()
   else:

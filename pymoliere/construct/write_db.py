@@ -9,6 +9,8 @@ from typing import Tuple, Iterable, Any
 import json
 import pymoliere
 import networkx as nx
+from sqlitedict import SqliteDict
+from pathlib import Path
 
 
 def get_redis_client_initialzizer(
@@ -25,6 +27,37 @@ def get_redis_client_initialzizer(
     assert r.ping()
     return r
   return "write_db:redis_client", _init
+
+
+
+def sqlite_write_edges(subgraphs:Iterable[nx.Graph], db_path:Path)->Iterable[int]:
+  count = 0
+  with SqliteDict(db_path) as db:
+    for subgraph in subgraphs:
+      for source in subgraph.nodes:
+        edges = {
+            target: attr["weight"] for target, attr in subgraph[source].items()
+        }
+        db[source] = edges
+        count += len(edges)
+    db.commit()
+  return count
+
+
+def sqlite_write_records(records:Iterable[Record], db_path:Path, id_field:str="id")->Iterable[int]:
+  count = 0
+  with SqliteDict(db_path) as db:
+    for record in records:
+      id_ = rec[id_field]
+      for field_name, value in rec.items():
+        if field_name == id_field:
+          continue
+        db[f"{id_}.{field_name}"] = value
+        count += 1
+    db.commit()
+  return count
+
+
 
 
 def write_edges(

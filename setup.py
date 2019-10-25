@@ -112,6 +112,7 @@ setup(
       "scispacy",
       "sklearn",
       "spacy",
+      "sqlitedict",
       "torch",
       "torchvision",
       "tqdm",

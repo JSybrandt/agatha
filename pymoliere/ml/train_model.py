@@ -5,6 +5,7 @@ from os import system
 from tqdm import tqdm
 from sklearn.utils import shuffle
 from torch.nn.utils.rnn import pad_sequence
+import horovod.torch as hvd
 
 # We call this on epoch start, starts with epoch number
 OnEpochStartFn = Callable[[int], None]
@@ -20,6 +21,17 @@ BatchGenerator = Generator[Tuple[Dict[Any, Any], torch.Tensor], None, None]
 # Given predicted batch and actual batch, produce a value. These are averaged
 # per-epoch and recorded in line plots.
 MetricFn = Callable[[torch.Tensor, torch.Tensor], float]
+
+def split_data_across_ranks(data:List[Any])->None:
+  "Each rank selects a different subset of the input data"
+  # Need to split input into just my section
+  vals_per_part = int(len(data) / hvd.size())
+  my_start_idx = hvd.rank() * vals_per_part
+  del data[:my_start_idx]
+  if len(data) >= 2*vals_per_part:
+    del data[vals_per_part:]
+  print("Taking chunk:", my_start_idx, my_start_idx+len(data), len(data))
+
 
 def print_line_plots(line_plots:List[Tuple[str,List[float]]])->None:
   """
@@ -57,18 +69,18 @@ def get_device_from_model(model:torch.nn.Module)->torch.device:
 
 def train_model(
     model:torch.nn.Module,
+    batch_generator:BatchGenerator,
     loss_fn:torch.nn.modules.loss._Loss,
     num_epochs:int,
-    on_epoch_start:OnEpochStartFn,
-    batch_generator:BatchGenerator,
-    optimizer:torch.optim.Optimizer=None,
     after_loss_calculation:AfterLossCalculationFn=None,
-    num_batches:int=None,
-    validation_num_batches:int=None,
-    validation_batch_generator:BatchGenerator=None,
-    metrics:Tuple[str, MetricFn]=None,
     disable_pbar:bool=False,
     disable_plots:bool=False,
+    metrics:Tuple[str, MetricFn]=None,
+    num_batches:int=None,
+    on_epoch_start:OnEpochStartFn=None,
+    optimizer:torch.optim.Optimizer=None,
+    validation_batch_generator:BatchGenerator=None,
+    validation_num_batches:int=None,
 )->None:
   """
   A generic training harness for pytorch models.
@@ -102,9 +114,11 @@ def train_model(
     assert validation_num_batches > 0
 
   if after_loss_calculation is not None:
+    # Can't set both after_loss_calculation and optimizer
     assert optimizer is None
 
   if optimizer is not None:
+    # Can't set both after_loss_calculation and optimizer
     assert after_loss_calculation is None
     def default_update(loss):
       optimizer.zero_grad()

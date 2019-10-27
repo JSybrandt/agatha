@@ -156,16 +156,16 @@ message QueryConfig {
 message SentenceClassifierConfig {
   // Root to the scratch directory
   optional ClusterConfig cluster = 1;
-  optional string shared_scratch = 2;
-  optional MlConfig sys = 3;
-  optional float test_set_ratio = 5 [default=0.2];
-  optional float validation_set_ratio = 6 [default=0.1];
-  optional bool force_retrain = 7 [default=false];
+  optional MlConfig sys = 2;
+  optional float test_set_ratio = 3 [default=0.2];
+  optional float validation_set_ratio = 4 [default=0.1];
+  optional bool force_retrain = 5 [default=false];
 
   // Path to custom data, used to specify benchmark data that might not be a
   // typical checkpoint. Note, the sentence data will still be loaded from the
   // typical shared_scratch. This just modifies the train/validation/test data.
-  optional string custom_data_dir = 8;
+  optional string custom_data_dir = 6;
+  optional bool use_horovod = 7 [default=false];
 }
 
 message AbstractGeneratorConfig {

@@ -9,7 +9,7 @@ import torch
 import dask
 from dask.distributed import Client
 from pymoliere.construct.dask_checkpoint import checkpoint
-from pymoliere.ml.train_model import train_model
+from pymoliere.ml.train_model import train_model, split_data_across_ranks
 from sklearn.utils import shuffle
 from transformers import BertTokenizer, AdamW
 from pymoliere.util.misc_util import iter_to_batches
@@ -142,16 +142,7 @@ if __name__ == "__main__":
   )
 
   if config.use_horovod:
-    # Need to split input into just my section
-    vals_per_part = int(len(data) / hvd.size())
-    my_start_idx = hvd.rank() * vals_per_part
-    if hvd.rank() == hvd.size() - 1:
-      # Last one goes to the end
-      data = data[my_start_idx:]
-    else:
-      # This one takes a chunk
-      data = data[my_start_idx:my_start_idx+vals_per_part]
-    print("Taking chunk:", my_start_idx, my_start_idx+len(data), len(data))
+    split_data_across_ranks(data)
 
   def start_epoch(epoch_num:int):
     print("Shuffling")
@@ -161,8 +152,7 @@ if __name__ == "__main__":
     if epoch_num == 1:
       for param in model.parameters():
         param.requires_grad = True
-    if epoch_num > 0:
-      if not config.use_horovod or hvd.rank() == 0:
+    if epoch > 0 and (not config.use_horovod or hvd.rank() == 0):
         print("Saving model")
         torch.save(model.state_dict(), model_path)
 
@@ -183,9 +173,12 @@ if __name__ == "__main__":
   def after_loss_calculation(loss):
     optimizer.zero_grad()
     loss.backward()
-    optimizer.synchronize()
-    torch.nn.utils.clip_grad_norm(model.parameters(), 1.0)
-    with optimizer.skip_synchronize():
+    if config.use_horovod:
+      optimizer.synchronize()
+      torch.nn.utils.clip_grad_norm(model.parameters(), 1.0)
+      with optimizer.skip_synchronize():
+        optimizer.step()
+    else:
       optimizer.step()
 
   def calc_accuracy(predicted, expected):

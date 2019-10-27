@@ -169,7 +169,7 @@ def train_model(
           f"{name}:{metric2running_sum[name]/running_total:0.4f}"
           for name in metric2running_sum
         ])
-        desc = f"{phase} -- {metric_desc_str}"
+        desc = f"{epoch} : {phase} -- {metric_desc_str}"
         if not disable_pbar:
           pbar.set_description(desc)
         else:

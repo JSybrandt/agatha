@@ -214,6 +214,7 @@ if __name__ == "__main__":
       disable_pbar=config.use_horovod, # Don't show pbar if distributed
       # Turns out transmitting the plots over horovod will break the pipeline :P
       disable_plots=config.use_horovod,
+      num_batches=10000,
   )
 
   ##############################################################################

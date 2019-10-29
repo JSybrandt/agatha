@@ -63,14 +63,6 @@ message KnnConfig {
   optional float training_probability = 6 [default=0.01];
 }
 
-message RedisConfig {
-  optional string address = 1 [default="localhost"];
-  optional int32 port = 2 [default=6379];
-  optional int32 db_num = 3 [default=0];
-  // Only used on construct
-  optional bool clear=4 [default=false];
-}
-
 message LdaConfig {
   optional int32 num_topics = 1 [default=20];
   optional int32 random_seed = 2 [default=42];
@@ -127,7 +119,7 @@ message ConstructConfig {
   optional TextParserConfig parser = 4;
   optional KnnConfig sentence_knn = 5;
   // if set, sample our input by this rate.
-  optional RedisConfig db = 6;
+  optional string db_path = 6 [default="./pymoliere.sqlite"];
   optional MlConfig sys = 7;
   optional ConstructDebugConfig debug = 8;
   optional NGramConfig phrases = 9;
@@ -141,7 +133,7 @@ message ConstructConfig {
 message QueryConfig {
   optional string source = 1;
   optional string target = 2;
-  optional RedisConfig db = 3;
+  optional string db_path = 3 [default="./pymoliere.sqlite"];
   optional int32 max_sentences_per_path_elem = 4 [default=5000];
   optional LdaConfig topic_model = 5;
   optional ShortestPathConfig path = 6;
@@ -186,7 +178,7 @@ message AbstractGeneratorConfig {
 
 message SemMedDBAddonConfig {
   optional MySqlConfig semmeddb = 1;
-  optional RedisConfig pymolieredb = 2;
+  optional string pymolieredb = 2;
 
   // This is the edge weight between a sentence and its predicate Remember that
   // the baseline of 1 is the weight between two adjacent sentences. Also

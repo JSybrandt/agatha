@@ -114,7 +114,7 @@ if __name__ == "__main__":
 
   loss_fn = torch.nn.NLLLoss()
 
-  lr = 0.002
+  lr = 0.001
   if config.use_horovod:
     lr *= hvd.size()
   optimizer = AdamW(
@@ -125,11 +125,11 @@ if __name__ == "__main__":
   if config.use_horovod:
     hvd.broadcast_parameters(model.state_dict(), root_rank=0)
     hvd.broadcast_optimizer_state(optimizer, root_rank=0)
-    compression = hvd.Compression.fp16
+    #compression = hvd.Compression.fp16
     optimizer = hvd.DistributedOptimizer(
         optimizer,
         named_parameters=model.named_parameters(),
-        compression=compression,
+        #compression=compression,
     )
 
 
@@ -150,11 +150,10 @@ if __name__ == "__main__":
     # We're going fine-tune the softmax layer in the first epoch,
     # and then all is fair game
     if epoch_num == 1:
-      for param in model.parameters():
-        param.requires_grad = True
-    if epoch > 0 and (not config.use_horovod or hvd.rank() == 0):
+      model.unfreeze_last_bert_layer()
+    if epoch_num > 0 and (not config.use_horovod or hvd.rank() == 0):
         print("Saving model")
-        torch.save(model.state_dict(), model_path)
+        torch.save(model.state_dict(), f"{model_path}.{epoch_num}")
 
   def gen_batch():
     for batch in iter_to_batches(data, config.sys.batch_size):
@@ -216,15 +215,15 @@ if __name__ == "__main__":
     print("Saving model")
     torch.save(model.state_dict(), model_path)
 
-    print("Play with the model!")
-    model.eval()
-    for sentence in sys.stdin:
-      sentence = sentence.strip()
-      for _ in range(4):
-        sentence = util.generate_sentence(
-            sentence=sentence,
-            max_sequence_length=config.parser.max_sequence_length,
-            model=model,
-            tokenizer=tokenizer,
-        )
-        print(sentence)
+    # print("Play with the model!")
+    # model.eval()
+    # for sentence in sys.stdin:
+      # sentence = sentence.strip()
+      # for _ in range(4):
+        # sentence = util.generate_sentence(
+            # sentence=sentence,
+            # max_sequence_length=config.parser.max_sequence_length,
+            # model=model,
+            # tokenizer=tokenizer,
+        # )
+        # print(sentence)

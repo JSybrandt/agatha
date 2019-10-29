@@ -21,6 +21,12 @@ class AbstractGenerator(BertModel):
     # Then we pick the word
     self.last_softmax = torch.nn.LogSoftmax(dim=1)
 
+  def unfreeze_last_bert_layer(self):
+    for name, param in self.named_parameters():
+      if name.startswith("encoder.layer.11") or name.startswith("pooler.dense"):
+        param.requires_grad = True
+
+
   def forward(self, *args, **kwargs):
     x = super(AbstractGenerator, self).forward(*args, **kwargs)[0]
 

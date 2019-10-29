@@ -109,7 +109,6 @@ setup(
       "protobuf",
       "pymysql",
       "pytest",
-      "redis",
       "scispacy",
       "sklearn",
       "spacy",

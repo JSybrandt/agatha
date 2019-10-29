@@ -13,7 +13,6 @@ from pymoliere.construct import (
     key_value_store,
     parse_pubmed_xml,
     text_util,
-    write_db,
 )
 from pymoliere.util import misc_util
 from dask.distributed import (
@@ -30,12 +29,24 @@ from typing import Dict, Any, Callable
 import dask
 import dask.bag as dbag
 import faiss
-import redis
 import socket
 from pprint import pprint
 import shutil
 from pymoliere.util.db_key_util import to_graph_key
+from google.protobuf.json_format import MessageToDict
+from datetime import datetime
+import pymoliere
 
+def get_meta_record(config:cpb.ConstructConfig)->misc_util.Record:
+  """
+  These are things we would want to store that indicate the properties of the
+  system
+  """
+  metadata = MessageToDict(config)
+  metadata["__date__"] = str(datetime.now())
+  metadata["__version__"] = pymoliere.__VERSION__
+  metadata["id"] = "__meta__"
+  return metadata
 
 if __name__ == "__main__":
   config = cpb.ConstructConfig()
@@ -69,30 +80,6 @@ if __name__ == "__main__":
       dask_client.restart()
     print(f"\t- Running on {len(dask_client.nthreads())} machines.")
 
-  # Configure Redis ##############
-  print("Connecting to Redis...")
-  redis_client = redis.Redis(
-      host=config.db.address,
-      port=config.db.port,
-      db=config.db.db_num,
-  )
-  try:
-    redis_client.ping()
-  except:
-    raise Exception(f"No redis server running at {config.db.address}")
-  if config.db.clear:
-    print("\t- Wiping existing DB")
-    redis_client.flushdb()
-  if config.db.address == "localhost":
-    config.db.address = socket.gethostname()
-    print(f"\t- Renaming localhost to {config.db.address}")
-
-  # Versioning info
-  meta_data = write_db.get_meta_record(config)
-  write_db.write_records(
-      [meta_data],
-      redis_client=redis_client
-  )
 
   # Prepping all scratch dirs ###
   def scratch(task_name):
@@ -113,6 +100,10 @@ if __name__ == "__main__":
   print("Registering Helper Objects")
   preloader = dpg.WorkerPreloader()
   preloader.register(*key_value_store.get_kv_server_initializer())
+  preloader.register(*key_value_store.get_kv_server_initializer(
+    persistent_server_path=config.db_path,
+    client_name="sqlite"
+  ))
   preloader.register(*text_util.get_scispacy_initalizer(
       scispacy_version=config.parser.scispacy_version,
   ))
@@ -124,11 +115,6 @@ if __name__ == "__main__":
   ))
   preloader.register(*embedding_util.get_bert_initializer(
       bert_model=config.parser.bert_model,
-  ))
-  preloader.register(*write_db.get_redis_client_initialzizer(
-      host=config.db.address,
-      port=config.db.port,
-      db=config.db.db_num,
   ))
   # This actual file path will need to be created during the pipeline before use
   preloader.register(*knn_util.get_faiss_index_initializer(
@@ -370,11 +356,19 @@ if __name__ == "__main__":
   ckpt("nearest_neighbors_edges")
 
   final_tasks = []
-  final_tasks.append(sentence_edges.map_partitions(write_db.write_edges))
-  final_tasks.append(
-      nearest_neighbors_edges.map_partitions(write_db.write_edges)
-  )
-  final_tasks.append(sentences_with_bow.map_partitions(write_db.write_records))
+  final_tasks.append(sentence_edges.map_partitions(
+      key_value_store.write_edges,
+      client_name="sqlite",
+  ))
+  final_tasks.append(nearest_neighbors_edges.map_partitions(
+      key_value_store.write_edges,
+      client_name="sqlite",
+  ))
+  final_tasks.append(sentences_with_bow.map_partitions(
+      key_value_store.write_records,
+      client_name="sqlite",
+  ))
 
-  print("Writing everything to redis.")
+  print("Writing everything to sqlite.")
   dask.compute(final_tasks, sync=True)
+  key_value_store.write_records([get_meta_record(config)], client_name="sqlite")

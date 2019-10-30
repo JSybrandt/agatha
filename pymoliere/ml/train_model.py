@@ -205,7 +205,7 @@ def train_model(
           if num is None:
             batch_desc = batch_idx
           else:
-            batch_desc = f"{batch_idx/num:0.4f}"
+            batch_desc = f"{(batch_idx/num)*100:2.2f}%"
           print(f"Epoch:{epoch} {phase} {batch_desc} {metric_desc_str}")
 
         if num is not None and batch_idx >= num - 1:

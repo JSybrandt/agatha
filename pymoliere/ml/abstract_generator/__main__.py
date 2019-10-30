@@ -207,7 +207,7 @@ if __name__ == "__main__":
       # Turns out transmitting the plots over horovod will break the pipeline :P
       disable_plots=config.use_horovod,
       disable_batch_report=(config.use_horovod and not hvd.rank() == 0),
-      num_batches=1000,
+      num_batches=int(10000/(config.sys.batch_size*hvd.size())),
   )
 
   ##############################################################################

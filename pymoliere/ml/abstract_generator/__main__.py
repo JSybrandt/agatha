@@ -9,7 +9,7 @@ import torch
 import dask
 from dask.distributed import Client
 from pymoliere.construct.dask_checkpoint import checkpoint
-from pymoliere.ml.train_model import train_model, split_data_across_ranks
+from pymoliere.ml.train_model import train_model, split_partitions_across_ranks
 from sklearn.utils import shuffle
 from transformers import BertTokenizer, AdamW
 from pymoliere.util.misc_util import iter_to_batches
@@ -131,18 +131,18 @@ if __name__ == "__main__":
         named_parameters=model.named_parameters(),
         #compression=compression,
     )
-
-
-
-  # Prep for training
-  print("Loading Data")
-  data = file_util.load_to_memory(
-      data_ckpt_dir.joinpath("sentence_pairs"),
-      disable_pbar=config.use_horovod, # Don't show pbar if distributed
-  )
-
-  if config.use_horovod:
-    split_data_across_ranks(data)
+    print("Loading Partition Subset")
+    data = split_partitions_across_ranks(
+        data_ckpt_dir.joinpath("sentence_pairs"),
+        rank=hvd.rank(),
+        size=hvd.size(),
+    )
+  else:
+    print("Loading all data")
+    data = file_util.load_to_memory(
+        data_ckpt_dir.joinpath("sentence_pairs"),
+        disable_pbar=config.use_horovod, # Don't show pbar if distributed
+    )
 
   def start_epoch(epoch_num:int):
     print("Shuffling")
@@ -206,7 +206,8 @@ if __name__ == "__main__":
       disable_pbar=config.use_horovod, # Don't show pbar if distributed
       # Turns out transmitting the plots over horovod will break the pipeline :P
       disable_plots=config.use_horovod,
-      num_batches=10000,
+      disable_batch_report=(config.use_horovod and not hvd.rank() == 0),
+      num_batches=1000,
   )
 
   ##############################################################################

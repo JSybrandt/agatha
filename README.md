@@ -39,7 +39,11 @@ pip install ./pymoliere
 
 Pymoliere depends on the pytorch [SciBert][scibert] text embedding model
 `scibert-scivocab-uncased` that can be [downloaded here][scibert_download].
-Here's some steps to download, extract, and prepare this model.
+However, if you just want to get started quickly, you can skip this step and
+just use a standard bert pretrained model, such as the default choice of
+`bert-base-uncased` (trained on English books and Wikipedia, will be downloaded
+for you on first run).  Here's some steps to download, extract, and prepare the
+more advanced model.
 
 ```bash
 cd <location you want to store the model>
@@ -62,7 +66,7 @@ stopword list that came along with this module. It can be found at:
 Lastly, you're going to need to get a large datafile for [ScispaCy][scispacy].
 This is as easy as:
 ```bash
-pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.2.3/en_core_sci_lg-0.2.3.tar.gz
+pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.2.4/en_core_sci_lg-0.2.4.tar.gz
 ```
 
 Note that this large datafile corresponds to the `en_core_sci_lg` distribution.

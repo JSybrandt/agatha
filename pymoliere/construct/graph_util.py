@@ -1,10 +1,19 @@
 import dask.bag as dbag
 from typing import Callable, Set, Iterable, List
 import networkx as nx
-from pymoliere.util.misc_util import Record, SUBGRAPH_EDGE_THRESHOLD
+from pymoliere.util.misc_util import Record
 from math import log
 import pandas as pd
-from pymoliere.util.db_key_util import to_graph_key
+
+def nxgraph_to_edge_records(graph:nx.Graph)->Iterable[Record]:
+  return [
+      {
+        "source": s,
+        "target": t,
+        "weight": d["weight"],
+      }
+      for (s, t, d) in graph.edges(data=True)
+  ]
 
 def record_to_bipartite_edges(
     records:dbag.Bag,
@@ -13,7 +22,7 @@ def record_to_bipartite_edges(
     minimum_document_frequency:int=2,
     bidirectional:bool=True,
     default_weight_multiplier:float=1.0,
-    get_source_key_fn:Callable[[Record], str]=lambda x:to_graph_key(x["id"]),
+    get_source_key_fn:Callable[[Record], str]=lambda x:x["id"],
 )->dbag.Bag:
   """
   This function is responsible for extracting edges from records. For example,

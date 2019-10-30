@@ -10,14 +10,11 @@ from pymoliere.construct import (
     ftp_util,
     graph_util,
     knn_util,
-    key_value_store,
     parse_pubmed_xml,
     text_util,
 )
-from pymoliere.util import misc_util
-from dask.distributed import (
-  Client,
-)
+from pymoliere.util import misc_util, database_util
+from dask.distributed import Client
 from pymoliere.ml.sentence_classifier import (
     SentenceClassifier,
     LABEL2IDX as SENT_TYPE_SET,
@@ -32,7 +29,6 @@ import faiss
 import socket
 from pprint import pprint
 import shutil
-from pymoliere.util.db_key_util import to_graph_key
 from google.protobuf.json_format import MessageToDict
 from datetime import datetime
 import pymoliere
@@ -99,10 +95,10 @@ if __name__ == "__main__":
   # Initialize Helper Objects ###
   print("Registering Helper Objects")
   preloader = dpg.WorkerPreloader()
-  preloader.register(*key_value_store.get_kv_server_initializer())
-  preloader.register(*key_value_store.get_kv_server_initializer(
-    persistent_server_path=config.db_path,
-    client_name="sqlite"
+  preloader.register(*database_util.database_initializer(
+      address=config.db.address,
+      port=config.db.port,
+      name=config.db.name,
   ))
   preloader.register(*text_util.get_scispacy_initalizer(
       scispacy_version=config.parser.scispacy_version,
@@ -127,6 +123,10 @@ if __name__ == "__main__":
       data_dir=Path(config.pretrained.sentence_classifier_path)
     ))
   dpg.add_global_preloader(client=dask_client, preloader=preloader)
+
+  print("Writing meta info to database.")
+  database_util.clear_collection("meta")
+  database_util.put([get_meta_record(config)], collection="meta")
 
   if config.cluster.clear_checkpoints:
     print("Clearing checkpoint dir")
@@ -313,7 +313,7 @@ if __name__ == "__main__":
       final_sentence_records
       .map(
         lambda x: {
-          "id": misc_util.hash_str_to_int64(x["id"]),
+          "id": misc_util.hash_str_to_int(x["id"]),
           "embedding": x["embedding"]
         }
       )
@@ -338,37 +338,46 @@ if __name__ == "__main__":
   else:
     print("Using existing Faiss Index")
 
-  # This is a dask bag of (np.int64, str) pairs. We're going to load it to a
-  # shared kv-store next. But doing this step first should reduce the memory
-  # footprint. Furthermore, we get the inverted index off the "sentences" bag
-  # because it is the smallest dataset that contains the information we need.
-  # The difference is between 707GB (sentences with embedding) and 46GB
-  # (sentences)
-  inverted_index = sentences.map_partitions(knn_util.to_inverted_index)
-  ckpt("inverted_index")
+  hash_and_id = (
+      sentences
+      .map(lambda rec: {
+        "strid": rec["id"],
+        "hash": misc_util.hash_str_to_int(rec["id"]),
+      })
+  )
+  write_hash_and_id = database_util.put_bag(
+      bag=hash_and_id,
+      collection="inverted_index",
+      indexed_field_name="hash",
+  )
+  ckpt("write_hash_and_id")
 
   nearest_neighbors_edges = knn_util.nearest_neighbors_network_from_index(
-      inverted_index_bag=inverted_index,
       hash_and_embedding=hash_and_embedding,
+      inverted_index_collection="inverted_index",
       batch_size=config.sys.batch_size,
       num_neighbors=config.sentence_knn.num_neighbors,
   )
   ckpt("nearest_neighbors_edges")
 
-  final_tasks = []
-  final_tasks.append(sentence_edges.map_partitions(
-      key_value_store.write_edges,
-      client_name="sqlite",
-  ))
-  final_tasks.append(nearest_neighbors_edges.map_partitions(
-      key_value_store.write_edges,
-      client_name="sqlite",
-  ))
-  final_tasks.append(sentences_with_bow.map_partitions(
-      key_value_store.write_records,
-      client_name="sqlite",
-  ))
-
-  print("Writing everything to sqlite.")
-  dask.compute(final_tasks, sync=True)
-  key_value_store.write_records([get_meta_record(config)], client_name="sqlite")
+  print("Writing everything to database")
+  dask.compute(
+      [
+        database_util.put_bag(
+          sentence_edges.map(graph_util.nxgraph_to_edge_records),
+          collection="graph",
+          indexed_field_name="source",
+        ),
+        database_util.put_bag(
+          nearest_neighbors_edges.map(graph_util.nxgraph_to_edge_records),
+          collection="graph",
+          indexed_field_name="source",
+        ),
+        database_util.put_bag(
+          sentences_with_bow,
+          collection="sentences",
+          indexed_field_name="id"
+        ),
+      ],
+      sync=True,
+  )

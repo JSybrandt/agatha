@@ -25,6 +25,14 @@ message ClusterConfig {
   optional bool disable_checkpoints = 8 [default=false];
 }
 
+// The properties of a mongodb database
+message DatabaseConfig {
+  optional string address = 1;
+  optional int32 port = 2 [default=27017];
+  // The database name used in mongo
+  optional string name = 3 [default="pymoliere"];
+}
+
 message TextParserConfig {
   optional string scispacy_version = 1;
   // May be a path to a bert model, or any of the transformer pretrained models.
@@ -114,12 +122,12 @@ message MySqlConfig {
 message ConstructConfig {
   // Details about the ray cluster
   optional ClusterConfig cluster = 1;
+  optional DatabaseConfig db = 2;
   // Details about the medline distribution to download.
   optional FtpSource ftp = 3;
   optional TextParserConfig parser = 4;
   optional KnnConfig sentence_knn = 5;
   // if set, sample our input by this rate.
-  optional string db_path = 6 [default="./pymoliere.sqlite"];
   optional MlConfig sys = 7;
   optional ConstructDebugConfig debug = 8;
   optional NGramConfig phrases = 9;
@@ -133,7 +141,7 @@ message ConstructConfig {
 message QueryConfig {
   optional string source = 1;
   optional string target = 2;
-  optional string db_path = 3 [default="./pymoliere.sqlite"];
+  optional DatabaseConfig db = 3;
   optional int32 max_sentences_per_path_elem = 4 [default=5000];
   optional LdaConfig topic_model = 5;
   optional ShortestPathConfig path = 6;

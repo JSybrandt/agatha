@@ -7,14 +7,13 @@ from typing import Iterable, List, Dict, Any, Callable, Optional, Tuple
 from pymoliere.construct import (
     embedding_util,
     file_util,
-    key_value_store as kv_store,
 )
 from pymoliere.util.misc_util import (
     iter_to_batches,
     hash_str_to_int64,
     flatten_list
 )
-from pymoliere.util import db_key_util
+from pymoliere.util import database_util
 from pymoliere.util.misc_util import Record
 import dask
 import networkx as nx
@@ -37,19 +36,9 @@ def get_faiss_index_initializer(
 
 ################################################################################
 
-def to_inverted_index(records:Iterable[Record])->Iterable[Tuple[np.int64, str]]:
-  vals = []
-  for record in records:
-    vals.append((
-        hash_str_to_int64(record["id"]),
-        db_key_util.to_graph_key(record["id"]),
-    ))
-  return vals
-
-
 def nearest_neighbors_network_from_index(
-    inverted_index_bag:dbag.Bag,
     hash_and_embedding:dbag.Bag,
+    inverted_index_collection:str,
     batch_size:int,
     num_neighbors:int,
     faiss_index_name="final",
@@ -59,18 +48,12 @@ def nearest_neighbors_network_from_index(
   Applies faiss and runs results through inverted index. Requires
   knn_util:faiss_index and knn_util:inverted_index to be initialized.
   """
-  def write_inv_idx_to_kv_store(inv_idx:Iterable[Tuple[np.int64, str]])->int:
-    "writes values, returns 1"
-    kv_store.put_many(list(inv_idx))
-    return 1
   def apply_faiss_to_edges(
       hash_and_embedding:Iterable[Record],
-      parts_written_to_db:int,
   )->Iterable[nx.Graph]:
 
     # The only reason we need parts_written_to_db is to make sure that the
     # writing happens before this point
-
     index = dpg.get(f"knn_util:faiss_{faiss_index_name}")
     inverted_index = {}
 
@@ -84,9 +67,13 @@ def nearest_neighbors_network_from_index(
       hashes = hashes.tolist() + flatten_list(neighs_per_root.tolist())
       hashes = list(set(hashes) - set(inverted_index.keys()))
 
-      graph_keys = kv_store.get_many(hashes)
+      graph_keys = database_util.get(
+          values=hashes,
+          collection=inverted_index_collection,
+          field_name="hash"
+      )
       for k, v in zip(hashes, graph_keys):
-        inverted_index[k] = v
+        inverted_index[k] = v["strid"]
 
       # Create records
       for root_idx, neigh_indices in zip(hashes, neighs_per_root):
@@ -103,20 +90,7 @@ def nearest_neighbors_network_from_index(
           graph.add_edge(neigh, root, weight=weight)
     return [graph]
 
-  num_parts_write_inv_idx = (
-      inverted_index_bag
-      .reduction(
-        perpartition=write_inv_idx_to_kv_store,
-        aggregate=sum
-      )
-  )
-  return (
-      hash_and_embedding
-      .map_partitions(
-        apply_faiss_to_edges,
-        num_parts_write_inv_idx,
-      )
-  )
+  return hash_and_embedding.map_partitions(apply_faiss_to_edges)
 
 
 def train_distributed_knn(

@@ -3,9 +3,10 @@ import torch
 from typing import List, Tuple, Any, Callable, Generator, Dict
 from os import system
 from tqdm import tqdm
-from sklearn.utils import shuffle
 from torch.nn.utils.rnn import pad_sequence
 import horovod.torch as hvd
+from pymoliere.construct import file_util
+from pathlib import Path
 
 # We call this on epoch start, starts with epoch number
 OnEpochStartFn = Callable[[int], None]
@@ -31,6 +32,20 @@ def split_data_across_ranks(data:List[Any])->None:
   if len(data) >= 2*vals_per_part:
     del data[vals_per_part:]
   print("Taking chunk:", my_start_idx, my_start_idx+len(data), len(data))
+
+
+def split_partitions_across_ranks(
+    data_dir:Path,
+    rank:int,
+    size:int,
+)->List[Any]:
+  res = []
+  assert file_util.is_result_saved(data_dir)
+  parts = file_util.get_part_files(data_dir)
+  for idx, part in enumerate(parts):
+    if idx % size == rank:
+      res += file_util.load_part(part)
+  return res
 
 
 def print_line_plots(line_plots:List[Tuple[str,List[float]]])->None:
@@ -75,6 +90,7 @@ def train_model(
     after_loss_calculation:AfterLossCalculationFn=None,
     disable_pbar:bool=False,
     disable_plots:bool=False,
+    disable_batch_report:bool=False,
     metrics:Tuple[str, MetricFn]=None,
     num_batches:int=None,
     on_epoch_start:OnEpochStartFn=None,
@@ -183,11 +199,14 @@ def train_model(
           f"{name}:{metric2running_sum[name]/running_total:0.4f}"
           for name in metric2running_sum
         ])
-        desc = f"{epoch} : {phase} -- {metric_desc_str}"
         if not disable_pbar:
-          pbar.set_description(desc)
-        else:
-          print(batch_idx, desc)
+          pbar.set_description(f"{phase}:{metric_desc_str}")
+        elif not disable_batch_report:
+          if num is None:
+            batch_desc = batch_idx
+          else:
+            batch_desc = f"{batch_idx/num:0.4f}"
+          print(f"Epoch:{epoch} {phase} {batch_desc} {metric_desc_str}")
 
-        if num_batches is not None and batch_idx >= num_batches - 1:
+        if num is not None and batch_idx >= num - 1:
           break

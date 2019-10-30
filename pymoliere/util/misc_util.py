@@ -5,8 +5,6 @@ import hashlib
 
 Record = Dict[str, Any]
 
-SUBGRAPH_EDGE_THRESHOLD=100000
-
 
 def iter_to_batches(iterable, batch_size):
   args = [iter(iterable)] * batch_size
@@ -46,6 +44,13 @@ def hash_str_to_int32(s):
         signed=False,
       ) % np.iinfo(np.int32).max
   )
+
+def hash_str_to_int(s):
+  return int.from_bytes(
+      hashlib.md5(s.encode("utf-8")).digest(),
+      byteorder="big",
+      signed=False,
+  ) % np.iinfo(np.int64).max
 
 
 def merge_counts(

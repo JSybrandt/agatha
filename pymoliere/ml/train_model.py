@@ -23,6 +23,9 @@ BatchGenerator = Generator[Tuple[Dict[Any, Any], torch.Tensor], None, None]
 # per-epoch and recorded in line plots.
 MetricFn = Callable[[torch.Tensor, torch.Tensor], float]
 
+# Given phase and final metric values. Note the score is a 1-element tensor.
+OnPhaseEnd = Callable[[str, Dict[str, torch.Tensor]], None]
+
 def split_data_across_ranks(data:List[Any])->None:
   "Each rank selects a different subset of the input data"
   # Need to split input into just my section
@@ -31,7 +34,6 @@ def split_data_across_ranks(data:List[Any])->None:
   del data[:my_start_idx]
   if len(data) >= 2*vals_per_part:
     del data[vals_per_part:]
-  print("Taking chunk:", my_start_idx, my_start_idx+len(data), len(data))
 
 
 def split_partitions_across_ranks(
@@ -97,6 +99,7 @@ def train_model(
     optimizer:torch.optim.Optimizer=None,
     validation_batch_generator:BatchGenerator=None,
     validation_num_batches:int=None,
+    on_phase_end:OnPhaseEnd=None,
 )->None:
   """
   A generic training harness for pytorch models.
@@ -156,7 +159,6 @@ def train_model(
   }
 
   for epoch in range(num_epochs):
-    print(f"Epoch {epoch}/{num_epochs}")
     if on_epoch_start is not None:
       on_epoch_start(epoch)
     if not disable_plots:
@@ -210,3 +212,11 @@ def train_model(
 
         if num is not None and batch_idx >= num - 1:
           break
+      if on_phase_end is not None:
+        on_phase_end(
+            phase,
+            {
+              name: val / running_total
+              for name, val in metric2running_sum.items()
+            },
+        )

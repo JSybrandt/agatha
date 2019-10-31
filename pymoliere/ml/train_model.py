@@ -197,18 +197,20 @@ def train_model(
 
         running_total += 1
 
-        metric_desc_str = " ".join([
-          f"{name}:{metric2running_sum[name]/running_total:0.4f}"
-          for name in metric2running_sum
-        ])
-        if not disable_pbar:
-          pbar.set_description(f"{phase}:{metric_desc_str}")
-        elif not disable_batch_report:
-          if num is None:
-            batch_desc = batch_idx
-          else:
-            batch_desc = f"{(batch_idx/num)*100:2.2f}%"
-          print(f"Epoch:{epoch} {phase} {batch_desc} {metric_desc_str}")
+        # Only print info on training set.
+        if phase == "train":
+          metric_desc_str = " ".join([
+            f"{name}:{metric2running_sum[name]/running_total:0.4f}"
+            for name in metric2running_sum
+          ])
+          if not disable_pbar:
+            pbar.set_description(f"{phase}:{metric_desc_str}")
+          elif not disable_batch_report:
+            if num is None:
+              batch_desc = batch_idx
+            else:
+              batch_desc = f"{(batch_idx/num)*100:2.2f}%"
+            print(f"Epoch:{epoch} {phase} {batch_desc} {metric_desc_str}")
 
         if num is not None and batch_idx >= num - 1:
           break

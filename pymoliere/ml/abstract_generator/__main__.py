@@ -223,10 +223,16 @@ if __name__ == "__main__":
     # predicted.shape = batch x seq_len x voccab size (float softmax)
     # expected.shape = batch x seq_len (ints)
     # Must produce accuracy per batch
-    expanded_size = expected.shape[0] * expected.shape[1]
-    predicted_labels = torch.argmax(predicted.view(expanded_size, -1), dim=1)
-    num_correct = (predicted_labels == expected.view(-1)).sum().float()
-    return num_correct / expanded_size
+    # Don't want to count the padding
+
+    valid_mask = expected != 0
+    num_expected = valid_mask.sum().float()
+
+    predicted_labels = torch.argmax(predicted, dim=2)
+    assert predicted_labels.shape == expected.shape
+
+    num_correct = (predicted_labels[valid_mask] == expected[valid_mask]).sum().float()
+    return num_correct/num_expected
 
   def loss_wrapper(predicted, expected):
     # predicted.shape = batch x seq_len x voccab size (float softmax)
@@ -243,12 +249,12 @@ if __name__ == "__main__":
       print(metric2score)
     else:
       if hvd.rank() == 0:
-        print("Metric Summary")
+        print("Metric Summary:", phase)
       # sorted list to ensure that keys are encountered in the same order
       for metric, score in sorted(list(metric2score.items())):
         score = hvd.allreduce(score, name=metric)
         if hvd.rank() == 0:
-          print(metric, score.item())
+          print(f"\t- {metric}: {score.item()}")
       if hvd.rank() == 0:
         print("\n\n")
 
@@ -268,7 +274,7 @@ if __name__ == "__main__":
       disable_plots=config.use_horovod,
       disable_batch_report=(config.use_horovod and not hvd.rank() == 0),
       num_batches=num_batches,
-      validation_num_batches=num_batches,
+      validation_num_batches=num_batches/10,
       on_phase_end=get_overall_averages_for_metrics,
   )
 
@@ -277,16 +283,3 @@ if __name__ == "__main__":
   if not config.use_horovod or hvd.rank() == 0:
     print("Saving model")
     torch.save(model.state_dict(), model_path)
-
-    # print("Play with the model!")
-    # model.eval()
-    # for sentence in sys.stdin:
-      # sentence = sentence.strip()
-      # for _ in range(4):
-        # sentence = util.generate_sentence(
-            # sentence=sentence,
-            # max_sequence_length=config.parser.max_sequence_length,
-            # model=model,
-            # tokenizer=tokenizer,
-        # )
-        # print(sentence)

@@ -15,6 +15,7 @@ from transformers import BertTokenizer, AdamW
 from pymoliere.util.misc_util import iter_to_batches
 import sys
 import horovod.torch as hvd
+import numpy as np
 
 
 if __name__ == "__main__":
@@ -171,31 +172,49 @@ if __name__ == "__main__":
       epochs=config.sys.num_epochs,
   )
 
-  def start_epoch(epoch_num:int):
+  def start_epoch(epoch:int):
     shuffle(data)
     # We're going fine-tune the softmax layer in the first epoch,
     # and then all is fair game
-    if 1 <= epoch_num <= 12:
+    if 1 <= epoch <= 12:
       # Epoch 0, everything is frozen. Each epoch thereafter we enable a layer.
-      model.unfreeze_layers_starting_with(12-epoch_num)
-    # if epoch_num > 0 and (not config.use_horovod or hvd.rank() == 0):
+      model.unfreeze_layers_starting_with(12-epoch)
+    # if epoch > 0 and (not config.use_horovod or hvd.rank() == 0):
         # print("Saving model")
-        # torch.save(model.state_dict(), f"{model_path}.{epoch_num}")
+        # torch.save(model.state_dict(), f"{model_path}.{epoch}")
 
-  def gen_batch():
+  def gen_batch(epoch:int):
+    # go from x -> 0 in half time
+    unchanged_prob = np.interp(
+        epoch,
+        xp=[0, config.sys.num_epochs/2, config.sys.num_epochs],
+        fp=[config.unchanged_prob, 0, 0]
+    )
+    # go from x -> .5 in full time
+    full_mask_prob = np.interp(
+        epoch,
+        xp=[0, config.sys.num_epochs],
+        fp=[config.full_mask_prob, .5]
+    )
+    # go from x -> .75 in full time
+    mask_per_token_prob = np.interp(
+        epoch,
+        xp=[0, config.sys.num_epochs],
+        fp=[config.mask_per_token_prob, .75]
+    )
     for batch in iter_to_batches(data, config.sys.batch_size):
       in_kwargs, expected_out = util.sentence_pairs_to_model_io(
           tokenizer=tokenizer,
           batch_pairs=batch,
-          unchanged_prob=config.unchanged_prob,
-          full_mask_prob=config.full_mask_prob,
-          mask_per_token_prob=config.mask_per_token_prob,
+          unchanged_prob=unchanged_prob,
+          full_mask_prob=full_mask_prob,
+          mask_per_token_prob=mask_per_token_prob,
           max_sequence_length=config.parser.max_sequence_length,
       )
       in_kwargs = {k: v.to(device) for k, v in in_kwargs.items()}
       yield in_kwargs, expected_out.to(device)
 
-  def gen_validation_batch():
+  def gen_validation_batch(epoch:int):
     for batch in iter_to_batches(validation_data, config.sys.batch_size):
       in_kwargs, expected_out = util.sentence_pairs_to_model_io(
           tokenizer=tokenizer,
@@ -233,6 +252,7 @@ if __name__ == "__main__":
 
     num_correct = (predicted_labels[valid_mask] == expected[valid_mask]).sum().float()
     return num_correct/num_expected
+
 
   def loss_wrapper(predicted, expected):
     # predicted.shape = batch x seq_len x voccab size (float softmax)

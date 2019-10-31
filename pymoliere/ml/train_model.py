@@ -16,7 +16,8 @@ AfterLossCalculationFn = Callable[[torch.Tensor], None]
 # A generator is created per-epoch. We're going to call this #batches times.
 # We're going to assume this batch generator could go on forever
 # Outputs the kwargs for the model, and the tensor we're comparing against
-BatchGenerator = Generator[Tuple[Dict[Any, Any], torch.Tensor], None, None]
+# Input to the batch generator is the epoch num
+BatchGenerator = Generator[Tuple[Dict[Any, Any], torch.Tensor], int, None]
 # Params are yield, send, return
 
 # Given predicted batch and actual batch, produce a value. These are averaged
@@ -182,7 +183,7 @@ def train_model(
 
       device = get_device_from_model(model)
 
-      pbar = tqdm(gen(), total=num, disable=disable_pbar)
+      pbar = tqdm(gen(epoch), total=num, disable=disable_pbar)
       for batch_idx, (in_kwargs, expected_output) in enumerate(pbar):
 
         predicted_output = model(**in_kwargs)

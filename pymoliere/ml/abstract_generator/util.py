@@ -21,9 +21,21 @@ class AbstractGenerator(BertModel):
     # Then we pick the word
     self.last_softmax = torch.nn.LogSoftmax(dim=1)
 
-  def unfreeze_last_bert_layer(self):
+  def unfreeze_layers_starting_with(self, level:int):
+    assert level >= 0
+    assert level <= 11
     for name, param in self.named_parameters():
-      if name.startswith("encoder.layer.11") or name.startswith("pooler.dense"):
+      tokens = name.split(".")
+      if ((
+            tokens[0] == "encoder"
+            and tokens[1] == "layer"
+            and int(tokens[2]) >= level
+          )
+          or (
+            tokens[0] == "pooler"
+            and tokens[1] == "dense"
+          )
+      ):
         param.requires_grad = True
 
 
@@ -217,20 +229,16 @@ def generate_sentence(
       max_sequence_length=max_sequence_length,
   )
 
-  print(model_kwargs)
   first_predicted_idx = (
       model_kwargs["token_type_ids"]
       .view(-1)
       .tolist()
       .index(1)
   )
-  print(first_predicted_idx)
   complete_mask = (
       [False]
       * (model_kwargs["input_ids"].shape[1] - first_predicted_idx - 1)
   )
-  print(complete_mask)
-  print(len(complete_mask))
 
   while False in complete_mask:
     # Predict based off what we have currently

@@ -22,6 +22,7 @@ SENTENCE_TYPE="s"
 # Inidices are values like -1 and "hashed"
 MONGO_INDEX = Union[int, str]
 
+
 def database_initializer(
     address:str,
     port:int,
@@ -37,13 +38,15 @@ def database_initializer(
     return client[name]
   return "database:db", _init
 
+
 def set_index(
     collection:str,
     field_name:str,
-    index_type:MONGO_INDEX=pymongo.HASHED,
+    index_type:MONGO_INDEX=pymongo.TEST,
 )->None:
   db = dpg.get("database:db")
   db[collection].create_index([(field_name, index_type)])
+
 
 def put(records:Iterable[Record], collection:str, **kwargs)->None:
   """
@@ -52,7 +55,12 @@ def put(records:Iterable[Record], collection:str, **kwargs)->None:
   """
   db = dpg.get("database:db")
   for r in records:
-    db[collection].insert(r)
+    try:
+      db[collection].insert(r)
+    except pymongo.errors.InvalidOperation as e:
+      print("Encountered non-fatal issue:",  e)
+      pass
+
 
 def get(
     values:Iterable[str],
@@ -73,26 +81,21 @@ def put_bag(
     bag:dbag.Bag,
     collection:str,
     indexed_field_name:Optional[str]=None,
-    index_type:MONGO_INDEX=pymongo.HASHED,
+    index_type:MONGO_INDEX=pymongo.TEXT,
 )->dbag.Bag:
   """
   Writes all the records to collection. Sets index if specified. Returns a bag
   simply containing the number of written records, indented for use in the
   checkpointing system.
   """
-  def set_index_wrapper(*args, **kwargs):
-    set_index(*args, **kwargs)
-    return True
-  def clear_collection_wrapper(*args, **kwargs):
-    clear_collection(*args, **kwargs)
-    return True
   def put_part_wrapper(*args, **kwargs):
     put(*args, **kwargs)
     return [True]
 
   index_task = None
   if indexed_field_name is not None:
-    index_task = dask.delayed(set_index_wrapper)(
+    print(f"\t- Setting index: {collection}.{field_name}:{index_type}")
+    set_index_wrapper(
         collection=collection,
         field_name=indexed_field_name,
         index_type=index_type

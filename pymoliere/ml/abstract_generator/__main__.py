@@ -113,8 +113,7 @@ if __name__ == "__main__":
     model = model.to(device)
 
   loss_fn = torch.nn.NLLLoss()
-
-  lr = 0.001
+  lr = 0.002
   if config.use_horovod:
     lr *= hvd.size()
   optimizer = AdamW(
@@ -144,16 +143,28 @@ if __name__ == "__main__":
         disable_pbar=config.use_horovod, # Don't show pbar if distributed
     )
 
+  num_batches = int(10000 / config.sys.batch_size)
+  if config.use_horovod:
+    num_batches=int(num_batches / hvd.size())
+
+  scheduler = torch.optim.lr_scheduler.OneCycleLR(
+      optimizer,
+      max_lr=0.01,
+      steps_per_epoch=num_batches,
+      epochs=config.sys.num_epochs,
+  )
+
   def start_epoch(epoch_num:int):
     print("Shuffling")
     shuffle(data)
     # We're going fine-tune the softmax layer in the first epoch,
     # and then all is fair game
-    if epoch_num == 1:
-      model.unfreeze_last_bert_layer()
-    if epoch_num > 0 and (not config.use_horovod or hvd.rank() == 0):
-        print("Saving model")
-        torch.save(model.state_dict(), f"{model_path}.{epoch_num}")
+    if 1 <= epoch_num <= 12:
+      # Epoch 0, everything is frozen. Each epoch thereafter we enable a layer.
+      model.unfreeze_layers_starting_with(12-epoch_num)
+    # if epoch_num > 0 and (not config.use_horovod or hvd.rank() == 0):
+        # print("Saving model")
+        # torch.save(model.state_dict(), f"{model_path}.{epoch_num}")
 
   def gen_batch():
     for batch in iter_to_batches(data, config.sys.batch_size):
@@ -170,15 +181,13 @@ if __name__ == "__main__":
   #total_batches = int(len(data) / config.sys.batch_size)
 
   def after_loss_calculation(loss):
-    optimizer.zero_grad()
     loss.backward()
-    if config.use_horovod:
-      optimizer.synchronize()
-      torch.nn.utils.clip_grad_norm(model.parameters(), 1.0)
-      with optimizer.skip_synchronize():
-        optimizer.step()
-    else:
-      optimizer.step()
+    # optimizer.synchronize()
+    #torch.nn.utils.clip_grad_norm(model.parameters(), 1.0)
+    # with optimizer.skip_synchronize():
+    optimizer.step()
+    scheduler.step()
+    optimizer.zero_grad()
 
   def calc_accuracy(predicted, expected):
     expanded_size = expected.shape[0] * expected.shape[1]

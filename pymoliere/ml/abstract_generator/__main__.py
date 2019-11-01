@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
   # We only want to do prep on the first machine
   if not config.use_horovod or hvd.rank() == 0:
-    print("Running pymoliere sentence_classifier with the following parameters:")
+    print("Running pymoliere abstract_generator with the following parameters:")
     print(config)
 
     # Potential cluster
@@ -181,7 +181,7 @@ if __name__ == "__main__":
       model.unfreeze_layers_starting_with(12-epoch)
     if (
         epoch > 0
-        and epoch % 10 == 0
+        and epoch % 5 == 0
         and (not config.use_horovod or hvd.rank() == 0)
     ):
       print("Saving model")
@@ -248,7 +248,10 @@ if __name__ == "__main__":
     predicted_labels = torch.argmax(predicted, dim=2)
     assert predicted_labels.shape == expected.shape
 
-    num_correct = (predicted_labels[valid_mask] == expected[valid_mask]).sum().float()
+    num_correct = (
+        (predicted_labels[valid_mask] == expected[valid_mask])
+        .sum().float()
+    )
     return num_correct/num_expected
 
 

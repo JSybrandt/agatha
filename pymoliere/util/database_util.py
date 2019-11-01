@@ -42,7 +42,7 @@ def database_initializer(
 def set_index(
     collection:str,
     field_name:str,
-    index_type:MONGO_INDEX=pymongo.TEST,
+    index_type:MONGO_INDEX=pymongo.TEXT,
 )->None:
   db = dpg.get("database:db")
   db[collection].create_index([(field_name, index_type)])

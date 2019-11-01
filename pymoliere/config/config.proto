@@ -147,8 +147,9 @@ message QueryConfig {
   optional ShortestPathConfig path = 6;
   // optional NGramConfig phrases = 7;
   // Where to store result proto
-  optional string result_path = 8;
+  optional string result_path = 8 [default="./pymoliere_query_result.pb"];
   optional bool override = 9 [default=false];
+  optional int32 max_degree = 10 [default=1000];
 }
 
 ////////////////////////////////////////////////////////////////////////////////

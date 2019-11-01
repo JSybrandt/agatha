@@ -6,42 +6,17 @@ from pprint import pprint
 from pymoliere.config import config_pb2 as cpb, proto_util
 from pymoliere.query import path_util, bow_util
 from pymoliere.query import query_pb2 as qpb
-from pymoliere.util.db_key_util import(
-    GRAPH_TYPE,
-    SENTENCE_TYPE,
-    key_is_type,
-    to_graph_key,
-    from_graph_key,
-    strip_major_type,
-)
+from pymoliere.util import database_util
 from typing import List, Set, Tuple
 import itertools
 import json
-import redis
 import sys
+import pymongo
 
 
 def assert_conf_has_field(config:cpb.QueryConfig, field:str)->None:
   if not config.HasField(field):
     raise ValueError(f"Must supply `{field}` term.")
-
-
-def assert_db_has_key(client:redis.Redis, key:str)->None:
-  num_candidates = 15
-  if not client.exists(key):
-    key = strip_major_type(key)
-    candidates = "\n\t".join(
-      map(
-        lambda s: from_graph_key(s.decode("utf-8")),
-        itertools.islice(
-          client.scan_iter(
-            match=f"{GRAPH_TYPE}:*{key}*", # only match graph objs
-          ),
-          num_candidates,
-        )
-      )
-    )
-    raise ValueError(f"Failed to find {key}. Did you mean:\n\t{candidates}")
 
 
 if __name__ == "__main__":
@@ -53,13 +28,8 @@ if __name__ == "__main__":
   # Query specified
   assert_conf_has_field(config, "source")
   assert_conf_has_field(config, "target")
-  assert_conf_has_field(config, "result_path")
-
-  if not key_is_type(config.source, GRAPH_TYPE):
-    config.source = to_graph_key(config.source)
-
-  if not key_is_type(config.target, GRAPH_TYPE):
-    config.target = to_graph_key(config.target)
+  #assert_conf_has_field(config, "result_path")
+  print("Storing result to", config.result_path)
 
   result_path = Path(config.result_path)
   if result_path.is_file():
@@ -69,47 +39,52 @@ if __name__ == "__main__":
     assert result_path.parent.is_dir()
 
   print("Connecting to DB")
-  client = redis.Redis(
+  database = pymongo.MongoClient(
       host=config.db.address,
       port=config.db.port,
-      db=config.db.db_num,
-  )
+  )[config.db.name]
 
-  # Query is valid
-  assert_db_has_key(client, config.source)
-  assert_db_has_key(client, config.target)
+  # Check that the query is in the graph.
+  # Note: the graph is stored as an edge list with fields:
+  # {source: "...", target: "...", weight: x}
+  # This means the finds are just making sure an edge exists
+  assert database.graph.find_one({"source": config.source}) is not None
+  assert database.graph.find_one({"source": config.target}) is not None
 
   # Get Path
   print("Finding shortest path")
-  path = path_util.get_path(
-      db_client=client,
+  path = path_util.get_shortest_path(
+      collection=database.graph,
       source=config.source,
       target=config.target,
-      batch_size=config.path.node_batch
+      max_degree=config.max_degree,
   )
   if path is None:
     raise ValueError(f"Path is disconnected, {config.source}, {config.target}")
   pprint(path)
 
-  text_keys = set()
+  print("Collecting Nearby Sentences")
+  sentence_ids = set()
   for path_node in path:
-    text_keys.update(
-      path_util.get_neighbors(
-        db_client=client,
+    # Each node along the path is allowed to add some sentences
+    sentence_ids.update(
+      path_util.get_nearby_nodes(
+        collection=database.graph,
         source=path_node,
-        key_type=SENTENCE_TYPE,
-        max_count=config.max_sentences_per_path_elem,
-        batch_size=config.path.node_batch,
+        key_type=database_util.SENTENCE_TYPE,
+        max_result_size=config.max_sentences_per_path_elem,
+        max_degree=config.max_degree,
       )
     )
-  text_keys = list(text_keys)
-  print("Retrieving text")
-  with client.pipeline() as pipe:
-    for key in text_keys:
-      key = from_graph_key(key)
-      pipe.hget(key, "bow")
-    text_corpus = [json.loads(bow) for bow in pipe.execute()]
-  print(f"Identified {len(text_corpus)} sentences.")
+
+  print("Downloading Sentence Text")
+  text_corpus = [
+      database.sentences.find_one(
+        filter={"id": sent_id},
+        projection={"bow":1, "_id":0}
+      )["bow"]
+      for sent_id in sentence_ids
+  ]
 
   print("Identifying potential query-specific stopwords")
   min_support = config.topic_model.min_support_count
@@ -126,13 +101,13 @@ if __name__ == "__main__":
   print(f"\t- {len(stopwords_under)} words occur less than {min_support} times")
   print(f"\t- {len(stopwords_over)} words occur more than {max_support} times")
   stopwords = stopwords_under.union(stopwords_over)
-  text_keys, text_corpus = bow_util.filter_words(
-      keys=text_keys,
+  sentence_ids, text_corpus = bow_util.filter_words(
+      keys=sentence_ids,
       text_corpus=text_corpus,
       stopwords=stopwords,
   )
   print(f"\t- Reduced to {len(text_corpus)} documents")
-  assert len(text_keys) == len(text_corpus)
+  assert len(sentence_ids) == len(text_corpus)
 
   print("Computing topics")
   word_idx = Dictionary(text_corpus)
@@ -158,7 +133,7 @@ if __name__ == "__main__":
 
   # Add documents from topic model
   print("\t- Topics per-document")
-  for key, bow in zip(text_keys, int_corpus):
+  for key, bow in zip(sentence_ids, int_corpus):
     for topic_idx, weight in topic_model[bow]:
       doc = result.documents.add()
       doc.key = key

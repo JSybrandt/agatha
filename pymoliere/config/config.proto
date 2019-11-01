@@ -173,15 +173,26 @@ message AbstractGeneratorConfig {
   optional ClusterConfig cluster = 1;
   optional TextParserConfig parser = 2;
   optional MlConfig sys = 3;
+  // Note: All of these probabilities are effected by the per-epoch difficulty
+  // modifier. the unchanged prob decreases, while the others increase to
+  // the specified value.
   // The following effect how often the second training sentence is modified.
   // This is the probability that the 2nd sentence is unchanged
-  optional float unchanged_prob = 4 [default=0.1];
+  optional float unchanged_prob = 4 [default=0.2];
   // This is the probability that the whole 2nd sentence is dropped
-  optional float full_mask_prob = 5 [default=0.2];
+  optional float full_mask_prob = 5 [default=0.25];
   // This is the per-token probability that a single word is dropped (provided
   // the above conditions have not happened)
-  optional float mask_per_token_prob = 6 [default=0.2];
-  optional bool use_horovod = 7 [default=false];
+  optional float mask_per_token_prob = 6 [default=0.25];
+  // This is the per-token probability that a single word is replaced in the
+  // second half of the input.  Note that the per-token-prob fields must sum <=
+  // 1
+  optional float replace_per_token_prob = 7 [default=0.25];
+  optional bool use_horovod = 8 [default=false];
+  // This determines the number of examples to generate.
+  // This id divided by batch size and by machines to determine the
+  // speed of the epoch.
+  optional int32 examples_per_epoch = 9 [default=50000];
 }
 ////////////////////////////////////////////////////////////////////////////////
 

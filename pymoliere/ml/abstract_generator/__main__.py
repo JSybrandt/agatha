@@ -136,11 +136,11 @@ if __name__ == "__main__":
       print("Loading Data")
     hvd.broadcast_parameters(model.state_dict(), root_rank=0)
     hvd.broadcast_optimizer_state(optimizer, root_rank=0)
-    compression = hvd.Compression.fp16
+    # compression = hvd.Compression.fp16
     optimizer = hvd.DistributedOptimizer(
         optimizer,
         named_parameters=model.named_parameters(),
-        compression=compression,
+        # compression=compression,
     )
     data = split_partitions_across_ranks(
         data_ckpt_dir.joinpath("sentence_pairs"),
@@ -161,7 +161,7 @@ if __name__ == "__main__":
         data_ckpt_dir.joinpath("validation_pairs"),
     )
 
-  num_batches = int(10000 / config.sys.batch_size)
+  num_batches = int(config.examples_per_epoch / config.sys.batch_size)
   if config.use_horovod:
     num_batches=int(num_batches / hvd.size())
 
@@ -179,36 +179,31 @@ if __name__ == "__main__":
     if 1 <= epoch <= 12:
       # Epoch 0, everything is frozen. Each epoch thereafter we enable a layer.
       model.unfreeze_layers_starting_with(12-epoch)
-    # if epoch > 0 and (not config.use_horovod or hvd.rank() == 0):
-        # print("Saving model")
-        # torch.save(model.state_dict(), f"{model_path}.{epoch}")
+    if (
+        epoch > 0
+        and epoch % 10 == 0
+        and (not config.use_horovod or hvd.rank() == 0)
+    ):
+      print("Saving model")
+      torch.save(model.state_dict(), f"{model_path}.{epoch}")
 
   def gen_batch(epoch:int):
-    # go from x -> 0 in half time
-    unchanged_prob = np.interp(
+    # Difficulty rises from 0.1 -> 1 in half the epochs
+    mod = np.interp(
         epoch,
         xp=[0, config.sys.num_epochs/2, config.sys.num_epochs],
-        fp=[config.unchanged_prob, 0, 0]
-    )
-    # go from x -> .5 in full time
-    full_mask_prob = np.interp(
-        epoch,
-        xp=[0, config.sys.num_epochs],
-        fp=[config.full_mask_prob, .5]
-    )
-    # go from x -> .75 in full time
-    mask_per_token_prob = np.interp(
-        epoch,
-        xp=[0, config.sys.num_epochs],
-        fp=[config.mask_per_token_prob, .75]
+        fp=[0.1, 1, 1]
     )
     for batch in iter_to_batches(data, config.sys.batch_size):
       in_kwargs, expected_out = util.sentence_pairs_to_model_io(
           tokenizer=tokenizer,
           batch_pairs=batch,
-          unchanged_prob=unchanged_prob,
-          full_mask_prob=full_mask_prob,
-          mask_per_token_prob=mask_per_token_prob,
+          # The unchanged rate drops as difficulty increases
+          unchanged_prob=config.unchanged_prob*(1-mod),
+          # Other params increase in difficulty
+          full_mask_prob=config.full_mask_prob*mod,
+          mask_per_token_prob=config.mask_per_token_prob*mod,
+          replace_per_token_prob=config.replace_per_token_prob*mod,
           max_sequence_length=config.parser.max_sequence_length,
       )
       in_kwargs = {k: v.to(device) for k, v in in_kwargs.items()}
@@ -219,9 +214,11 @@ if __name__ == "__main__":
       in_kwargs, expected_out = util.sentence_pairs_to_model_io(
           tokenizer=tokenizer,
           batch_pairs=batch,
+          # turn off everything except full mask
           unchanged_prob=0,
+          replace_per_token_prob=0,
+          mask_per_token_prob=0,
           full_mask_prob=1,
-          mask_per_token_prob=config.mask_per_token_prob,
           max_sequence_length=config.parser.max_sequence_length,
       )
       in_kwargs = {k: v.to(device) for k, v in in_kwargs.items()}
@@ -230,6 +227,7 @@ if __name__ == "__main__":
   #total_batches = int(len(data) / config.sys.batch_size)
 
   def after_loss_calculation(loss):
+    # Only runs when phase == train
     loss.backward()
     # optimizer.synchronize()
     #torch.nn.utils.clip_grad_norm(model.parameters(), 1.0)
@@ -294,7 +292,6 @@ if __name__ == "__main__":
       disable_plots=config.use_horovod,
       disable_batch_report=(config.use_horovod and not hvd.rank() == 0),
       num_batches=num_batches,
-      validation_num_batches=num_batches/10,
       on_phase_end=get_overall_averages_for_metrics,
   )
 

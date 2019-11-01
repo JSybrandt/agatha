@@ -6,7 +6,7 @@ from copy import copy
 from typing import List
 from pymoliere.ml.train_model import get_device_from_model
 from pymoliere.util.misc_util import flatten_list
-from random import random
+from random import random, randint
 
 class AbstractGenerator(BertModel):
   def __init__(self, config:Dict[str, Any], freeze_bert_layers=False):
@@ -98,20 +98,31 @@ def apply_mask_to_token_ids(
   return input_ids
 
 
-def generate_sentence_mask(
-    segment_mask:List[int],
-    per_token_mask_prob:float,
-)->List[bool]:
-  "Selectively chooses words in the 2nd sentence to mask out"
-  assert per_token_mask_prob >= 0
-  assert per_token_mask_prob <= 1
-  mask = copy(segment_mask)
-  # Can't mask the last value
-  mask[-1] = 0
-  return [
-      False if m == 0 or random() >= per_token_mask_prob else True
-      for m in mask
-  ]
+def apply_random_replace_to_token_ids(
+    tokenizer:BertTokenizer,
+    input_ids:List[int],
+    mask:List[bool],
+)->List[int]:
+  """
+  If mask[i] is true, we replace input_ids[i] with a random token. Returns a
+  copy.
+  """
+  def is_bad_token(token:str):
+    # This check makes it so we don't get [PAD] or [unused...]
+    return len(token)==0 or (token[0] == "[" and token[-1] == "]")
+
+  def get_random_token_id():
+    t = randint(0, tokenizer.vocab_size-1)
+    while is_bad_token(tokenizer.convert_ids_to_tokens(t)):
+      t = randint(0, tokenizer.vocab_size-1)
+    return t
+
+  input_ids = copy(input_ids)
+  assert len(input_ids) == len(mask)
+  for idx in range(len(input_ids)):
+    if mask[idx]:
+      input_ids[idx] = get_random_token_id()
+  return input_ids
 
 
 def sentence_pairs_to_model_io(
@@ -120,6 +131,7 @@ def sentence_pairs_to_model_io(
     unchanged_prob:float,
     full_mask_prob:float,
     mask_per_token_prob:float,
+    replace_per_token_prob:float,
     max_sequence_length:int,
 )->Tuple[torch.Tensor, torch.Tensor]:
   """
@@ -134,6 +146,8 @@ def sentence_pairs_to_model_io(
     entire sentence. unchanged_prob + full_mask_prob < 1.
     mask_per_token_prob: number from 0 - 1. This is the chance that we mask
     each word, provided this sentence isn't ignored or totally masked.
+    replace_per_token_prob: The rate that we randomly alter a word.
+    Note that mask_per_token_prob + replace_per_token_prob < 1
   Output:
     (model_kwargs, original_data)
     Model input is a batch of padded sequences wherein the second sentence may
@@ -146,14 +160,19 @@ def sentence_pairs_to_model_io(
       token_type_ids: all 0's until we reach the 2nd sentence (starting after the middle [SEP]) and then all 1's.
   """
   assert unchanged_prob + full_mask_prob <= 1
+  assert replace_per_token_prob + mask_per_token_prob <= 1
+
+  # When we use this value, we're going to be setting the replacement
+  # Given that we've not masked the token
+  replace_per_token_prob /= (1-mask_per_token_prob)
 
   def pick_mask_prob():
     r = random()
     if r < unchanged_prob:
-      return 0
+      return 0.0
     r -= unchanged_prob
     if r < full_mask_prob:
-      return 1
+      return 1.0
     return mask_per_token_prob
 
   # Original inputs contains:
@@ -168,27 +187,47 @@ def sentence_pairs_to_model_io(
       for first, second in batch_pairs
   ]
 
-  modified_input_ids = [
-      apply_mask_to_token_ids(
+  modified_input_ids = []
+  for kwargs in model_inputs:
+    # 1 if we're allowed to mask here
+    mask_positions = kwargs["token_type_ids"]
+    # Can't mask last sep
+    mask_positions[-1] = 0
+    mask_positions= torch.FloatTensor(mask_positions)
+
+    # The mask is a bernoulli sample over valid positions
+    mask_mask = torch.bernoulli(mask_positions * pick_mask_prob())
+
+    # Now we need the mask of randomly replaced tokens
+    # These cannot be those positions that have already been masked
+    mask_positions = mask_positions * (1-mask_mask)
+    replace_mask = torch.bernoulli(mask_positions * replace_per_token_prob)
+
+    # Need to make sure that the mask's are disjoint
+    assert (mask_mask * replace_mask).sum() == 0
+
+    ids = kwargs["input_ids"]
+    ids = apply_mask_to_token_ids(
         tokenizer=tokenizer,
-        input_ids=kwargs["input_ids"],
-        mask=generate_sentence_mask(
-          segment_mask=kwargs["token_type_ids"],
-          per_token_mask_prob=pick_mask_prob()
-        )
-      )
-      for kwargs in model_inputs
-  ]
+        input_ids=ids,
+        mask=mask_mask.bool().tolist(),
+    )
+    ids = apply_random_replace_to_token_ids(
+        tokenizer=tokenizer,
+        input_ids=ids,
+        mask=replace_mask.bool().tolist(),
+    )
+    modified_input_ids.append(ids)
 
   original_token_ids = [
-      torch.tensor(arg['input_ids'])
+      torch.tensor(arg['input_ids'], dtype=int)
       for arg in model_inputs
   ]
   token_type_ids = [
       torch.tensor(arg['token_type_ids'])
       for arg in model_inputs
   ]
-  modified_input_ids = [torch.tensor(ids) for ids in modified_input_ids]
+  modified_input_ids = [torch.LongTensor(ids) for ids in modified_input_ids]
 
   def pad(x):
     return torch.nn.utils.rnn.pad_sequence(

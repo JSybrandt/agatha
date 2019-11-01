@@ -190,7 +190,7 @@ def train_model(
 
         for metric_name, metric_fn in metrics:
           metric_val = metric_fn(predicted_output, expected_output)
-          if metric_name == "loss":
+          if metric_name == "loss" and phase == "train":
             after_loss_calculation(metric_val)
           if isinstance(metric_val, torch.Tensor):
             metric_val = metric_val.detach()

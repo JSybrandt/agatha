@@ -129,68 +129,6 @@ def test_apply_mask():
   assert actual == expected
 
 
-def test_generate_sentence_mask():
-  tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-  model_inputs = tokenizer.encode_plus(
-      text=SENTENCE_1,
-      text_pair=SENTENCE_2,
-      add_special_tokens=True
-  )
-  input_ids = model_inputs['input_ids']
-  segment_mask = model_inputs['token_type_ids']
-  valid_mask_values = set([
-    idx for idx, val in enumerate(segment_mask)
-    if val == 1 and idx < len(segment_mask)-1
-  ])
-  # MASK EVERYTHING
-  mask = util.generate_sentence_mask(
-      segment_mask=segment_mask,
-      per_token_mask_prob=1,
-  )
-  assert len(mask) == len(input_ids)
-  # only marks those listed as valid
-  for idx, is_masked in enumerate(mask):
-    if is_masked:
-      assert idx in valid_mask_values
-  # marks all of the valid
-  for idx in valid_mask_values:
-    assert mask[idx]
-
-def test_generate_sentence_mask_random():
-  tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-  model_inputs = tokenizer.encode_plus(
-      text=SENTENCE_1,
-      text_pair=SENTENCE_2,
-      add_special_tokens=True
-  )
-  input_ids = model_inputs['input_ids']
-  segment_mask = model_inputs['token_type_ids']
-  valid_mask_values = set([
-    idx for idx, val in enumerate(segment_mask)
-    if val == 1 and idx < len(segment_mask)-1
-  ])
-  # only marks those listed as valid
-  expected_mask_prob = 0.25
-  avg_marked_per_trial = []
-  # run 1000 trials, we want to see if the result is close to 0.5
-  for _ in range(1000):
-    mask = util.generate_sentence_mask(
-        segment_mask=segment_mask,
-        per_token_mask_prob=expected_mask_prob,
-    )
-    assert len(mask) == len(input_ids)
-    num_marked = 0
-    for idx, is_masked in enumerate(mask):
-      if is_masked:
-        assert idx in valid_mask_values
-        num_marked += 1
-    avg_marked_per_trial.append(num_marked/len(valid_mask_values))
-  assert np.isclose(
-      np.mean(avg_marked_per_trial),
-      expected_mask_prob,
-      atol=0.02
-  )
-
 def test_group_sentences_into_pairs_sorted():
   records = [{
         "sent_text": "title",
@@ -324,6 +262,7 @@ def test_sentence_pairs_to_model_io():
       batch_pairs=sentence_pairs,
       unchanged_prob=0,
       full_mask_prob=0,
+      random_replace_per_token_prob=0,
       mask_per_token_prob=0.8,
       max_sequence_length=500,
   )

@@ -262,7 +262,7 @@ def test_sentence_pairs_to_model_io():
       batch_pairs=sentence_pairs,
       unchanged_prob=0,
       full_mask_prob=0,
-      random_replace_per_token_prob=0,
+      replace_per_token_prob=0,
       mask_per_token_prob=0.8,
       max_sequence_length=500,
   )

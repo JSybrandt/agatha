@@ -12,6 +12,7 @@ import itertools
 import json
 import sys
 import pymongo
+import dask
 
 
 def assert_conf_has_field(config:cpb.QueryConfig, field:str)->None:
@@ -53,7 +54,7 @@ if __name__ == "__main__":
 
   # Get Path
   print("Finding shortest path")
-  path = path_util.get_shortest_path(
+  path, cached_graph = path_util.get_shortest_path(
       collection=database.graph,
       source=config.source,
       target=config.target,

@@ -5,6 +5,7 @@ import networkx as nx
 import numpy as np
 import heapq
 import pymongo
+from copy import copy
 
 def download_neighbors(
     collection:pymongo.collection.Collection,
@@ -79,7 +80,7 @@ def get_shortest_path(
     source:str,
     target:str,
     max_degree:int,
-)->Optional[List[str]]:
+)->Tuple[Optional[List[str]], nx.Graph]:
   """
   Gets the exact shortest path between two nodes in the network. This method
   runs a bidirectional search with an amortized download. At a high level, we
@@ -98,14 +99,16 @@ def get_shortest_path(
       # a dist of np.inf indicates that we have not found a path yet.
       dists=[0, np.inf],
       # When we pop a node out of the priority queue, we'll mark it as visited
-      visited=False
+      visited=False,
+      downloaded=False,
   )
   # Same thing, but for target node.
   graph.add_node(
       target,
       # Note how the values are swapped compared to above.
       dists=[np.inf, 0],
-      visited=False
+      visited=False,
+      downloaded=False,
   )
   # This is our priority queue. We are going to sort this every time
   # we need a new node out of it. The criteria will be "minimim distance". As in
@@ -143,9 +146,11 @@ def get_shortest_path(
             # the new node doesn't have any information. It will need to
             # be updated by a neighbor later
             dists=[np.inf, np.inf],
-            visited=False
+            visited=False,
+            downloaded=False,
         )
       graph.add_edge(curr_node, neigh, weight=weight)
+    graph.nodes[curr_node]["downloaded"] = True
 
     for neigh, edge_attr in graph[curr_node].items():
       if not graph.nodes[neigh]["visited"]:
@@ -157,8 +162,18 @@ def get_shortest_path(
           )
         # Add new nodes to our queue
         priority.add(neigh)
-  return None
+  return None, graph
 
+def clear_node_attribute(graph:nx.Graph, attribute:str, reinitialize:Any=None)->None:
+  """
+  Replaces the attribute with the reinitialize, or removes the attribute
+  entirely if None specified
+  """
+  for _, attr in graph.nodes.items():
+    if reinitialize is not None:
+      attr[attribute] = copy(reinitialize)
+    elif attribute in attr:
+      del attr[attribute]
 
 def get_nearby_nodes(
     collection:pymongo.collection.Collection,

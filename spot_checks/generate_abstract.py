@@ -9,7 +9,7 @@ config = BertConfig.from_pretrained(base_bert_version)
 tokenizer = BertTokenizer.from_pretrained(base_bert_version)
 model = AbstractGenerator(config)
 
-pretrained_model = "/scratch4/jsybran/pymoliere_avg_hidden_emb_scratch/models/abstract_generator/model.pt"
+pretrained_model = "/scratch4/jsybran/pymoliere_scratch/models/abstract_generator/model_gen4_2019_11_4.pt"
 model.load_state_dict(torch.load(pretrained_model))
 model.eval()
 

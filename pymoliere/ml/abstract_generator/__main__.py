@@ -46,12 +46,11 @@ if __name__ == "__main__":
       .joinpath("dask_checkpoints")
   )
 
-  if config.use_horovod:
-    seed = 42
-    hvd.init()
+  seed = 42
+  hvd.init()
 
   # We only want to do prep on the first machine
-  if not config.use_horovod or hvd.rank() == 0:
+  if hvd.rank() == 0:
     print("Running pymoliere abstract_generator with the following parameters:")
     print(config)
 
@@ -97,19 +96,17 @@ if __name__ == "__main__":
 
   ##############################################################################
 
-  if config.use_horovod:
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.set_num_threads(1)
-    torch.cuda.set_device(hvd.local_rank())
+  torch.manual_seed(seed)
+  torch.cuda.manual_seed(seed)
+  torch.set_num_threads(1)
+  torch.cuda.set_device(hvd.local_rank())
 
   # Training data is ready, time to go!
-  if not config.use_horovod or hvd.rank() == 0:
+  if hvd.rank() == 0:
     print("Prepping model")
 
   if torch.cuda.is_available() and not config.sys.disable_gpu:
     device = torch.device("cuda")
-
   else:
     device = torch.device("cpu")
 
@@ -123,47 +120,34 @@ if __name__ == "__main__":
     model = model.to(device)
 
   loss_fn = torch.nn.NLLLoss()
-  lr = 0.002
-  if config.use_horovod:
-    lr *= hvd.size()
   optimizer = AdamW(
       filter(lambda x: x.requires_grad, model.parameters()),
-      lr=lr,
+      lr=0.002*hvd.size(),
       correct_bias=False,
   )
-  if config.use_horovod:
-    if hvd.rank() == 0:
-      print("Loading Data")
-    hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-    hvd.broadcast_optimizer_state(optimizer, root_rank=0)
-    # compression = hvd.Compression.fp16
-    optimizer = hvd.DistributedOptimizer(
-        optimizer,
-        named_parameters=model.named_parameters(),
-        # compression=compression,
-    )
-    data = split_partitions_across_ranks(
-        data_ckpt_dir.joinpath("sentence_pairs"),
-        rank=hvd.rank(),
-        size=hvd.size(),
-    )
-    validation_data = split_partitions_across_ranks(
-        data_ckpt_dir.joinpath("validation_pairs"),
-        rank=hvd.rank(),
-        size=hvd.size(),
-    )
-  else:
-    print("Loading all data")
-    data = file_util.load_to_memory(
-        data_ckpt_dir.joinpath("sentence_pairs"),
-    )
-    validation_data = file_util.load_to_memory(
-        data_ckpt_dir.joinpath("validation_pairs"),
-    )
+  if hvd.rank() == 0:
+    print("Loading Data")
+  hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+  hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+  # compression = hvd.Compression.fp16
+  optimizer = hvd.DistributedOptimizer(
+      optimizer,
+      named_parameters=model.named_parameters(),
+      # compression=compression,
+  )
+  data = split_partitions_across_ranks(
+      data_ckpt_dir.joinpath("sentence_pairs"),
+      rank=hvd.rank(),
+      size=hvd.size(),
+  )
+  validation_data = split_partitions_across_ranks(
+      data_ckpt_dir.joinpath("validation_pairs"),
+      rank=hvd.rank(),
+      size=hvd.size(),
+  )
 
   num_batches = int(config.examples_per_epoch / config.sys.batch_size)
-  if config.use_horovod:
-    num_batches=int(num_batches / hvd.size())
+  num_batches=int(num_batches / hvd.size())
 
   scheduler = torch.optim.lr_scheduler.OneCycleLR(
       optimizer,
@@ -182,7 +166,7 @@ if __name__ == "__main__":
     if (
         epoch > 0
         and epoch % 5 == 0
-        and (not config.use_horovod or hvd.rank() == 0)
+        and hvd.rank() == 0
     ):
       print("Saving model")
       torch.save(model.state_dict(), f"{model_path}.{epoch}")
@@ -265,19 +249,15 @@ if __name__ == "__main__":
     )
 
   def get_overall_averages_for_metrics(phase, metric2score):
-    if not config.use_horovod:
-      print("Metric Summary")
-      print(metric2score)
-    else:
+    if hvd.rank() == 0:
+      print("Metric Summary:", phase)
+    # sorted list to ensure that keys are encountered in the same order
+    for metric, score in sorted(list(metric2score.items())):
+      score = hvd.allreduce(score, name=metric)
       if hvd.rank() == 0:
-        print("Metric Summary:", phase)
-      # sorted list to ensure that keys are encountered in the same order
-      for metric, score in sorted(list(metric2score.items())):
-        score = hvd.allreduce(score, name=metric)
-        if hvd.rank() == 0:
-          print(f"\t- {metric}: {score.item()}")
-      if hvd.rank() == 0:
-        print("\n\n")
+        print(f"\t- {metric}: {score.item()}")
+    if hvd.rank() == 0:
+      print("\n\n")
 
   train_model(
       model=model,
@@ -290,16 +270,16 @@ if __name__ == "__main__":
       metrics=[
           ("accuracy", calc_accuracy)
       ],
-      disable_pbar=config.use_horovod, # Don't show pbar if distributed
+      disable_pbar=True,
       # Turns out transmitting the plots over horovod will break the pipeline :P
-      disable_plots=config.use_horovod,
-      disable_batch_report=(config.use_horovod and not hvd.rank() == 0),
+      disable_plots=True,
+      disable_batch_report=hvd.rank() != 0,
       num_batches=num_batches,
       on_phase_end=get_overall_averages_for_metrics,
   )
 
   ##############################################################################
 
-  if not config.use_horovod or hvd.rank() == 0:
+  if hvd.rank() == 0:
     print("Saving model")
     torch.save(model.state_dict(), model_path)

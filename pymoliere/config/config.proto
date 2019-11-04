@@ -180,15 +180,14 @@ message AbstractGeneratorConfig {
   // This is the probability that the 2nd sentence is unchanged
   optional float unchanged_prob = 4 [default=0.2];
   // This is the probability that the whole 2nd sentence is dropped
-  optional float full_mask_prob = 5 [default=0.25];
+  optional float full_mask_prob = 5 [default=0.8];
   // This is the per-token probability that a single word is dropped (provided
   // the above conditions have not happened)
-  optional float mask_per_token_prob = 6 [default=0.25];
+  optional float mask_per_token_prob = 6 [default=0.5];
   // This is the per-token probability that a single word is replaced in the
   // second half of the input.  Note that the per-token-prob fields must sum <=
   // 1
-  optional float replace_per_token_prob = 7 [default=0.25];
-  optional bool use_horovod = 8 [default=false];
+  optional float replace_per_token_prob = 7 [default=0.5];
   // This determines the number of examples to generate.
   // This id divided by batch size and by machines to determine the
   // speed of the epoch.

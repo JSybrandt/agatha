@@ -67,6 +67,7 @@ if __name__ == "__main__":
   print("Collecting Nearby Sentences")
   sentence_ids = set()
   for path_node in path:
+    print("\t-", path_node)
     # Each node along the path is allowed to add some sentences
     sentence_ids.update(
       path_util.get_nearby_nodes(
@@ -75,6 +76,7 @@ if __name__ == "__main__":
         key_type=database_util.SENTENCE_TYPE,
         max_result_size=config.max_sentences_per_path_elem,
         max_degree=config.max_degree,
+        cached_graph=cached_graph,
       )
     )
 

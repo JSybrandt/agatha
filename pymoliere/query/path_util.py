@@ -6,6 +6,7 @@ import numpy as np
 import heapq
 import pymongo
 from copy import copy
+from tqdm import tqdm
 
 def download_neighbors(
     collection:pymongo.collection.Collection,
@@ -113,6 +114,7 @@ def get_shortest_path(
   # This is our priority queue. We are going to sort this every time
   # we need a new node out of it. The criteria will be "minimim distance". As in
   # we will prioritize nodes that are close to _either_ the source or target.
+  result = None
   priority = set([source, target])
 
   while len(priority) > 0:
@@ -127,10 +129,11 @@ def get_shortest_path(
     # If this node knows how to get to BOTH source and target
     if np.max(graph.nodes[curr_node]["dists"])< np.inf:
       # We're done!
-      return recover_shortest_path_from_tight_edges(
+      result = recover_shortest_path_from_tight_edges(
           graph=graph,
           bridge_node=curr_node
       )
+      break
 
     # Download this node's neighbors
     # For each edge
@@ -162,7 +165,7 @@ def get_shortest_path(
           )
         # Add new nodes to our queue
         priority.add(neigh)
-  return None, graph
+  return result, graph
 
 def clear_node_attribute(graph:nx.Graph, attribute:str, reinitialize:Any=None)->None:
   """
@@ -181,6 +184,8 @@ def get_nearby_nodes(
     max_result_size:int,
     max_degree:int,
     key_type:Optional[str]=None,
+    cached_graph:nx.Graph=None,
+    disable_pbar=False,
 )->List[str]:
   """
   Returns a collection of entity names corresponding to the nearest neighbors
@@ -196,46 +201,63 @@ def get_nearby_nodes(
   # We're done when this set is of the appropriate size, or the priority queue
   # is over.
   result = set()
-  graph = nx.Graph()
+
+  # Prepare the graph
+  if cached_graph is None:
+    graph = nx.Graph()
+  else:
+    graph = cached_graph
+    clear_node_attribute(graph, "dist", np.inf)
+    clear_node_attribute(graph, "visited", False)
+
+  # This either sets or overwrites the source node
   graph.add_node(source, dist=0, visited=False)
-  priority = set([source])
+  # The cached graph may have already downloaded this value
+  if "downloaded" not in graph.nodes[source]:
+    graph.nodes[source]["downloaded"] = False
 
-  while len(priority) > 0 and len(result) < max_result_size:
-    curr_node = get_element_with_min_criteria(
-        priority,
-        criteria=lambda n: graph.nodes[n]["dist"]
-    )
-    priority.remove(curr_node)
-    graph.nodes[curr_node]["visited"] = True
-    if key_type is None or curr_node[0] == key_type:
-      result.append(curr_node)
-
-    # For each edge
-    for neigh, weight in download_neighbors(
-        collection=collection,
-        source=curr_node,
-        limit=max_degree,
-    ):
-      # We may have discovered a new node
-      if neigh not in graph:
-        graph.add_node(
-            neigh,
-            # the new node doesn't have any information. It will need to
-            # be updated by a neighbor later
-            dist=np.inf,
-            visited=False
-        )
-      graph.add_edge(curr_node, neigh, weight=weight)
-
-    # At this point, we've downloaded the current node
-    for neigh, edge_attr in graph[curr_node].items():
-      weight = edge_attr["weight"]
-      # Update the dists
-      graph.nodes[neigh]["dist"] = min(
-          graph.nodes[neigh]["dist"],
-          graph.nodes[curr_node]["dist"] + weight,
+  with tqdm(total=max_result_size, disable=disable_pbar) as pbar:
+    priority = set([source])
+    while len(priority) > 0 and len(result) < max_result_size:
+      curr_node = get_element_with_min_criteria(
+          priority,
+          criteria=lambda n: graph.nodes[n]["dist"]
       )
-      # Add new nodes to our queue
-      if not graph.nodes[neigh]["visited"]:
-        priority.add(neigh)
+      priority.remove(curr_node)
+      graph.nodes[curr_node]["visited"] = True
+      if key_type is None or curr_node[0] == key_type:
+        pbar.update(1)
+        result.append(curr_node)
+
+      # For each edge
+      if not graph.nodes[curr_node]["downloaded"]:
+        for neigh, weight in download_neighbors(
+            collection=collection,
+            source=curr_node,
+            limit=max_degree,
+        ):
+          # We may have discovered a new node
+          if neigh not in graph:
+            graph.add_node(
+                neigh,
+                # the new node doesn't have any information. It will need to
+                # be updated by a neighbor later
+                dist=np.inf,
+                visited=False,
+                downloaded=False,
+            )
+          graph.add_edge(curr_node, neigh, weight=weight)
+        graph.nodes[curr_node]["downloaded"] = True
+
+      # At this point, we've downloaded the current node
+      for neigh, edge_attr in graph[curr_node].items():
+        weight = edge_attr["weight"]
+        # Update the dists
+        graph.nodes[neigh]["dist"] = min(
+            graph.nodes[neigh]["dist"],
+            graph.nodes[curr_node]["dist"] + weight,
+        )
+        # Add new nodes to our queue
+        if not graph.nodes[neigh]["visited"]:
+          priority.add(neigh)
   return result

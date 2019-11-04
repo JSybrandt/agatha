@@ -142,7 +142,7 @@ message QueryConfig {
   optional string source = 1;
   optional string target = 2;
   optional DatabaseConfig db = 3;
-  optional int32 max_sentences_per_path_elem = 4 [default=5000];
+  optional int32 max_sentences_per_path_elem = 4 [default=2000];
   optional LdaConfig topic_model = 5;
   optional ShortestPathConfig path = 6;
   // optional NGramConfig phrases = 7;

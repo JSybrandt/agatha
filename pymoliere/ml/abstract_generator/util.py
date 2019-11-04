@@ -164,7 +164,10 @@ def sentence_pairs_to_model_io(
 
   # When we use this value, we're going to be setting the replacement
   # Given that we've not masked the token
-  replace_per_token_prob /= (1-mask_per_token_prob)
+  if mask_per_token_prob == 1:
+    replace_per_token_prob = 0
+  else:
+    replace_per_token_prob /= (1-mask_per_token_prob)
 
   def pick_mask_prob():
     r = random()
@@ -264,6 +267,7 @@ def generate_sentence(
       batch_pairs=[(sentence, sentence)],
       unchanged_prob=0,
       full_mask_prob=1,
+      replace_per_token_prob=0,
       mask_per_token_prob=1,
       max_sequence_length=max_sequence_length,
   )

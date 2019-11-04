@@ -289,4 +289,3 @@ def test_generate_sentence():
   assert tokenizer.unk_token not in next_sentence
   assert next_sentence != SENTENCE_1
   assert len(next_sentence.strip()) > 0
-

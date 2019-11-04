@@ -7,6 +7,11 @@ from typing import List
 from pymoliere.ml.train_model import get_device_from_model
 from pymoliere.util.misc_util import flatten_list
 from random import random, randint
+try:
+  from nlgeval import NLGEval
+except ImportError:
+  # This is a heavy dependency, and we don't want to worry all users with it.
+  pass
 
 class AbstractGenerator(BertModel):
   def __init__(self, config:Dict[str, Any], freeze_bert_layers=False):
@@ -259,18 +264,24 @@ def generate_sentence(
     model:AbstractGenerator,
     tokenizer:BertTokenizer,
     max_sequence_length:int,
+    generated_sentence_length:int=None,
 )->str:
   device = get_device_from_model(model)
   # Sequence holds the tokens for both input and mask
+  generated_template = sentence
+  if generated_sentence_length is not None:
+    generated_template = "x "*generated_sentence_length
   model_kwargs, _ = sentence_pairs_to_model_io(
       tokenizer=tokenizer,
-      batch_pairs=[(sentence, sentence)],
+      batch_pairs=[(sentence, generated_template)],
       unchanged_prob=0,
       full_mask_prob=1,
       replace_per_token_prob=0,
       mask_per_token_prob=1,
       max_sequence_length=max_sequence_length,
   )
+  # Send everything to appropriate device
+  model_kwargs = {k: v.to(device) for k, v in model_kwargs.items()}
 
   first_predicted_idx = (
       model_kwargs["token_type_ids"]
@@ -286,7 +297,11 @@ def generate_sentence(
   while False in complete_mask:
     # Predict based off what we have currently
     # make a list of softmax results (seq_len x voccab_size)
-    predicted = model(**model_kwargs).view(-1, tokenizer.vocab_size)[first_predicted_idx:-1]
+    predicted = (
+        model(**model_kwargs)
+        .view(-1, tokenizer.vocab_size)
+        [first_predicted_idx:-1]
+    )
     # how confident were we at each token?
     confidence_per_token, token_indices = torch.max(predicted, dim=1)
     # If we've already settled on a word, ignore it
@@ -295,10 +310,26 @@ def generate_sentence(
     selected_idx = torch.argmax(confidence_per_token)
     complete_mask[selected_idx] = True
     # Remember this index!
-    model_kwargs['input_ids'][0, selected_idx + first_predicted_idx] = token_indices[selected_idx]
+    model_kwargs['input_ids'][0, selected_idx+first_predicted_idx] =\
+        token_indices[selected_idx]
 
-  return tokenizer.decode(model_kwargs['input_ids'][0, first_predicted_idx:-1].tolist())
+  return tokenizer.decode(
+      model_kwargs['input_ids'][0, first_predicted_idx:-1].tolist()
+  )
 
+
+def evaluate_generation(
+  initial_sentence:str,
+  follow_sentence:str,
+  generated_sentence:str,
+)->Dict[str,float]:
+  if not hasattr(evaluate_generation, "nlgeval"):
+    print("Initializing eval models")
+    evaluate_generation.nlgeval = NLGEval()
+  return  evaluate_generation.nlgeval.compute_individual_metrics(
+      [follow_sentence],
+      generated_sentence,
+  )
 
 
 

@@ -51,75 +51,75 @@ def pubmed_xml_to_record(
 
     article_elem = medline_cite_elem.find("Article")
     if article_elem is not None:
-        language_elem = article_elem.find("Language")
-        if language_elem is not None:
-          record["language"] = language_elem.text
+      language_elem = article_elem.find("Language")
+      if language_elem is not None:
+        record["language"] = language_elem.text
 
-        title_elem = article_elem.find("ArticleTitle")
-        if title_elem is not None:
-          record["text_data"].append({
-            "text": "".join(title_elem.itertext()),
-            "type": "title",
-          })
+      title_elem = article_elem.find("ArticleTitle")
+      if title_elem is not None:
+        record["text_data"].append({
+          "text": "".join(title_elem.itertext()),
+          "type": "title",
+        })
 
-        abstract_elem = article_elem.find("Abstract")
-        if abstract_elem is not None:
-          text_elems = abstract_elem.findall("AbstractText")
-          if text_elems is not None:
-            for abstract_text_elem in text_elems:
-              if "NlmCategory" in abstract_text_elem.attrib:
-                sub_type = abstract_text_elem.attrib["NlmCategory"].lower()
-              else:
-                sub_type = "raw"
-              record["text_data"].append({
-                "text": "".join(abstract_text_elem.itertext()),
-                "type": f"abstract:{sub_type}"
-              })
+      abstract_elem = article_elem.find("Abstract")
+      if abstract_elem is not None:
+        text_elems = abstract_elem.findall("AbstractText")
+        if text_elems is not None:
+          for abstract_text_elem in text_elems:
+            if "NlmCategory" in abstract_text_elem.attrib:
+              sub_type = abstract_text_elem.attrib["NlmCategory"].lower()
+            else:
+              sub_type = "raw"
+            record["text_data"].append({
+              "text": "".join(abstract_text_elem.itertext()),
+              "type": f"abstract:{sub_type}"
+            })
 
-        # Author list appears right after abstract
-        author_list_elem = article_elem.find("AuthorList")
-        if author_list_elem is not None:
-          author_elems = author_list_elem.findall("Author")
-          if author_elems is not None:
-            for author_elem in author_elems:
-              author_name = ""
-              initials_elem = author_elem.find("Initials")
-              if initials_elem is not None:
-                initials = "".join(initials_elem.itertext()).strip()
-                author_name = f"{initials}. "
-              last_name_elem = author_elem.find("LastName")
-              if last_name_elem is not None:
-                last_name = "".join(last_name_elem.itertext()).strip()
-                author_name += last_name
-                record["authors"].append(author_name)
+      # Author list appears right after abstract
+      author_list_elem = article_elem.find("AuthorList")
+      if author_list_elem is not None:
+        author_elems = author_list_elem.findall("Author")
+        if author_elems is not None:
+          for author_elem in author_elems:
+            author_name = ""
+            initials_elem = author_elem.find("Initials")
+            if initials_elem is not None:
+              initials = "".join(initials_elem.itertext()).strip()
+              author_name = f"{initials}. "
+            last_name_elem = author_elem.find("LastName")
+            if last_name_elem is not None:
+              last_name = "".join(last_name_elem.itertext()).strip()
+              author_name += last_name
+              record["authors"].append(author_name)
 
 
-        pub_type_list_elem = article_elem.find("PublicationTypeList")
-        if pub_type_list_elem is not None:
-          pub_type_elems = pub_type_list_elem.findall("PublicationType")
-          if pub_type_elems is not None:
-            for x in pub_type_elems:
-              record["publication_types"].append("".join(x.itertext()))
+      pub_type_list_elem = article_elem.find("PublicationTypeList")
+      if pub_type_list_elem is not None:
+        pub_type_elems = pub_type_list_elem.findall("PublicationType")
+        if pub_type_elems is not None:
+          for x in pub_type_elems:
+            record["publication_types"].append("".join(x.itertext()))
 
-        data_bank_list_elem = article_elem.find("DataBankList")
-        if data_bank_list_elem is not None:
-          data_bank_elems = data_bank_list_elem.findall("DataBank")
-          if data_bank_elems is not None:
-            for data_bank_elem in data_bank_elems:
-              bank_name_elem = data_bank_elem.find("DataBankName")
-              if bank_name_elem is not None:
-                bank_name = "".join(bank_name_elem.itertext())
-              else:
-                bank_name = None
-              num_list_elem = data_bank_elem.find("AccessionNumberList")
-              if num_list_elem is not None:
-                num_list_elems = num_list_elem.findall("AccessionNumber")
-                if num_list_elems is not None:
-                  for num_elem in num_list_elems:
-                    record["data_banks"].append({
-                      "name": bank_name,
-                      "id": "".join(num_elem.itertext())
-                    })
+      data_bank_list_elem = article_elem.find("DataBankList")
+      if data_bank_list_elem is not None:
+        data_bank_elems = data_bank_list_elem.findall("DataBank")
+        if data_bank_elems is not None:
+          for data_bank_elem in data_bank_elems:
+            bank_name_elem = data_bank_elem.find("DataBankName")
+            if bank_name_elem is not None:
+              bank_name = "".join(bank_name_elem.itertext())
+            else:
+              bank_name = None
+            num_list_elem = data_bank_elem.find("AccessionNumberList")
+            if num_list_elem is not None:
+              num_list_elems = num_list_elem.findall("AccessionNumber")
+              if num_list_elems is not None:
+                for num_elem in num_list_elems:
+                  record["data_banks"].append({
+                    "name": bank_name,
+                    "id": "".join(num_elem.itertext())
+                  })
 
     chemical_list_elem = medline_cite_elem.find("ChemicalList")
     if chemical_list_elem is not None:

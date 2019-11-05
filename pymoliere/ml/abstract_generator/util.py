@@ -265,12 +265,15 @@ def generate_sentence(
     tokenizer:BertTokenizer,
     max_sequence_length:int,
     generated_sentence_length:int=None,
+    reference_result_sentence:str=None,
 )->str:
   device = get_device_from_model(model)
   # Sequence holds the tokens for both input and mask
   generated_template = sentence
   if generated_sentence_length is not None:
     generated_template = "x "*generated_sentence_length
+  if reference_result_sentence is not None:
+    generated_template = reference_result_sentence
   model_kwargs, _ = sentence_pairs_to_model_io(
       tokenizer=tokenizer,
       batch_pairs=[(sentence, generated_template)],

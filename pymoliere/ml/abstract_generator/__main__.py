@@ -160,7 +160,7 @@ if __name__ == "__main__":
           model=model,
           tokenizer=tokenizer,
           max_sequence_length=config.parser.max_sequence_length,
-          generated_sentence_length=40,
+          reference_result_sentence=follow_sentence,
       )
       result_data = util.evaluate_generation(
           initial_sentence=initial_sentence,
@@ -176,6 +176,7 @@ if __name__ == "__main__":
       result_data["date"] = datetime.today().strftime("%Y-%m-%d")
       result_data["model_file_name"] = model_path.name
       data_collection.insert_one(result_data)
+      print(generated_sentence)
 
   ##############################################################################
   elif config.mode == "train":

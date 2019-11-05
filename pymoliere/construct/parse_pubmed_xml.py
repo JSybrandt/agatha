@@ -36,6 +36,8 @@ def pubmed_xml_to_record(
       "publication_types": [],
       "mesh_headings": [],
       "data_banks": [],
+      # Stores authors in order
+      "authors": [],
   }
 
   medline_cite_elem = pubmed_elem.find("MedlineCitation")
@@ -73,6 +75,24 @@ def pubmed_xml_to_record(
                 "text": "".join(abstract_text_elem.itertext()),
                 "type": f"abstract:{sub_type}"
               })
+
+        # Author list appears right after abstract
+        author_list_elem = article_elem.find("AuthorList")
+        if author_list_elem is not None:
+          author_elems = author_list_elem.findall("Author")
+          if author_elems is not None:
+            for author_elem in author_elems:
+              author_name = ""
+              initials_elem = author_elem.find("Initials")
+              if initials_elem is not None:
+                initials = "".join(initials_elem.itertext()).strip()
+                author_name = f"{initials}. "
+              last_name_elem = author_elem.find("LastName")
+              if last_name_elem is not None:
+                last_name = "".join(last_name_elem.itertext()).strip()
+                author_name += last_name
+                record["authors"].append(author_name)
+
 
         pub_type_list_elem = article_elem.find("PublicationTypeList")
         if pub_type_list_elem is not None:

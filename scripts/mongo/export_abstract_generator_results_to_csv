@@ -1,0 +1,1 @@
+mongoexport --collection=abstract_generator --db=pymoliere --out=~/abstract_generator.csv --type=csv --fields initial_sentence,follow_sentence,generated_sentence,Bleu_1,Bleu_2,Bleu_3,Bleu_4,METEOR,ROUGE_L,CIDEr,SkipThoughtCS,EmbeddingAverageCosineSimilairty,VectorExtremaCosineSimilarity,GreedyMatchingScore

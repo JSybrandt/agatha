@@ -195,6 +195,7 @@ message AbstractGeneratorConfig {
   // May be "train" or "evaluate"
   optional string mode = 10 [default="train"];
   optional string model_path = 11;
+  optional DatabaseConfig result_db = 12;
 }
 ////////////////////////////////////////////////////////////////////////////////
 

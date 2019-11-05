@@ -94,8 +94,8 @@ def put_bag(
 
   index_task = None
   if indexed_field_name is not None:
-    print(f"\t- Setting index: {collection}.{field_name}:{index_type}")
-    set_index_wrapper(
+    print(f"\t- Setting index: {collection}.{indexed_field_name}:{index_type}")
+    set_index(
         collection=collection,
         field_name=indexed_field_name,
         index_type=index_type

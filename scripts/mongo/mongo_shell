@@ -1,0 +1,7 @@
+#!/bin/bash
+
+PYMOLIERE_DATA_DIR=${1:-/scratch4/$USER/pymoliere_mongo}
+
+mkdir -p $PYMOLIERE_DATA_DIR
+
+singularity shell -B $PYMOLIERE_DATA_DIR:/data/db docker://mongo

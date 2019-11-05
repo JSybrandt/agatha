@@ -53,18 +53,25 @@ def get_part_files(dir_path:Path)->List[Path]:
     return [Path(line.strip()) for line in f]
 
 
-def load_part(path:Path)->List[Any]:
-  with open(path, 'rb') as f:
-    return pickle.load(f)
+def load_part(path:Path, allow_failure:bool=False)->List[Any]:
+  try:
+    with open(path, 'rb') as f:
+      return pickle.load(f)
+  except Exception as e:
+    if allow_failure:
+      print("Encountered an issue with", path)
+      return []
+    else:
+      raise e
 
-def load(dir_path:Path)->dbag.Bag:
+def load(dir_path:Path, allow_failure:bool=False)->dbag.Bag:
   assert is_result_saved(dir_path)
   done_path = dir_path.joinpath(DONE_FILE)
   load_tasks = []
   with open(done_path) as f:
     for line in f:
       path = Path(line.strip())
-      load_tasks.append(dask.delayed(load_part)(path))
+      load_tasks.append(dask.delayed(load_part)(path, allow_failure))
   return dbag.from_delayed(load_tasks)
 
 

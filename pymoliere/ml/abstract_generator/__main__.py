@@ -17,6 +17,8 @@ import sys
 import horovod.torch as hvd
 import numpy as np
 from pprint import pprint
+from pymongo import MongoClient
+from datetime import datetime
 
 MODES = ["train", "evaluate"]
 
@@ -143,6 +145,15 @@ if __name__ == "__main__":
 
   ##############################################################################
   if config.mode == "evaluate":
+    if hvd.rank() == 0:
+      print(f"Initializing mongo connection")
+    data_collection = (
+        MongoClient(
+          host=config.result_db.address,
+          port=config.result_db.port
+        )[config.result_db.name]
+        .abstract_generator
+    )
     for initial_sentence, follow_sentence in validation_data:
       generated_sentence = util.generate_sentence(
           sentence=initial_sentence,
@@ -151,15 +162,20 @@ if __name__ == "__main__":
           max_sequence_length=config.parser.max_sequence_length,
           generated_sentence_length=40,
       )
-      metrics = util.evaluate_generation(
+      result_data = util.evaluate_generation(
           initial_sentence=initial_sentence,
           follow_sentence=follow_sentence,
           generated_sentence=generated_sentence,
       )
-      metrics["initial_sentence"] = initial_sentence
-      metrics["follow_sentence"] = follow_sentence
-      metrics["generated_sentence"] = generated_sentence
-      pprint(metrics)
+      # Can't write np objects
+      result_data = {n: float(f) for n, f in result_data.items()}
+      result_data["initial_sentence"] = initial_sentence
+      result_data["follow_sentence"] = follow_sentence
+      result_data["generated_sentence"] = generated_sentence
+      # Useful helper info to track the model progress over time
+      result_data["date"] = datetime.today().strftime("%Y-%m-%d")
+      result_data["model_file_name"] = model_path.name
+      data_collection.insert_one(result_data)
 
   ##############################################################################
   elif config.mode == "train":

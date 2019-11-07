@@ -13,6 +13,8 @@ except ImportError:
   # This is a heavy dependency, and we don't want to worry all users with it.
   pass
 
+MODEL_NAME = "abstract_generator"
+
 class AbstractGenerator(BertModel):
   def __init__(self, config:Dict[str, Any], freeze_bert_layers=False):
     super(AbstractGenerator, self).__init__(config)

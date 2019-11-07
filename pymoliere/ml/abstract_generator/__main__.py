@@ -1,58 +1,270 @@
-from pymoliere.config import (
-    config_pb2 as cpb,
-    proto_util,
-)
-from pathlib import Path
-import pymoliere.ml.abstract_generator.util as util
-from pymoliere.construct import file_util
-import torch
+from collections import OrderedDict
 import dask
 from dask.distributed import Client
-from pymoliere.construct.dask_checkpoint import checkpoint
-from pymoliere.ml.train_model import train_model, split_partitions_across_ranks
-from sklearn.utils import shuffle
-from transformers import BertTokenizer, AdamW
-from pymoliere.util.misc_util import iter_to_batches
-import sys
+from datetime import datetime
 import horovod.torch as hvd
 import numpy as np
+from pathlib import Path
+import pickle
 from pprint import pprint
+from pymoliere.config import config_pb2 as cpb, proto_util
+from pymoliere.construct import dask_checkpoint
+from pymoliere.construct import file_util
+from pymoliere.ml.abstract_generator.util import MODEL_NAME
+import pymoliere.ml.abstract_generator.util as util
+from pymoliere.ml.train_model import train_model, split_partitions_across_ranks
+from pymoliere.util.misc_util import iter_to_batches
+from pymoliere.util.misc_util import Record
 from pymongo import MongoClient
-from datetime import datetime
+import sentencepiece as spm
+from sklearn.utils import shuffle
+import sys
+import torch
+from transformers import BertTokenizer, AdamW
+from typing import Iterable
 
-MODES = ["train", "evaluate"]
+
+MODES = ["train", "evaluate", "prep"]
+INTERESTING_SENTENCE_LABLES = {
+    "title",
+    "abstract:background",
+    "abstract:conclusions",
+    "abstract:methods",
+    "abstract:objective",
+    "abstract:results",
+}
+
+
+def index_items(collection:Iterable[str])->OrderedDict:
+  """
+  Loop through the items and place all in an ordered dict. This is supposed to
+  provide lookup tables for categorical data.
+  """
+  res = OrderedDict()
+  for idx, item in enumerate(collection):
+    res[item] = idx
+  return res
+
+def connect_to_dask_cluster(config:cpb.AbstractGeneratorConfig)->None:
+  # Potential cluster
+  if config.cluster.run_locally or config.cluster.address == "localhost":
+    print("Running dask on local machine!")
+  else:
+    cluster_address = f"{config.cluster.address}:{config.cluster.port}"
+    print("Configuring Dask, attaching to cluster")
+    print(f"\t- {cluster_address}")
+    dask_client = Client(address=cluster_address)
+    if config.cluster.restart:
+      print("\t- Restarting cluster...")
+      dask_client.restart()
+
+def get_paths(config:cpb.AbstractGeneratorConfig):
+  """
+  Returns all the relevant paths based on data from the config.
+  """
+  # Location we can find the existing data
+  assert config.cluster.HasField("shared_scratch")
+  scratch_root_dir = Path(config.cluster.shared_scratch)
+  checkpoint_dir = scratch_root_dir.joinpath("dask_checkpoints")
+  model_root_dir = scratch_root_dir.joinpath("models").joinpath(MODEL_NAME)
+  if config.HasField("model_path"):
+    model_path = Path(config.model_path)
+  else:
+    model_path = model_root_dir.joinpath("model.pt")
+  model_ckpt_dir = model_root_dir.joinpath("dask_checkpoints")
+  model_extra_data_path = model_root_dir.joinpath("extra_data.pkl")
+  tokenizer_training_data_dir = \
+      model_ckpt_dir.joinpath("tokenizer_training_data")
+  tokenizer_model_path = model_root_dir.joinpath("tokenizer.model")
+  tokenizer_vocab_path = model_root_dir.joinpath("tokenizer.vocab")
+
+  # List of all directories
+  dir_paths = [
+      path for name, path in locals().items()
+      if name.split("_")[-1]=="dir"
+  ]
+  # Make sure all dirs are present
+  for dir_path in dir_paths:
+    dir_path.mkdir(parents=True, exist_ok=True)
+
+  # Return all paths, provided they end in "_dir" or "_path"
+  return {
+      name: path
+      for name, path in locals().items()
+      if name.split("_")[-1] in ["dir", "path"]
+  }
+
+def evaluate(config:cpb.AbstractGeneratorConfig):
+  pass
+
+def train(config:cpb.AbstractGeneratorConfig):
+  pass
+
+def prep(config:cpb.AbstractGeneratorConfig):
+  connect_to_dask_cluster(config)
+  # all important paths
+  paths = get_paths(config)
+
+  # Get the full set of abstracts
+  abstracts = file_util.load(
+      paths["checkpoint_dir"]
+      .joinpath("medline_documents")
+  )
+
+  def all_text_fields_labeled(record:Record)->bool:
+    for field in record["text_data"]:
+      if field["type"] not in INTERESTING_SENTENCE_LABLES:
+        return False
+    return True
+
+  interesting_abstracts = (
+      abstracts
+      .filter(lambda rec: len(rec["text_data"]) > 1)
+      .filter(all_text_fields_labeled)
+  )
+  print("Checkpointing interesting abstracts")
+  interesting_abstracts = dask_checkpoint.checkpoint(
+      interesting_abstracts,
+      name="interesting_abstracts",
+      checkpoint_dir=paths["model_ckpt_dir"],
+  )
+
+  def get_authors(records:Iterable[Record])->Iterable[str]:
+    res = []
+    for record in records:
+      res += record["authors"]
+    return res
+
+  print("Calculating frequent authors")
+  # collection of (name, count) pairs
+  frequent_authors = (
+      interesting_abstracts
+      # Select all the authors
+      .map_partitions(get_authors)
+      # Count the number of papers per author
+      .frequencies()
+      # Get all the authors with more than 1 paper
+      .filter(lambda a_f: a_f[1] > 1)
+      # Select only the author names
+      .map(lambda a_f: a_f[0])
+      .compute()
+  )
+  print(f"\t- Found {len(frequent_authors)} frequent authors.")
+  author_index = index_items(
+    ["[PAD]", "[UNK]", "[MASK]"] + frequent_authors
+  )
+  # Add some helper tokens to the front of the list
+  frequent_authors = ["[PAD]", "[UNK]", "[MASK]"] + frequent_authors
+  # Using ordered dict to make it easier to go idx -> author
+  author_index = OrderedDict()
+  for idx, name in enumerate(frequent_authors):
+    author_index[name] = idx
+
+  def get_mesh_headings(records:Iterable[Record])->Iterable[str]:
+    res = set()
+    for record in records:
+      for term in record["mesh_headings"]:
+        res.add(term)
+    return res
+  print("Collecting all mesh headings")
+  all_mesh_headings = (
+      interesting_abstracts
+      .map_partitions(get_mesh_headings)
+      .distinct()
+      .compute()
+  )
+  print(f"\t- Found {len(all_mesh_headings)}")
+  mesh_index = index_items(
+    ["[PAD]", "[UNK]", "[MASK]"] + all_mesh_headings
+  )
+
+  print("Getting oldest year")
+  oldest_year = (
+      interesting_abstracts
+      .map(lambda rec: int(rec["date"].split("-")[0]))
+      .min()
+      .compute()
+  )
+  print("\t-", oldest_year)
+
+  print("Collecting training data for tokenizer")
+  training_data_files = (
+      file_util.load(
+        paths["checkpoint_dir"]
+        .joinpath("sentences")
+      )
+      # Only need the text. We are doing a case-insensitive model.
+      .map(lambda rec: rec["sent_text"].lower())
+      # Only need a representative sample
+      .random_sample(0.01)
+      # Reduce the total number of files
+      .repartition(10)
+      # Store results in textfiles
+      .to_textfiles(f"{paths['tokenizer_training_data_dir']}/*.txt")
+  )
+  print("Training tokenizer")
+  # need to place files in tokenizer_model_path
+  spm.SentencePieceTrainer.train(
+      f"--input={','.join(training_data_files)} "
+      f"--model_prefix={paths['tokenizer_model_path'].parent}/tokenizer "
+      f"--vocab_size={config.vocab_size} "
+      f"--character_coverage=1.0 "
+      f"--model_type=unigram "
+      f"--input_sentence_size={config.max_tokenizer_sentences} "
+      f"--shuffle_input_sentence=true "
+  )
+  assert paths["tokenizer_model_path"].is_file()
+  assert paths["tokenizer_vocab_path"].is_file()
+
+  extra_data = {
+      "author_index": author_index,
+      "mesh_index": mesh_index,
+      "oldest_year": oldest_year,
+  }
+  with open(paths["model_extra_data_path"], 'wb') as f:
+    pickle.dump(author_index, f)
+  print("\t- Written:", paths["model_extra_data_path"])
 
 
 if __name__ == "__main__":
-  model_name = "abstract_generator"
   config = cpb.AbstractGeneratorConfig()
   # Creates a parser with arguments corresponding to all of the provided fields.
   # Copy any command-line specified args to the config
   proto_util.parse_args_to_config_proto(config)
 
   assert config.mode in MODES
+  if config.mode == "prep":
+    prep(config)
+  if config.mode == "train":
+    train(config)
+  if config.mode == "evaluate":
+    evaluate(config)
+
+  exit(0)
+
+  ##############################################################################
 
   # Prep scratches
-  shared_scratch = Path(config.cluster.shared_scratch)
+  scratch_root_dir = Path(config.cluster.scratch_root_dir)
   # Used to load the sentence embedding data produced by pymoliere.construct
   default_ckpt_dir = (
-      shared_scratch
+      scratch_root_dir
       .joinpath("dask_checkpoints")
   )
   if config.HasField("model_path"):
     model_path = Path(config.model_path)
   else:
     model_path = (
-        shared_scratch
+        scratch_root_dir
         .joinpath("models")
-        .joinpath(model_name)
+        .joinpath(MODEL_NAME)
         .joinpath("model.pt")
     )
   # We're going to store model-specific checkpoints separately
-  data_ckpt_dir = (
-      shared_scratch
+  model_ckpt_dir = (
+      scratch_root_dir
       .joinpath("models")
-      .joinpath(model_name)
+      .joinpath(MODEL_NAME)
       .joinpath("dask_checkpoints")
   )
 
@@ -64,21 +276,10 @@ if __name__ == "__main__":
     print("Running pymoliere abstract_generator with the following parameters:")
     print(config)
 
-    # Potential cluster
-    if config.cluster.run_locally or config.cluster.address == "localhost":
-      print("Running on local machine!")
-    else:
-      cluster_address = f"{config.cluster.address}:{config.cluster.port}"
-      print("Configuring Dask, attaching to cluster")
-      print(f"\t- {cluster_address}")
-      dask_client = Client(address=cluster_address)
-      if config.cluster.restart:
-        print("\t- Restarting cluster...")
-        dask_client.restart()
 
     # Need to make sure model_path is writable
     model_path.parent.mkdir(parents=True, exist_ok=True)
-    data_ckpt_dir.mkdir(parents=True, exist_ok=True)
+    model_ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     # All data, this is the checkpoint we depend on
     sentences = file_util.load(
@@ -92,7 +293,7 @@ if __name__ == "__main__":
     checkpoint(
         sentence_pairs,
         name="sentence_pairs",
-        checkpoint_dir=data_ckpt_dir,
+        checkpoint_dir=model_ckpt_dir,
     )
 
     validation_pairs = sentence_pairs.random_sample(0.001)
@@ -100,7 +301,7 @@ if __name__ == "__main__":
     checkpoint(
         validation_pairs,
         name="validation_pairs",
-        checkpoint_dir=data_ckpt_dir,
+        checkpoint_dir=model_ckpt_dir,
     )
 
   ##############################################################################
@@ -138,7 +339,7 @@ if __name__ == "__main__":
   if hvd.rank() == 0:
     print("Loading Data")
   validation_data = split_partitions_across_ranks(
-      data_ckpt_dir.joinpath("validation_pairs"),
+      model_ckpt_dir.joinpath("validation_pairs"),
       rank=hvd.rank(),
       size=hvd.size(),
   )
@@ -181,7 +382,7 @@ if __name__ == "__main__":
   ##############################################################################
   elif config.mode == "train":
     training_data = split_partitions_across_ranks(
-        data_ckpt_dir.joinpath("sentence_pairs"),
+        model_ckpt_dir.joinpath("sentence_pairs"),
         rank=hvd.rank(),
         size=hvd.size(),
     )

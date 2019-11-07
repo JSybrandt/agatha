@@ -196,6 +196,9 @@ message AbstractGeneratorConfig {
   optional string mode = 10 [default="train"];
   optional string model_path = 11;
   optional DatabaseConfig result_db = 12;
+  // The number of word parts to generate when prepping the model
+  optional int32 vocab_size = 13 [default=32000];
+  optional int32 max_tokenizer_sentences = 14 [default=50000];
 }
 ////////////////////////////////////////////////////////////////////////////////
 

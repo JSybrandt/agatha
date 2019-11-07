@@ -8,13 +8,11 @@ from pathlib import Path
 import pickle
 from pprint import pprint
 from pymoliere.config import config_pb2 as cpb, proto_util
-from pymoliere.construct import dask_checkpoint
-from pymoliere.construct import file_util
+from pymoliere.construct import dask_checkpoint, file_util, text_util
 from pymoliere.ml.abstract_generator.util import MODEL_NAME
 import pymoliere.ml.abstract_generator.util as util
 from pymoliere.ml.train_model import train_model, split_partitions_across_ranks
-from pymoliere.util.misc_util import iter_to_batches
-from pymoliere.util.misc_util import Record
+from pymoliere.util.misc_util import iter_to_batches, Record
 from pymongo import MongoClient
 import sentencepiece as spm
 from sklearn.utils import shuffle
@@ -22,6 +20,7 @@ import sys
 import torch
 from transformers import BertTokenizer, AdamW
 from typing import Iterable
+from random import random
 
 
 MODES = ["train", "evaluate", "prep"]
@@ -104,6 +103,14 @@ def prep(config:cpb.AbstractGeneratorConfig):
   connect_to_dask_cluster(config)
   # all important paths
   paths = get_paths(config)
+  def ckpt(val, name):
+    print("Checkpoint", name)
+    return dask_checkpoint.checkpoint(
+        val,
+        name=name,
+        checkpoint_dir=paths["model_ckpt_dir"],
+    )
+
 
   # Get the full set of abstracts
   abstracts = file_util.load(
@@ -122,23 +129,39 @@ def prep(config:cpb.AbstractGeneratorConfig):
       .filter(lambda rec: len(rec["text_data"]) > 1)
       .filter(all_text_fields_labeled)
   )
-  print("Checkpointing interesting abstracts")
-  interesting_abstracts = dask_checkpoint.checkpoint(
-      interesting_abstracts,
-      name="interesting_abstracts",
-      checkpoint_dir=paths["model_ckpt_dir"],
+  ckpt(interesting_abstracts, "interesting abstracts")
+
+  is_test_data = (
+      interesting_abstracts
+      .map(lambda rec: (random() <= config.sys.test_ratio, rec))
   )
+  ckpt(is_test_data, "is_test_data")
+
+  testing_data = (
+      is_test_data
+      .filter(lambda b_r: b_r[0])
+      .map(lambda b_r: b_r[1])
+  )
+  ckpt(testing_data, "testing data")
+
+  training_data = (
+      is_test_data
+      .filter(lambda b_r: not b_r[0])
+      .map(lambda b_r: b_r[1])
+  )
+  ckpt(training_data, "training data")
+
+  ###
 
   def get_authors(records:Iterable[Record])->Iterable[str]:
     res = []
     for record in records:
       res += record["authors"]
     return res
-
   print("Calculating frequent authors")
   # collection of (name, count) pairs
   frequent_authors = (
-      interesting_abstracts
+      training_data
       # Select all the authors
       .map_partitions(get_authors)
       # Count the number of papers per author
@@ -160,6 +183,8 @@ def prep(config:cpb.AbstractGeneratorConfig):
   for idx, name in enumerate(frequent_authors):
     author_index[name] = idx
 
+  ###
+
   def get_mesh_headings(records:Iterable[Record])->Iterable[str]:
     res = set()
     for record in records:
@@ -168,7 +193,7 @@ def prep(config:cpb.AbstractGeneratorConfig):
     return res
   print("Collecting all mesh headings")
   all_mesh_headings = (
-      interesting_abstracts
+      training_data
       .map_partitions(get_mesh_headings)
       .distinct()
       .compute()
@@ -178,27 +203,31 @@ def prep(config:cpb.AbstractGeneratorConfig):
     ["[PAD]", "[UNK]", "[MASK]"] + all_mesh_headings
   )
 
+  ###
+
   print("Getting oldest year")
   oldest_year = (
-      interesting_abstracts
+      training_data
       .map(lambda rec: int(rec["date"].split("-")[0]))
       .min()
       .compute()
   )
   print("\t-", oldest_year)
 
+  ###
+
   print("Collecting training data for tokenizer")
   training_data_files = (
-      file_util.load(
-        paths["checkpoint_dir"]
-        .joinpath("sentences")
-      )
+      training_data
+      # Only collect 10% of abstracts
+      .random_sample(0.1)
+      .map_partitions(text_util.split_sentences)
       # Only need the text. We are doing a case-insensitive model.
       .map(lambda rec: rec["sent_text"].lower())
-      # Only need a representative sample
-      .random_sample(0.01)
+      # Only take 10% of sentences, ultimately,'re subsetting again
+      .random_sample(0.1)
       # Reduce the total number of files
-      .repartition(10)
+      .repartition(20)
       # Store results in textfiles
       .to_textfiles(f"{paths['tokenizer_training_data_dir']}/*.txt")
   )

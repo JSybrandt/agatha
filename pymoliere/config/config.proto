@@ -90,6 +90,7 @@ message MlConfig {
   optional int32 num_epochs = 3 [default=10];
   optional float validation_ratio = 4 [default=0.1];
   optional bool single_gpu = 5 [default=false];
+  optional float test_ratio = 6 [default=0.2];
 }
 
 message ConstructDebugConfig {
@@ -198,7 +199,7 @@ message AbstractGeneratorConfig {
   optional DatabaseConfig result_db = 12;
   // The number of word parts to generate when prepping the model
   optional int32 vocab_size = 13 [default=32000];
-  optional int32 max_tokenizer_sentences = 14 [default=50000];
+  optional int32 max_tokenizer_sentences = 14 [default=100000];
 }
 ////////////////////////////////////////////////////////////////////////////////
 

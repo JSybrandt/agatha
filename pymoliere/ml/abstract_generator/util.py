@@ -1,12 +1,15 @@
 from typing import Dict, Any, Iterable, Tuple
 from pymoliere.util.misc_util import Record
-from transformers import BertModel, BertTokenizer
 import torch
 from copy import copy
 from typing import List
 from pymoliere.ml.train_model import get_device_from_model
 from pymoliere.util.misc_util import flatten_list
-from random import random, randint
+from random import random, randint, shuffle
+from datetime import datetime
+import sentencepiece as spm
+import pickle
+
 try:
   from nlgeval import NLGEval
 except ImportError:
@@ -15,52 +18,301 @@ except ImportError:
 
 MODEL_NAME = "abstract_generator"
 
-class AbstractGenerator(BertModel):
-  def __init__(self, config:Dict[str, Any], freeze_bert_layers=False):
-    super(AbstractGenerator, self).__init__(config)
-    for param in self.parameters():
-      param.requires_grad = not freeze_bert_layers
-    # This last layer converts the hidden layer to a predicted word
-    self.last_hidden2voccab = torch.nn.Linear(
-        config.hidden_size,
-        config.vocab_size,
+INTERESTING_SENTENCE_LABLES = {
+    "title": 0,
+    "abstract:background": 1,
+    "abstract:conclusions": 2,
+    "abstract:methods": 3,
+    "abstract:objective": 4,
+    "abstract:results": 5,
+}
+INDEX_TO_SENTENCE_LABEL = [
+    "title",
+    "abstract:background",
+    "abstract:conclusions",
+    "abstract:methods",
+    "abstract:objective",
+    "abstract:results",
+]
+
+class AbstractGeneratorTokenizer(object):
+  def __init__(self, tokenizer_model_path:Path, extra_data_path:Path):
+    self.sp_processor = spm.SentencePieceProcessor()
+    if not self.sp_processor.load(tokenizer_model_path):
+      raise ValueError("Invalid model path", tokenizer_model_path)
+    with open(extra_data_path, "rb") as f:
+      extra_data = pickle.load(f)
+    # the idx_to_* works because these are ordered dicts
+    self.author_index = extra_data["author_index"]
+    self.idx_to_author = list(author_index)
+    self.mesh_index = extra_data["mesh_index"]
+    self.idx_to_mesh = list(mesh_index)
+    self.oldest_year = extra_data["oldest_year"]
+
+    self.author_size = len(self.author_index)
+    self.vocab_size = len(self.sp_processor)
+    self.mesh_size = len(self.mesh_index)
+
+    self.padding_idx = 0
+    self.unknown_idx = 1
+    self.start_idx = 2
+    self.sep_idx = 3
+    self.mask_idx = 4
+    self.secial_markers = ["[PAD]", "[UNK]", "[START]", "[SEP]", "[MASK]"]
+    self.special_size = 5
+    self.special_start_idx = 0
+    self.special_end_idx = self.special_start_idx + self.special_size
+
+    # Sentence Types
+    self.sent_type_size = len(INTERESTING_SENTENCE_LABLES)
+    self.sent_type_start_idx = self.special_end_idx
+    self.sent_type_end_idx = self.sent_type_size
+    # Dates
+    self.date_size = datetime.now().year - self.oldest_year
+    self.date_start_idx = self.sent_type_end_idx
+    self.date_end_idx = self.date_start_idx + self.date_size
+    # Authors
+    self.author_size = author_size
+    self.author_start_idx = self.date_end_idx
+    self.author_end_idx = self.author_start_idx + self.author_size
+    # Mesh terms
+    self.mesh_size = mesh_size
+    self.mesh_start_idx = self.author_end_idx
+    self.mesh_end_idx = self.mesh_start_idx + self.mesh_size
+    # Voccab
+    self.vocab_size = vocab_size
+    self.vocab_start_idx = self.mesh_end_idx
+    self.vocab_end_idx = self.vocab_start_idx + self.vocab_size
+
+    self.total_index_size = self.vocab_end_idx
+
+  def encode_author(self, author_name:str)->int:
+    if author_name is None:
+      return self.padding_idx
+    if author_name in self.author_index:
+      return self.author_index[author_name] + self.author_start_idx
+    else:
+      return self.unknown_idx
+
+  def encode_mesh(self, mesh_code:str)->int:
+    if mesh_code is None:
+      return self.padding_idx
+    if mesh_code in self.mesh_index:
+      return self.mesh_index[mesh_code] + self.mesh_start_idx
+    else:
+      return self.unknown_idx
+
+  def encode_year(self, year:Optional[int])->int:
+    if year is None:
+      return self.padding_idx
+    if year < self.oldest_year or year > datetime.now().year:
+      return self.unknown_idx
+    return year - self.oldest_year + self.data_start_idx
+
+  def encode_text(self, text:str)->List[int]:
+    if text is None:
+      return []
+    return [
+        token + self.vocab_start_idx
+        for token in self.sp_processor.encode_as_ids(text)
+    ]
+
+  def encode_sent_type(self, sent_type:str)->int:
+    if sent_type is None:
+      return self.padding_idx
+    if sent_type not in INTERESTING_SENTENCE_LABLES:
+      return self.unknown_idx
+    return INTERESTING_SENTENCE_LABLES[sent_type] + self.sent_type_start_idx
+
+  def decode_idx(self, index:int)->str:
+    if 0 <= idx < self.special_end_idx:
+      return self.special_markers[idx]
+    if self.sent_type_start_idx <= idx < self.sent_type_end_idx:
+      return INDEX_TO_SENTENCE_LABEL[idx - self.sent_type_start_idx]
+    if self.date_start_idx <= idx < self.date_end_idx:
+      return str(idx - self.date_start_idx + self.oldest_year)
+    if self.author_start_idx <= idx < self.author_end_idx:
+      return self.idx_to_author[idx - self.author_start_idx]
+    if self.mesh_start_idx <= idx < self.mesh_end_idx:
+      return self.idx_to_meshy[idx - self.mesh_start_idx]
+    if self.vocab_start_idx <= idx < self.vocab_end_idx:
+      return self.sp_processor.id_to_piece(idx - self.vocab_start_idx)
+    return "[INVALID]"
+
+  def decode_text(self, indices:List[int])->str:
+    return self.sp_processor.decode_ids([
+      idx - self.vocab_start_idx
+      for idx in indices
+      if self.vocab_start_idx <= idx < self.vocab_end_idx
+    ])
+
+  def encode_all(
+      self,
+      required_author_count:int,
+      required_mesh_count:int,
+      max_text_length:int,
+      date:int=None,
+      start_sentence_type:str=None,
+      end_sentence_type:str=None,
+      authors:List[str]=None,
+      mesh_headings:List[str]=None,
+      text:str=None,
+  )->List[int]:
+    date_idx = self.encode_date(date)
+    start_type_idx = self.encode_sent_type(start_sentence_type)
+    end_type_idx = self.encode_sent_type(end_sentence_type)
+    author_indices = [self.encode_author(a) for a in authors]
+    mesh_indices = [self.encode_mesh(m) for m in mesh_headings]
+    text_indices = self.encode_text(text)
+
+    # Subset text if nessesary
+    text_indices = text_indices[:max_text_length]
+
+    def to_required_size(data, size):
+      # pad if nessesary
+      while(len(data) < size):
+        data.append(self.padding_idx)
+      # randomize
+      shuffle(data)
+      # If too long, remove extra
+      del data[size:]
+
+    to_required_size(author_indices, required_author_count)
+    to_required_size(mesh_indices, required_mesh_count)
+
+    return (
+        [
+          self.start_idx
+          date_idx,
+          start_type_idx,
+          end_type_idx,
+        ]
+        + author_indices
+        + mesh_indices
+        + [self.sep_idx]
+        + text_indices
+        + [self.sep_idx]
     )
-    # Then we pick the word
-    self.last_softmax = torch.nn.LogSoftmax(dim=1)
-
-  def unfreeze_layers_starting_with(self, level:int):
-    assert level >= 0
-    assert level <= 11
-    for name, param in self.named_parameters():
-      tokens = name.split(".")
-      if ((
-            tokens[0] == "encoder"
-            and tokens[1] == "layer"
-            and int(tokens[2]) >= level
-          )
-          or (
-            tokens[0] == "pooler"
-            and tokens[1] == "dense"
-          )
-      ):
-        param.requires_grad = True
 
 
-  def forward(self, *args, **kwargs):
-    x = super(AbstractGenerator, self).forward(*args, **kwargs)[0]
 
-    # x is batch_first
-    batch_size, seq_len, emb_size = x.shape
+  def decode_all(
+      self,
+      indices:List[int],
+      required_author_count:int,
+      required_mesh_count:int,
+  )->Dict[str, Any]:
+    # skip start at 0
+    date_idx = indices[1]
+    start_type_idx = indices[2]
+    end_type_idx = indices[3]
+    indices = indices[4:]
+    # slice out authors
+    author_indices = indices[:required_author_count]
+    indices = indices[required_author_count:]
+    # slice out mesh
+    mesh_indices = indices[:required_mesh_count]
+    indices = indices[required_mesh_count:]
+    # skip sep at 0 and -1
+    text_indices = indices[1:-1]
 
-    # Convert to (batch_size*seq_len), hidden_size to apply linear layer to
-    # each row
-    x = x.view((batch_size*seq_len), self.config.hidden_size)
-    # apply prediction
-    x = self.last_hidden2voccab(x)
-    x = self.last_softmax(x)
-    # reconstitute correct shape
-    x = x.view(batch_size, seq_len, self.config.vocab_size)
-    return x
+    # ignore padding
+    author_indices = [a for a in author_indices if a != self.padding_idx]
+    mesh_indices = [a for a in mesh_indices if a != self.padding_idx]
+    text_indices = [a for a in text_in dices if a != self.padding_idx]
+
+    return {
+        "date": self.decode_idx(date_idx),
+        "start_sent_type": self.decode_idx(start_type_idx),
+        "end_sent_type": self.decode_idx(end_type_idx),
+        "authors": [self.decode_idx(x) for x in author_indices],
+        "mesh_headings": [self.decode_idx(x) for x in mesh_headings],
+        "text": self.decode_text(text_indices),
+    }
+
+
+class AbstractGenerator(torch.nn.Module):
+  def __init__(self,
+      embedding_size:int,
+      embedding_dim:int,
+      num_attention_heads:int,
+      num_encoder_layers:int,
+      num_decoder_layers:int,
+      intermediate_dropout:float,
+      intermediate_feedforward_dim:int,
+      max_mesh_terms:int,
+      max_authors:int,
+  ):
+    """
+    Learns to generate following text given sliding windows across abstracts.
+    """
+    super(AbstractGenerator, self).__init__()
+
+    self.embeddings = torch.nn.Embedding(
+        embedding_size,
+        embedding_dim,
+        padding_index=0,
+        max_norm=1,
+    )
+
+    self.transformer = torch.nn.Transformer(
+        d_model=embedding_dim,
+        nhead=num_attention_heads,
+        num_encoder_layers=num_encoder_layers,
+        num_decoder_layers=num_decoder_layers,
+        dim_feedforward=intermediate_feedforward_dim,
+        dropout=intermediate_dropout,
+    )
+
+    self.predict_output = torch.nn.Linear(
+        embedding_dim,
+        embedding_size,
+    )
+
+    self.softmax = torch.nn.LogSoftmax(dim=2)
+
+  def forward(
+      self,
+      seed:torch.LongTensor,
+      follow:torch.LongTensor,
+  ):
+    # S is the sequence length of seed
+    # F is the sequence length of follow
+    # B is the batch size
+    # Expected shapes:
+    #   - seed : (S, B)
+    #   - follow : (F, B)
+
+    # Set padding masks to ignore out-of-bound tokens
+    # Relies on tokenizer using 0 as padding
+    # padding is shape (B, S) and (B, F)
+    seed_padding_mask = torch.zeros_like(seed)
+    seed_padding_mask[seed == 0] = torch.float('-inf')
+    seed_padding_mask.t_()  # in place transpose
+    follow_padding_mask = torch.zeros_like(follow)
+    follow_padding_mask[follow == 0] = torch.float('-inf').transpose()
+    followin_padding_mask.t_()
+
+    # E is the embedding dimensionality
+    seed = self.embeddings(seed)
+    # seed is now (S, B, E)
+    follow = self.embeddings(follow)
+    # follow is now (F, B, E)
+
+    follow = self.transformer(
+        src=seed,
+        tgt=follow,
+        src_key_padding_mask=seed_padding_mask,
+        tgt_key_padding_mask=follow_padding_mask,
+    )
+    # Follow is still (F, B, E), however the transformer has been computed
+
+    # V is the size of the "vocab" (total embedding size)
+    follow = self.predict_output(follow)
+    # follow is now (F, B, V)
+
+    # produce softmax results across "vocab"
+    return self.softmax(follow)
 
 
 def group_sentences_into_pairs(records:Iterable[Record])->Iterable[Record]:

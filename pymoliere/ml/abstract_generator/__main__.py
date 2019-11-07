@@ -9,7 +9,7 @@ import pickle
 from pprint import pprint
 from pymoliere.config import config_pb2 as cpb, proto_util
 from pymoliere.construct import dask_checkpoint, file_util, text_util
-from pymoliere.ml.abstract_generator.util import MODEL_NAME
+from pymoliere.ml.abstract_generator.util import MODEL_NAME, INTERESTING_SENTENCE_LABLES
 import pymoliere.ml.abstract_generator.util as util
 from pymoliere.ml.train_model import train_model, split_partitions_across_ranks
 from pymoliere.util.misc_util import iter_to_batches, Record
@@ -24,14 +24,6 @@ from random import random
 
 
 MODES = ["train", "evaluate", "prep"]
-INTERESTING_SENTENCE_LABLES = {
-    "title",
-    "abstract:background",
-    "abstract:conclusions",
-    "abstract:methods",
-    "abstract:objective",
-    "abstract:results",
-}
 
 
 def index_items(collection:Iterable[str])->OrderedDict:

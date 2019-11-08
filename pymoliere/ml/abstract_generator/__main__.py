@@ -121,7 +121,7 @@ def prep(config:cpb.AbstractGeneratorConfig):
       .filter(lambda rec: len(rec["text_data"]) > 1)
       .filter(all_text_fields_labeled)
   )
-  ckpt(interesting_abstracts, "interesting abstracts")
+  ckpt(interesting_abstracts, "interesting_abstracts")
 
   is_test_data = (
       interesting_abstracts
@@ -134,14 +134,14 @@ def prep(config:cpb.AbstractGeneratorConfig):
       .filter(lambda b_r: b_r[0])
       .map(lambda b_r: b_r[1])
   )
-  ckpt(testing_data, "testing data")
+  ckpt(testing_data, "testing_data")
 
   training_data = (
       is_test_data
       .filter(lambda b_r: not b_r[0])
       .map(lambda b_r: b_r[1])
   )
-  ckpt(training_data, "training data")
+  ckpt(training_data, "training_data")
 
   ###
 

@@ -151,13 +151,23 @@ class AbstractGeneratorTokenizer(object):
       authors:List[str]=None,
       mesh_headings:List[str]=None,
       text:str=None,
+      text_indices:List[int]=None,
   )->List[int]:
+    # Cannot include both raw text and pre-tokenized text
+    assert not (text_indices is not None and text is not None)
+
     year_idx = self.encode_year(year)
     start_type_idx = self.encode_sent_type(start_sentence_type)
     end_type_idx = self.encode_sent_type(end_sentence_type)
     author_indices = [self.encode_author(a) for a in authors]
     mesh_indices = [self.encode_mesh(m) for m in mesh_headings]
-    text_indices = self.encode_text(text)
+
+    # Replace text_indices if not set
+    if text_indices is None:
+      text_indices = self.encode_text(text)
+    else:
+      for t in text_indices:
+        assert self.vocab_start_idx <= t < self.vocab_end_idx
 
     # Subset text if nessesary
     text_indices = text_indices[:max_text_length]
@@ -173,7 +183,6 @@ class AbstractGeneratorTokenizer(object):
 
     to_required_size(author_indices, required_author_count)
     to_required_size(mesh_indices, required_mesh_count)
-
     return (
         [
           self.start_idx,

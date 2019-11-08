@@ -90,7 +90,10 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
   pass
 
 def train(config:cpb.AbstractGeneratorConfig):
-  pass
+  paths = get_paths(config)
+  tokenizer_model_path = paths["tokenizer_model_path"]
+  extra_data_path = paths["extra_data_path"]
+  tokenizer = abs
 
 def prep(config:cpb.AbstractGeneratorConfig):
   connect_to_dask_cluster(config)

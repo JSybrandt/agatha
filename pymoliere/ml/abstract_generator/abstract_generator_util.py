@@ -1,42 +1,55 @@
 import torch
 import pickle
-from pymoliere.ml.abstract_generator.misc_util import (
-    INTERESTING_SENTENCE_LABLES,
-    INDEX_TO_SENTENCE_LABEL,
-)
 import sentencepiece as spm
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Any, Dict
 import math
+from random import shuffle
+
+INTERESTING_SENTENCE_LABLES = {
+    "title": 0,
+    "abstract:background": 1,
+    "abstract:conclusions": 2,
+    "abstract:methods": 3,
+    "abstract:objective": 4,
+    "abstract:results": 5,
+}
+
+INDEX_TO_SENTENCE_LABEL = [
+    "title",
+    "abstract:background",
+    "abstract:conclusions",
+    "abstract:methods",
+    "abstract:objective",
+    "abstract:results",
+]
 
 def get_current_year():
   return datetime.now().year
 
 class AbstractGeneratorTokenizer(object):
   def __init__(self, tokenizer_model_path:Path, extra_data_path:Path):
+    assert tokenizer_model_path.is_file()
+    assert extra_data_path.is_file()
     self.sp_processor = spm.SentencePieceProcessor()
-    if not self.sp_processor.load(tokenizer_model_path):
+    if not self.sp_processor.load(str(tokenizer_model_path)):
       raise ValueError("Invalid model path", tokenizer_model_path)
     with open(extra_data_path, "rb") as f:
       extra_data = pickle.load(f)
     # the idx_to_* works because these are ordered dicts
     self.author_index = extra_data["author_index"]
-    self.idx_to_author = list(author_index)
+    self.idx_to_author = list(self.author_index)
     self.mesh_index = extra_data["mesh_index"]
-    self.idx_to_mesh = list(mesh_index)
+    self.idx_to_mesh = list(self.mesh_index)
     self.oldest_year = extra_data["oldest_year"]
-
-    self.author_size = len(self.author_index)
-    self.vocab_size = len(self.sp_processor)
-    self.mesh_size = len(self.mesh_index)
 
     self.padding_idx = 0
     self.unknown_idx = 1
     self.start_idx = 2
     self.sep_idx = 3
     self.mask_idx = 4
-    self.secial_markers = ["[PAD]", "[UNK]", "[START]", "[SEP]", "[MASK]"]
+    self.special_markers = ["[PAD]", "[UNK]", "[START]", "[SEP]", "[MASK]"]
     self.special_size = 5
     self.special_start_idx = 0
     self.special_end_idx = self.special_start_idx + self.special_size
@@ -50,19 +63,22 @@ class AbstractGeneratorTokenizer(object):
     self.year_start_idx = self.sent_type_end_idx
     self.year_end_idx = self.year_start_idx + self.year_size
     # Authors
-    self.author_size = author_size
+    self.author_size = len(self.author_index)
     self.author_start_idx = self.year_end_idx
     self.author_end_idx = self.author_start_idx + self.author_size
     # Mesh terms
-    self.mesh_size = mesh_size
+    self.mesh_size = len(self.mesh_index)
     self.mesh_start_idx = self.author_end_idx
     self.mesh_end_idx = self.mesh_start_idx + self.mesh_size
     # Voccab
-    self.vocab_size = vocab_size
+    self.vocab_size = len(self.sp_processor)
     self.vocab_start_idx = self.mesh_end_idx
     self.vocab_end_idx = self.vocab_start_idx + self.vocab_size
 
     self.total_index_size = self.vocab_end_idx
+
+  def __len__(self)->int:
+    return self.total_index_size
 
   def encode_author(self, author_name:str)->int:
     if author_name is None:
@@ -83,16 +99,16 @@ class AbstractGeneratorTokenizer(object):
   def encode_year(self, year:Optional[int])->int:
     if year is None:
       return self.padding_idx
-    if year < self.oldest_year or get_current_year():
+    if year < self.oldest_year or year > get_current_year():
       return self.unknown_idx
-    return year - self.oldest_year + self.data_start_idx
+    return year - self.oldest_year + self.year_start_idx
 
   def encode_text(self, text:str)->List[int]:
     if text is None:
       return []
     return [
         token + self.vocab_start_idx
-        for token in self.sp_processor.encode_as_ids(text)
+        for token in self.sp_processor.encode_as_ids(text.lower())
     ]
 
   def encode_sent_type(self, sent_type:str)->int:
@@ -102,7 +118,7 @@ class AbstractGeneratorTokenizer(object):
       return self.unknown_idx
     return INTERESTING_SENTENCE_LABLES[sent_type] + self.sent_type_start_idx
 
-  def decode_idx(self, index:int)->str:
+  def decode_idx(self, idx:int)->str:
     if 0 <= idx < self.special_end_idx:
       return self.special_markers[idx]
     if self.sent_type_start_idx <= idx < self.sent_type_end_idx:
@@ -112,7 +128,7 @@ class AbstractGeneratorTokenizer(object):
     if self.author_start_idx <= idx < self.author_end_idx:
       return self.idx_to_author[idx - self.author_start_idx]
     if self.mesh_start_idx <= idx < self.mesh_end_idx:
-      return self.idx_to_meshy[idx - self.mesh_start_idx]
+      return self.idx_to_mesh[idx - self.mesh_start_idx]
     if self.vocab_start_idx <= idx < self.vocab_end_idx:
       return self.sp_processor.id_to_piece(idx - self.vocab_start_idx)
     return "[INVALID]"
@@ -160,7 +176,7 @@ class AbstractGeneratorTokenizer(object):
 
     return (
         [
-          self.start_idx
+          self.start_idx,
           year_idx,
           start_type_idx,
           end_type_idx,
@@ -195,14 +211,14 @@ class AbstractGeneratorTokenizer(object):
     # ignore padding
     author_indices = [a for a in author_indices if a != self.padding_idx]
     mesh_indices = [a for a in mesh_indices if a != self.padding_idx]
-    text_indices = [a for a in text_in dices if a != self.padding_idx]
+    text_indices = [a for a in text_indices if a != self.padding_idx]
 
     return {
         "year": self.decode_idx(year_idx),
         "start_sent_type": self.decode_idx(start_type_idx),
         "end_sent_type": self.decode_idx(end_type_idx),
         "authors": [self.decode_idx(x) for x in author_indices],
-        "mesh_headings": [self.decode_idx(x) for x in mesh_headings],
+        "mesh_headings": [self.decode_idx(x) for x in mesh_indices],
         "text": self.decode_text(text_indices),
     }
 
@@ -226,7 +242,7 @@ class AbstractGenerator(torch.nn.Module):
     self.embeddings = torch.nn.Embedding(
         embedding_size,
         embedding_dim,
-        padding_index=0,
+        padding_idx=0,
         max_norm=1,
     )
 
@@ -258,11 +274,11 @@ class AbstractGenerator(torch.nn.Module):
       embedding_dim:int,
   )->torch.FloatTensor:
     # Dim must be even
-    assert embedding_dim % 0 == 0
+    assert embedding_dim % 2 == 0
 
     # Returns a (seq_len, emb) tensor
     positional_encodings = []
-    for position in range(max_sequence_length):
+    for pos in range(max_sequence_length):
       positional_encodings.append([])
       for i in range(0, int(embedding_dim / 2)):
         # Even index
@@ -275,8 +291,8 @@ class AbstractGenerator(torch.nn.Module):
         )
     result = torch.FloatTensor(
         positional_encodings,
-        requires_grad=False
     ).unsqueeze(1)
+    result.requires_grad = False
     assert result.shape == (max_sequence_length, 1, embedding_dim)
     return result
 
@@ -291,30 +307,36 @@ class AbstractGenerator(torch.nn.Module):
     # Expected shapes:
     #   - seed : (S, B)
     #   - follow : (F, B)
+    assert len(seed.shape) == 2
+    assert len(follow.shape) == 2
+    assert seed.shape[1] == follow.shape[1]
 
     # Set padding masks to ignore out-of-bound tokens
     # Relies on tokenizer using 0 as padding
     # padding is shape (B, S) and (B, F)
-    seed_padding_mask = torch.zeros_like(seed)
-    seed_padding_mask[seed == 0] = torch.float('-inf')
+    # Note, true values should correspond to padded values.
+    seed_padding_mask = torch.zeros_like(seed, dtype=torch.bool)
+    seed_padding_mask[seed == 0] = True
     seed_padding_mask.t_()  # in place transpose
-    follow_padding_mask = torch.zeros_like(follow)
-    follow_padding_mask[follow == 0] = torch.float('-inf').transpose()
-    followin_padding_mask.t_()
+    follow_padding_mask = torch.zeros_like(follow, dtype=torch.bool)
+    follow_padding_mask[follow == 0] = True
+    follow_padding_mask.t_()
 
     # E is the embedding dimensionality
     seed = self.embeddings(seed)
+    print(seed.shape)
     # seed is now (S, B, E)
     follow = self.embeddings(follow)
     # follow is now (F, B, E)
 
     # Add positional encodings
+    # Remember, the positional encodings are set to have batch of 1
     assert seed.shape[0] <= self.positional_encoding.shape[0]
-    assert seed.shape[2] == self.positional_encoding.shape[1]
+    assert seed.shape[2] == self.positional_encoding.shape[2]
     seed += self.positional_encoding[:seed.shape[0], :, :]
 
     assert follow.shape[0] <= self.positional_encoding.shape[0]
-    assert follow.shape[2] == self.positional_encoding.shape[1]
+    assert follow.shape[2] == self.positional_encoding.shape[2]
     follow += self.positional_encoding[:follow.shape[0], :, :]
 
     output = self.transformer(

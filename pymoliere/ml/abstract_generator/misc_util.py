@@ -19,23 +19,6 @@ except ImportError:
   # This is a heavy dependency, and we don't want to worry all users with it.
   pass
 
-INTERESTING_SENTENCE_LABLES = {
-    "title": 0,
-    "abstract:background": 1,
-    "abstract:conclusions": 2,
-    "abstract:methods": 3,
-    "abstract:objective": 4,
-    "abstract:results": 5,
-}
-
-INDEX_TO_SENTENCE_LABEL = [
-    "title",
-    "abstract:background",
-    "abstract:conclusions",
-    "abstract:methods",
-    "abstract:objective",
-    "abstract:results",
-]
 
 
 
@@ -85,8 +68,7 @@ def abstract_to_training_data(
     progressive_sizes[-1] - seed_text_size - follow_text_size
   if selection_start_idx < 0:
     selection_start_idx = 0
-  # 
-  
+
 
 
   ###################

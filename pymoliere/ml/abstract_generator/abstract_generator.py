@@ -236,7 +236,7 @@ class AbstractGenerator(torch.nn.Module):
   def __init__(self,
       embedding_size:int,
       embedding_dim:int,
-      max_sequence_length:int,
+      max_text_length:int,
       num_attention_heads:int,
       num_encoder_layers:int,
       num_decoder_layers:int,
@@ -257,7 +257,7 @@ class AbstractGenerator(torch.nn.Module):
 
     # Positional encoding is (Max Sequence Length, 1, Embedding Dim)
     self.positional_encoding = self.generate_positional_encoding(
-        max_sequence_length=max_sequence_length,
+        max_sequence_length=max_text_length,
         embedding_dim=embedding_dim,
     )
 

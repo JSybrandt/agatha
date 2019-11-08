@@ -9,17 +9,20 @@ import pickle
 from pprint import pprint
 from pymoliere.config import config_pb2 as cpb, proto_util
 from pymoliere.construct import dask_checkpoint, file_util, text_util
-from pymoliere.ml.abstract_generator.abstract_generator_util import (
+from pymoliere.ml.abstract_generator.abstract_generator import (
     INTERESTING_SENTENCE_LABLES,
+    AbstractGeneratorTokenizer,
+    AbstractGenerator,
+)
+from pymoliere.ml.abstract_generator.batch_generator import (
+    AbstractWindowGenerator
 )
 from pymoliere.ml.train_model import train_model, split_partitions_across_ranks
 from pymoliere.util.misc_util import iter_to_batches, Record
 from pymongo import MongoClient
 import sentencepiece as spm
-from sklearn.utils import shuffle
 import sys
 import torch
-from transformers import BertTokenizer, AdamW
 from typing import Iterable
 from random import random
 
@@ -90,165 +93,61 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
   pass
 
 def train(config:cpb.AbstractGeneratorConfig):
+  seed = 42
+  hvd.init()
+  torch.manual_seed(seed)
+  torch.cuda.manual_seed(seed)
+  torch.set_num_threads(1)
+  torch.cuda.set_device(hvd.local_rank())
+
   paths = get_paths(config)
   tokenizer_model_path = paths["tokenizer_model_path"]
-  extra_data_path = paths["extra_data_path"]
-  tokenizer = abs
+  extra_data_path = paths["model_extra_data_path"]
+  training_data_dir = paths["model_ckpt_dir"].joinpath("training_data")
 
-def prep(config:cpb.AbstractGeneratorConfig):
-  connect_to_dask_cluster(config)
-  # all important paths
-  paths = get_paths(config)
-  def ckpt(val, name):
-    print("Checkpoint", name)
-    return dask_checkpoint.checkpoint(
-        val,
-        name=name,
-        checkpoint_dir=paths["model_ckpt_dir"],
-    )
+  assert tokenizer_model_path.is_file()
+  assert extra_data_path.is_file()
+  assert training_data_dir.is_dir()
 
-
-  # Get the full set of abstracts
-  abstracts = file_util.load(
-      paths["checkpoint_dir"]
-      .joinpath("medline_documents")
+  tokenizer = AbstractGeneratorTokenizer(
+      tokenizer_model_path=tokenizer_model_path,
+      extra_data_path=extra_data_path,
   )
 
-  def all_text_fields_labeled(record:Record)->bool:
-    for field in record["text_data"]:
-      if field["type"] not in INTERESTING_SENTENCE_LABLES:
-        return False
-    return True
-
-  interesting_abstracts = (
-      abstracts
-      .filter(lambda rec: len(rec["text_data"]) > 1)
-      .filter(all_text_fields_labeled)
-  )
-  ckpt(interesting_abstracts, "interesting_abstracts")
-
-  is_test_data = (
-      interesting_abstracts
-      .map(lambda rec: (random() <= config.sys.test_ratio, rec))
-  )
-  ckpt(is_test_data, "is_test_data")
-
-  testing_data = (
-      is_test_data
-      .filter(lambda b_r: b_r[0])
-      .map(lambda b_r: b_r[1])
-  )
-  ckpt(testing_data, "testing_data")
-
-  training_data = (
-      is_test_data
-      .filter(lambda b_r: not b_r[0])
-      .map(lambda b_r: b_r[1])
-  )
-  ckpt(training_data, "training_data")
-
-  ###
-
-  def get_authors(records:Iterable[Record])->Iterable[str]:
-    res = []
-    for record in records:
-      res += record["authors"]
-    return res
-  print("Calculating frequent authors")
-  # collection of (name, count) pairs
-  frequent_authors = (
-      training_data
-      # Select all the authors
-      .map_partitions(get_authors)
-      # Count the number of papers per author
-      .frequencies()
-      # Get all the authors with more than 1 paper
-      .filter(lambda a_f: a_f[1] > 1)
-      # Select only the author names
-      .map(lambda a_f: a_f[0])
-      .compute()
-  )
-  print(f"\t- Found {len(frequent_authors)} frequent authors.")
-  author_index = index_items(
-    ["[PAD]", "[UNK]", "[MASK]"] + frequent_authors
-  )
-  # Add some helper tokens to the front of the list
-  frequent_authors = ["[PAD]", "[UNK]", "[MASK]"] + frequent_authors
-  # Using ordered dict to make it easier to go idx -> author
-  author_index = OrderedDict()
-  for idx, name in enumerate(frequent_authors):
-    author_index[name] = idx
-
-  ###
-
-  def get_mesh_headings(records:Iterable[Record])->Iterable[str]:
-    res = set()
-    for record in records:
-      for term in record["mesh_headings"]:
-        res.add(term)
-    return res
-  print("Collecting all mesh headings")
-  all_mesh_headings = (
-      training_data
-      .map_partitions(get_mesh_headings)
-      .distinct()
-      .compute()
-  )
-  print(f"\t- Found {len(all_mesh_headings)}")
-  mesh_index = index_items(
-    ["[PAD]", "[UNK]", "[MASK]"] + all_mesh_headings
+  model = AbstractGenerator(
+      embedding_size=len(tokenizer),
+      embedding_dim=config.embedding_dim,
+      max_text_length=max(
+        config.max_seed_text_length,
+        config.max_follow_text_length
+      ),
+      num_attention_heads=config.num_attention_heads,
+      num_encoder_layers=6,
+      num_decoder_layers=6,
+      intermediate_dropout=0.1,
+      intermediate_feedforward_dim=2048,
   )
 
-  ###
-
-  print("Getting oldest year")
-  oldest_year = (
-      training_data
-      .map(lambda rec: int(rec["date"].split("-")[0]))
-      .min()
-      .compute()
+  records = split_partitions_across_ranks(
+    training_data_dir,
+    rank=hvd.rank(),
+    size=hvd.size(),
   )
-  print("\t-", oldest_year)
 
-  ###
-
-  print("Collecting training data for tokenizer")
-  training_data_files = (
-      training_data
-      # Only collect 10% of abstracts
-      .random_sample(0.1)
-      .map_partitions(text_util.split_sentences)
-      # Only need the text. We are doing a case-insensitive model.
-      .map(lambda rec: rec["sent_text"].lower())
-      # Only take 10% of sentences, ultimately,'re subsetting again
-      .random_sample(0.1)
-      # Reduce the total number of files
-      .repartition(20)
-      # Store results in textfiles
-      .to_textfiles(f"{paths['tokenizer_training_data_dir']}/*.txt")
+  generator = AbstractWindowGenerator(
+      tokenizer=tokenizer,
+      records=records,
+      batch_size=config.sys.batch_size,
+      required_author_count=config.max_author_count,
+      required_mesh_count=config.max_mesh_count,
+      seed_text_size=config.max_seed_text_length,
+      follow_text_size=config.max_follow_text_length,
   )
-  print("Training tokenizer")
-  # need to place files in tokenizer_model_path
-  spm.SentencePieceTrainer.train(
-      f"--input={','.join(training_data_files)} "
-      f"--model_prefix={paths['tokenizer_model_path'].parent}/tokenizer "
-      f"--vocab_size={config.vocab_size} "
-      f"--character_coverage=1.0 "
-      f"--model_type=unigram "
-      f"--input_sentence_size={config.max_tokenizer_sentences} "
-      f"--shuffle_input_sentence=true "
-  )
-  assert paths["tokenizer_model_path"].is_file()
-  assert paths["tokenizer_vocab_path"].is_file()
 
-  extra_data = {
-      "author_index": author_index,
-      "mesh_index": mesh_index,
-      "oldest_year": oldest_year,
-  }
-  with open(paths["model_extra_data_path"], 'wb') as f:
-    pickle.dump(extra_data, f)
-  print("\t- Written:", paths["model_extra_data_path"])
+  for seed, follow in generator:
+    print(seed, follow)
+    print(model(seed, follow))
+    break
 
 
 if __name__ == "__main__":
@@ -330,6 +229,8 @@ if __name__ == "__main__":
     # )
 
   # ##############################################################################
+  # seed = 42
+  # hvd.init()
 
   # torch.manual_seed(seed)
   # torch.cuda.manual_seed(seed)
@@ -563,3 +464,158 @@ if __name__ == "__main__":
     # if hvd.rank() == 0:
       # print("Saving model")
       # torch.save(model.state_dict(), model_path)
+
+def prep(config:cpb.AbstractGeneratorConfig):
+  connect_to_dask_cluster(config)
+  # all important paths
+  paths = get_paths(config)
+  def ckpt(val, name):
+    print("Checkpoint", name)
+    return dask_checkpoint.checkpoint(
+        val,
+        name=name,
+        checkpoint_dir=paths["model_ckpt_dir"],
+    )
+
+
+  # Get the full set of abstracts
+  abstracts = file_util.load(
+      paths["checkpoint_dir"]
+      .joinpath("medline_documents")
+  )
+
+  def all_text_fields_labeled(record:Record)->bool:
+    for field in record["text_data"]:
+      if field["type"] not in INTERESTING_SENTENCE_LABLES:
+        return False
+    return True
+
+  interesting_abstracts = (
+      abstracts
+      .filter(lambda rec: len(rec["text_data"]) > 1)
+      .filter(all_text_fields_labeled)
+  )
+  ckpt(interesting_abstracts, "interesting_abstracts")
+
+  is_test_data = (
+      interesting_abstracts
+      .map(lambda rec: (random() <= config.sys.test_ratio, rec))
+  )
+  ckpt(is_test_data, "is_test_data")
+
+  testing_data = (
+      is_test_data
+      .filter(lambda b_r: b_r[0])
+      .map(lambda b_r: b_r[1])
+  )
+  ckpt(testing_data, "testing_data")
+
+  training_data = (
+      is_test_data
+      .filter(lambda b_r: not b_r[0])
+      .map(lambda b_r: b_r[1])
+  )
+  ckpt(training_data, "training_data")
+
+  ###
+
+  def get_authors(records:Iterable[Record])->Iterable[str]:
+    res = []
+    for record in records:
+      res += record["authors"]
+    return res
+  print("Calculating frequent authors")
+  # collection of (name, count) pairs
+  frequent_authors = (
+      training_data
+      # Select all the authors
+      .map_partitions(get_authors)
+      # Count the number of papers per author
+      .frequencies()
+      # Get all the authors with more than 1 paper
+      .filter(lambda a_f: a_f[1] > 1)
+      # Select only the author names
+      .map(lambda a_f: a_f[0])
+      .compute()
+  )
+  print(f"\t- Found {len(frequent_authors)} frequent authors.")
+  author_index = index_items(
+    ["[PAD]", "[UNK]", "[MASK]"] + frequent_authors
+  )
+  # Add some helper tokens to the front of the list
+  frequent_authors = ["[PAD]", "[UNK]", "[MASK]"] + frequent_authors
+  # Using ordered dict to make it easier to go idx -> author
+  author_index = OrderedDict()
+  for idx, name in enumerate(frequent_authors):
+    author_index[name] = idx
+
+  ###
+
+  def get_mesh_headings(records:Iterable[Record])->Iterable[str]:
+    res = set()
+    for record in records:
+      for term in record["mesh_headings"]:
+        res.add(term)
+    return res
+  print("Collecting all mesh headings")
+  all_mesh_headings = (
+      training_data
+      .map_partitions(get_mesh_headings)
+      .distinct()
+      .compute()
+  )
+  print(f"\t- Found {len(all_mesh_headings)}")
+  mesh_index = index_items(
+    ["[PAD]", "[UNK]", "[MASK]"] + all_mesh_headings
+  )
+
+  ###
+
+  print("Getting oldest year")
+  oldest_year = (
+      training_data
+      .map(lambda rec: int(rec["date"].split("-")[0]))
+      .min()
+      .compute()
+  )
+  print("\t-", oldest_year)
+
+  ###
+
+  print("Collecting training data for tokenizer")
+  training_data_files = (
+      training_data
+      # Only collect 10% of abstracts
+      .random_sample(0.1)
+      .map_partitions(text_util.split_sentences)
+      # Only need the text. We are doing a case-insensitive model.
+      .map(lambda rec: rec["sent_text"].lower())
+      # Only take 10% of sentences, ultimately,'re subsetting again
+      .random_sample(0.1)
+      # Reduce the total number of files
+      .repartition(20)
+      # Store results in textfiles
+      .to_textfiles(f"{paths['tokenizer_training_data_dir']}/*.txt")
+  )
+  print("Training tokenizer")
+  # need to place files in tokenizer_model_path
+  spm.SentencePieceTrainer.train(
+      f"--input={','.join(training_data_files)} "
+      f"--model_prefix={paths['tokenizer_model_path'].parent}/tokenizer "
+      f"--vocab_size={config.vocab_size} "
+      f"--character_coverage=1.0 "
+      f"--model_type=unigram "
+      f"--input_sentence_size={config.max_tokenizer_sentences} "
+      f"--shuffle_input_sentence=true "
+  )
+  assert paths["tokenizer_model_path"].is_file()
+  assert paths["tokenizer_vocab_path"].is_file()
+
+  extra_data = {
+      "author_index": author_index,
+      "mesh_index": mesh_index,
+      "oldest_year": oldest_year,
+  }
+  with open(paths["model_extra_data_path"], 'wb') as f:
+    pickle.dump(extra_data, f)
+  print("\t- Written:", paths["model_extra_data_path"])

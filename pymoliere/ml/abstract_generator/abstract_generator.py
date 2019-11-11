@@ -29,7 +29,15 @@ def get_current_year():
   return datetime.now().year
 
 class AbstractGeneratorTokenizer(object):
-  def __init__(self, tokenizer_model_path:Path, extra_data_path:Path):
+  def __init__(
+      self,
+      tokenizer_model_path:Path,
+      extra_data_path:Path,
+      required_author_count:int,
+      required_mesh_count:int,
+  ):
+    self.required_author_count = required_author_count
+    self.required_mesh_count = required_mesh_count
     assert tokenizer_model_path.is_file()
     assert extra_data_path.is_file()
     self.sp_processor = spm.SentencePieceProcessor()
@@ -73,6 +81,7 @@ class AbstractGeneratorTokenizer(object):
     self.vocab_end_idx = self.vocab_start_idx + self.vocab_size
 
     self.total_index_size = self.vocab_end_idx
+
 
   def __len__(self)->int:
     return self.total_index_size
@@ -139,8 +148,6 @@ class AbstractGeneratorTokenizer(object):
 
   def encode_all(
       self,
-      required_author_count:int,
-      required_mesh_count:int,
       max_text_length:int,
       year:int=None,
       start_sentence_type:str=None,
@@ -167,7 +174,8 @@ class AbstractGeneratorTokenizer(object):
         assert self.vocab_start_idx <= t < self.vocab_end_idx
 
     # Subset text if nessesary
-    text_indices = text_indices[:max_text_length]
+    # max text length needs to be lowered by 2 for the start / stop seps
+    text_indices = text_indices[:max_text_length-2]
 
     def to_required_size(data, size):
       # pad if nessesary
@@ -178,8 +186,8 @@ class AbstractGeneratorTokenizer(object):
       # If too long, remove extra
       del data[size:]
 
-    to_required_size(author_indices, required_author_count)
-    to_required_size(mesh_indices, required_mesh_count)
+    to_required_size(author_indices, self.required_author_count)
+    to_required_size(mesh_indices, self.required_mesh_count)
     return (
         [
           self.start_idx,
@@ -193,6 +201,9 @@ class AbstractGeneratorTokenizer(object):
         + text_indices
         + [self.sep_idx]
     )
+
+  def num_metadata_embeddings(self):
+    return 4 + self.required_author_count + self.required_mesh_count
 
   def decode_all(
       self,
@@ -239,11 +250,13 @@ class AbstractGenerator(torch.nn.Module):
       num_decoder_layers:int,
       intermediate_dropout:float,
       intermediate_feedforward_dim:int,
+      num_metadata_embeddings:int,
   ):
     """
     Learns to generate following text given sliding windows across abstracts.
     """
     super(AbstractGenerator, self).__init__()
+    self.num_metadata_embeddings = num_metadata_embeddings
 
     self.embeddings = torch.nn.Embedding(
         embedding_size,
@@ -340,13 +353,19 @@ class AbstractGenerator(torch.nn.Module):
 
     # Add positional encodings
     # Remember, the positional encodings are set to have batch of 1
-    assert seed.shape[0] <= self.positional_encoding.shape[0]
+    seed_text_length = seed.shape[0] - self.num_metadata_embeddings
+    assert seed_text_length >= 0
+    assert seed_text_length <= self.positional_encoding.shape[0]
     assert seed.shape[2] == self.positional_encoding.shape[2]
-    seed += self.positional_encoding[:seed.shape[0], :, :]
+    seed[self.num_metadata_embeddings:] += \
+        self.positional_encoding[:seed_text_length, :, :]
 
-    assert follow.shape[0] <= self.positional_encoding.shape[0]
+    follow_text_length = follow.shape[0] - self.num_metadata_embeddings
+    assert follow_text_length >= 0
+    assert follow_text_length <= self.positional_encoding.shape[0]
     assert follow.shape[2] == self.positional_encoding.shape[2]
-    follow += self.positional_encoding[:follow.shape[0], :, :]
+    follow[self.num_metadata_embeddings:] += \
+        self.positional_encoding[:follow_text_length, :, :]
 
     output = self.transformer(
         src=seed,

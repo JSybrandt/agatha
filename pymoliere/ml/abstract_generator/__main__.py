@@ -127,6 +127,8 @@ def train(config:cpb.AbstractGeneratorConfig):
   tokenizer = AbstractGeneratorTokenizer(
       tokenizer_model_path=tokenizer_model_path,
       extra_data_path=extra_data_path,
+      required_author_count=config.max_author_count,
+      required_mesh_count=config.max_mesh_count,
   )
 
   print(f"""
@@ -157,6 +159,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       num_decoder_layers=6,
       intermediate_dropout=0.1,
       intermediate_feedforward_dim=config.hidden_fc_size,
+      num_metadata_embeddings=tokenizer.num_metadata_embeddings()
   )
   print_model_summary(model)
   model.to(device)
@@ -204,10 +207,9 @@ def train(config:cpb.AbstractGeneratorConfig):
         records=training_data,
         device=device,
         batch_size=config.sys.batch_size,
-        required_author_count=config.max_author_count,
-        required_mesh_count=config.max_mesh_count,
         seed_text_size=config.max_seed_text_length,
         follow_text_size=config.max_follow_text_length,
+
     )
 
   num_batches = config.examples_per_epoch / config.sys.batch_size / hvd.size()

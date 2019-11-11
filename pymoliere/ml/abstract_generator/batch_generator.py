@@ -21,8 +21,6 @@ class AbstractWindowGenerator(object):
       records:List[Record],
       device:torch.device,
       batch_size:int,
-      required_author_count:int,
-      required_mesh_count:int,
       seed_text_size:int,
       follow_text_size:int,
   ):
@@ -37,8 +35,6 @@ class AbstractWindowGenerator(object):
     self.records = records
     self.device = device
     self.batch_size = batch_size
-    self.required_author_count = required_author_count
-    self.required_mesh_count = required_mesh_count
     self.seed_text_size = seed_text_size
     self.follow_text_size = follow_text_size
 
@@ -121,8 +117,6 @@ class AbstractWindowGenerator(object):
     follow_selection_end = follow_selection_start + follow_text_size
 
     seed = self.tokenizer.encode_all(
-        required_author_count=self.required_author_count,
-        required_mesh_count=self.required_mesh_count,
         max_text_length=seed_text_size,
         year=year,
         authors=authors,
@@ -132,8 +126,6 @@ class AbstractWindowGenerator(object):
         text_indices=total_tokens[seed_selection_start:follow_selection_start]
     )
     follow = self.tokenizer.encode_all(
-        required_author_count=self.required_author_count,
-        required_mesh_count=self.required_mesh_count,
         max_text_length=follow_text_size,
         year=year,
         authors=authors,

@@ -112,16 +112,10 @@ def train(config:cpb.AbstractGeneratorConfig):
   assert training_data_dir.is_dir()
 
   print("Loading data")
-  # records = split_partitions_across_ranks(
-    # training_data_dir,
-    # rank=hvd.rank(),
-    # size=hvd.size(),
-  # )
-
-  training_data = file_util.load_random_sample_to_memory(
+  training_data = split_partitions_across_ranks(
     training_data_dir,
-    value_sample_rate=0.1,
-    partition_sample_rate=0.01,
+    rank=hvd.rank(),
+    size=hvd.size(),
   )
 
   tokenizer = AbstractGeneratorTokenizer(
@@ -131,22 +125,6 @@ def train(config:cpb.AbstractGeneratorConfig):
       required_mesh_count=config.max_mesh_count,
   )
 
-  print(f"""
-  model = AbstractGenerator(
-      embedding_size={len(tokenizer)},
-      embedding_dim={config.embedding_dim},
-      max_text_length=max(
-        {config.max_seed_text_length},
-        {config.max_follow_text_length}
-      ),
-      num_attention_heads={config.num_attention_heads},
-      num_encoder_layers=6,
-      num_decoder_layers=6,
-      intermediate_dropout=0.1,
-      intermediate_feedforward_dim=2048,
-  )
-  """)
-
   model = AbstractGenerator(
       embedding_size=len(tokenizer),
       embedding_dim=config.embedding_dim,
@@ -155,13 +133,13 @@ def train(config:cpb.AbstractGeneratorConfig):
         config.max_follow_text_length
       ),
       num_attention_heads=config.num_attention_heads,
-      num_encoder_layers=6,
-      num_decoder_layers=6,
+      num_encoder_layers=config.num_encoder_layers,
+      num_decoder_layers=config.num_decoder_layers,
       intermediate_dropout=0.1,
       intermediate_feedforward_dim=config.hidden_fc_size,
       num_metadata_embeddings=tokenizer.num_metadata_embeddings()
   )
-  print_model_summary(model)
+  #print_model_summary(model)
   model.to(device)
 
   loss_fn = torch.nn.NLLLoss()

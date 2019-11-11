@@ -45,30 +45,30 @@ class AbstractWindowGenerator(object):
     return self
 
   def __next__(self)->Tuple[Dict[str, torch.tensor], torch.tensor]:
-    "Returns kwargs and target value"
-    seed, follow = self.generate_batch()
-    seed = list(map(torch.LongTensor, seed))
-    follow = list(map(torch.LongTensor, follow))
+    return self.generate_batch()
+
+  def generate_batch(self)->Tuple[Dict[str, torch.tensor], torch.tensor]:
+    seed = []
+    follow = []
+    # Make batch
+    for _ in range(self.batch_size):
+      record = random.choice(self.records)
+      s, f = self.abstract_to_training_data(record)
+      seed.append(torch.LongTensor(s))
+      follow.append(torch.LongTensor(f))
+    # pad
     seed = torch.nn.utils.rnn.pad_sequence(seed)
     follow = torch.nn.utils.rnn.pad_sequence(follow)
+    # Move to dev
     seed = seed.to(self.device)
     follow = follow.to(self.device)
+    # Training masks tokens
     corrupted = follow.clone()
     corrupted[
         torch.rand_like(corrupted, dtype=torch.float32)
         < self.difficulty
     ] = self.tokenizer.mask_idx
     return {"seed": seed, "follow": corrupted}, follow
-
-  def generate_batch(self)->Tuple[torch.LongTensor, torch.LongTensor]:
-    seeds = []
-    follows = []
-    for _ in range(self.batch_size):
-      record = random.choice(self.records)
-      seed, follow = self.abstract_to_training_data(record)
-      seeds.append(seed)
-      follows.append(follow)
-    return seeds, follows
 
 
   def abstract_to_training_data(

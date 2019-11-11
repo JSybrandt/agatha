@@ -209,7 +209,7 @@ def train(config:cpb.AbstractGeneratorConfig):
         batch_size=config.sys.batch_size,
         seed_text_size=config.max_seed_text_length,
         follow_text_size=config.max_follow_text_length,
-
+        difficulty=0.1
     )
 
   num_batches = config.examples_per_epoch / config.sys.batch_size / hvd.size()

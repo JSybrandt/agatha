@@ -23,6 +23,7 @@ class AbstractWindowGenerator(object):
       batch_size:int,
       seed_text_size:int,
       follow_text_size:int,
+      difficulty:float,
   ):
     """
     Generates batches asynchronously and infinitely.
@@ -31,12 +32,14 @@ class AbstractWindowGenerator(object):
       - records: the dict objects containing abstract text and metadata
       - batch_size: the number of examples per iteration
     """
+    assert 0 < difficulty < 1
     self.tokenizer = tokenizer
     self.records = records
     self.device = device
     self.batch_size = batch_size
     self.seed_text_size = seed_text_size
     self.follow_text_size = follow_text_size
+    self.difficulty = difficulty
 
   def __iter__(self):
     return self
@@ -50,7 +53,12 @@ class AbstractWindowGenerator(object):
     follow = torch.nn.utils.rnn.pad_sequence(follow)
     seed = seed.to(self.device)
     follow = follow.to(self.device)
-    return {"seed": seed, "follow": follow}, follow
+    corrupted = follow.clone()
+    corrupted[
+        torch.rand_like(corrupted, dtype=torch.float32)
+        < self.difficulty
+    ] = self.tokenizer.mask_idx
+    return {"seed": seed, "follow": corrupted}, follow
 
   def generate_batch(self)->Tuple[torch.LongTensor, torch.LongTensor]:
     seeds = []

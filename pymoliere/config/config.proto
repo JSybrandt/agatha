@@ -91,6 +91,7 @@ message MlConfig {
   optional float validation_ratio = 4 [default=0.1];
   optional bool single_gpu = 5 [default=false];
   optional float test_ratio = 6 [default=0.2];
+  optional float learning_rate = 7 [default=0.002];
 }
 
 message ConstructDebugConfig {
@@ -197,15 +198,22 @@ message AbstractGeneratorConfig {
   optional string model_path = 11;
   optional DatabaseConfig result_db = 12;
   // The number of word parts to generate when prepping the model
-  optional int32 vocab_size = 13 [default=32000];
   // Number of sentences to look at when training sentence piece tokenizer
   optional int32 max_tokenizer_sentences = 14 [default=100000];
-  optional int32 embedding_dim = 15 [default=512];
-  optional int32 max_seed_text_length = 16 [default=250];
-  optional int32 max_follow_text_length = 17 [default=250];
+  optional int32 embedding_dim = 15 [default=256];
+  optional int32 max_seed_text_length = 16 [default=200];
+  optional int32 max_follow_text_length = 17 [default=200];
   optional int32 max_author_count = 18 [default=5];
   optional int32 max_mesh_count = 19 [default=5];
   optional int32 num_attention_heads = 20 [default=8];
+  optional int32 hidden_fc_size = 21 [default=1024];
+  optional int32 num_encoder_layers = 22 [default=4];
+  optional int32 num_decoder_layers = 23 [default=4];
+
+  // These influence the quality of the tokenization
+  optional int32 vocab_size = 13 [default=16000];
+  optional int32 author_hash_size = 24 [default=10000];
+  optional int32 mesh_hash_size = 25 [default=10000];
 
 }
 ////////////////////////////////////////////////////////////////////////////////

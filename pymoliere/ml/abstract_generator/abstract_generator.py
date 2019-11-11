@@ -37,11 +37,8 @@ class AbstractGeneratorTokenizer(object):
       raise ValueError("Invalid model path", tokenizer_model_path)
     with open(extra_data_path, "rb") as f:
       extra_data = pickle.load(f)
-    # the idx_to_* works because these are ordered dicts
     self.author_index = extra_data["author_index"]
-    self.idx_to_author = list(self.author_index)
     self.mesh_index = extra_data["mesh_index"]
-    self.idx_to_mesh = list(self.mesh_index)
     self.oldest_year = extra_data["oldest_year"]
 
     self.padding_idx = 0
@@ -83,16 +80,16 @@ class AbstractGeneratorTokenizer(object):
   def encode_author(self, author_name:str)->int:
     if author_name is None:
       return self.padding_idx
-    if author_name in self.author_index:
-      return self.author_index[author_name] + self.author_start_idx
+    if self.author_index.has_element(author_name):
+      return self.author_index.get_index(author_name) + self.author_start_idx
     else:
       return self.unknown_idx
 
   def encode_mesh(self, mesh_code:str)->int:
     if mesh_code is None:
       return self.padding_idx
-    if mesh_code in self.mesh_index:
-      return self.mesh_index[mesh_code] + self.mesh_start_idx
+    if self.mesh_index.has_element(mesh_code):
+      return self.mesh_index.get_index(mesh_code) + self.mesh_start_idx
     else:
       return self.unknown_idx
 
@@ -126,9 +123,9 @@ class AbstractGeneratorTokenizer(object):
     if self.year_start_idx <= idx < self.year_end_idx:
       return str(idx - self.year_start_idx + self.oldest_year)
     if self.author_start_idx <= idx < self.author_end_idx:
-      return self.idx_to_author[idx - self.author_start_idx]
+      return ",".join(self.author_index.get_elements(idx - self.author_start_idx))
     if self.mesh_start_idx <= idx < self.mesh_end_idx:
-      return self.idx_to_mesh[idx - self.mesh_start_idx]
+      return ",".join(self.mesh_index.get_elements(idx - self.author_start_idx))
     if self.vocab_start_idx <= idx < self.vocab_end_idx:
       return self.sp_processor.id_to_piece(idx - self.vocab_start_idx)
     return "[INVALID]"
@@ -256,9 +253,11 @@ class AbstractGenerator(torch.nn.Module):
     )
 
     # Positional encoding is (Max Sequence Length, 1, Embedding Dim)
-    self.positional_encoding = self.generate_positional_encoding(
-        max_sequence_length=max_text_length,
-        embedding_dim=embedding_dim,
+    self.positional_encoding = torch.nn.Parameter(
+        self.generate_positional_encoding(
+          max_sequence_length=max_text_length,
+          embedding_dim=embedding_dim,
+      )
     )
 
     self.transformer = torch.nn.Transformer(
@@ -327,13 +326,14 @@ class AbstractGenerator(torch.nn.Module):
     seed_padding_mask = torch.zeros_like(seed, dtype=torch.bool)
     seed_padding_mask[seed == 0] = True
     seed_padding_mask.t_()  # in place transpose
+    seed_padding_mask.requires_grad = False
     follow_padding_mask = torch.zeros_like(follow, dtype=torch.bool)
     follow_padding_mask[follow == 0] = True
     follow_padding_mask.t_()
+    follow_padding_mask.requires_grad = False
 
     # E is the embedding dimensionality
     seed = self.embeddings(seed)
-    print(seed.shape)
     # seed is now (S, B, E)
     follow = self.embeddings(follow)
     # follow is now (F, B, E)

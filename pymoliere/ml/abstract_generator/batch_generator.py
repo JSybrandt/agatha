@@ -19,6 +19,7 @@ class AbstractWindowGenerator(object):
       self,
       tokenizer:AbstractGeneratorTokenizer,
       records:List[Record],
+      device:torch.device,
       batch_size:int,
       required_author_count:int,
       required_mesh_count:int,
@@ -34,6 +35,7 @@ class AbstractWindowGenerator(object):
     """
     self.tokenizer = tokenizer
     self.records = records
+    self.device = device
     self.batch_size = batch_size
     self.required_author_count = required_author_count
     self.required_mesh_count = required_mesh_count
@@ -43,13 +45,16 @@ class AbstractWindowGenerator(object):
   def __iter__(self):
     return self
 
-  def __next__(self):
-    seeds, follows = self.generate_batch()
-    seeds = list(map(torch.LongTensor, seeds))
-    follows = list(map(torch.LongTensor, follows))
-    seeds = torch.nn.utils.rnn.pad_sequence(seeds)
-    follows = torch.nn.utils.rnn.pad_sequence(follows)
-    return seeds, follows
+  def __next__(self)->Tuple[Dict[str, torch.tensor], torch.tensor]:
+    "Returns kwargs and target value"
+    seed, follow = self.generate_batch()
+    seed = list(map(torch.LongTensor, seed))
+    follow = list(map(torch.LongTensor, follow))
+    seed = torch.nn.utils.rnn.pad_sequence(seed)
+    follow = torch.nn.utils.rnn.pad_sequence(follow)
+    seed = seed.to(self.device)
+    follow = follow.to(self.device)
+    return {"seed": seed, "follow": follow}, follow
 
   def generate_batch(self)->Tuple[torch.LongTensor, torch.LongTensor]:
     seeds = []

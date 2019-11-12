@@ -110,6 +110,7 @@ setup(
       "pymysql",
       "pytest",
       "scispacy",
+      "sentencepiece",
       "sklearn",
       "spacy",
       "sqlitedict",

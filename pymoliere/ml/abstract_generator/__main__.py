@@ -181,7 +181,7 @@ def train(config:cpb.AbstractGeneratorConfig):
   def generator_wrapper(epoch):
     random.shuffle(training_data)
     generator = AbstractWindowGenerator(
-        num_workers=1,  # one worker, does it async
+        num_workers=2,  # one worker, does it async
         queue_size=10,
         device=device,
         # Batch generator kwargs
@@ -199,6 +199,7 @@ def train(config:cpb.AbstractGeneratorConfig):
     for batch in generator.generate():
         yield batch
 
+  print("Ready to go!")
   train_model(
       model=model,
       loss_fn=loss_wrapper,

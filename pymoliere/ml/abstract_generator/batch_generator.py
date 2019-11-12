@@ -8,6 +8,7 @@ from pymoliere.ml.abstract_generator.abstract_generator import (
     AbstractGeneratorTokenizer
 )
 import torch.multiprocessing as mp
+import queue
 
 class AbstractWindowGenerator(object):
   def __init__(
@@ -36,14 +37,23 @@ class AbstractWindowGenerator(object):
   def generate(self):
     for p in self.processes:
       p.start()
-    while not self.queue.empty():
-      kwargs, target =  self.queue.get(block=True, timeout=3)
-      for key in kwargs:
-        kwargs[key] = kwargs[key].to(self.device)
-      target = target.to(self.device)
-      yield kwargs, target
+    try:
+      while True:
+        kwargs, target =  self.queue.get(block=True, timeout=10)
+        for key in kwargs:
+          kwargs[key] = kwargs[key].to(self.device)
+        target = target.to(self.device)
+        yield kwargs, target
+    except queue.Empty:
+      print("Empty queue")
+      pass
     for p in self.processes:
-      p.join()
+      p.terminate()
+
+  def __del__(self):
+    for p in self.processes:
+      p.terminate()
+
 
 
 class _AbstractWindowGeneratorWorker(mp.Process):

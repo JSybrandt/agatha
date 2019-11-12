@@ -39,7 +39,7 @@ class AbstractWindowGenerator(object):
       p.start()
     try:
       while True:
-        kwargs, target =  self.queue.get(block=True, timeout=10)
+        kwargs, target =  self.queue.get(block=True, timeout=1)
         for key in kwargs:
           kwargs[key] = kwargs[key].to(self.device)
         target = target.to(self.device)

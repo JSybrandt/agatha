@@ -147,6 +147,7 @@ def train(config:cpb.AbstractGeneratorConfig):
   optimizer = hvd.DistributedOptimizer(
       optimizer,
       named_parameters=model.named_parameters(),
+      compression=hvd.Compression.fp16,
   )
 
   def loss_wrapper(predicted, expected):
@@ -166,7 +167,7 @@ def train(config:cpb.AbstractGeneratorConfig):
         and hvd.rank() == 0
     ):
       print("Saving model checkpoint")
-      torch.save(model.state_dict(), f"{model_path}.{epoch}")
+      torch.save(model.state_dict(), f"{paths['model_path']}.{epoch}")
 
   if hvd.rank() == 0:
     print("Loading")
@@ -181,7 +182,7 @@ def train(config:cpb.AbstractGeneratorConfig):
   def generator_wrapper(epoch):
     random.shuffle(training_data)
     generator = AbstractWindowGenerator(
-        num_workers=2,  # one worker, does it async
+        num_workers=3,  # one worker, does it async
         queue_size=10,
         device=device,
         # Batch generator kwargs
@@ -199,6 +200,31 @@ def train(config:cpb.AbstractGeneratorConfig):
     for batch in generator.generate():
         yield batch
 
+  def text_accuracy(predicted, expected):
+    # Predicted is size (F, B, V) and expected is size (F, B)
+    assert predicted.shape[0] == expected.shape[0]
+    assert predicted.shape[1] == expected.shape[1]
+    metadata_size = tokenizer.num_metadata_embeddings()
+    assert predicted.shape[0] > metadata_size + 2
+    # strip out metadata columns
+    predicted = predicted[metadata_size:, :, :].argmax(dim=2)
+    expected = expected[metadata_size:, :]
+    mask = torch.ones_like(expected, dtype=torch.bool)
+    # set to false the padding and sep tokens, leaving only the real text
+    mask &= expected != tokenizer.padding_idx
+    mask &= expected != tokenizer.sep_idx
+    # Correct text prediction rate across batch
+    return (predicted[mask] == expected[mask]).float().mean()
+
+  def end_type_accuracy(predicted, expected):
+    assert predicted.shape[0] == expected.shape[0]
+    assert predicted.shape[1] == expected.shape[1]
+    end_type_idx = 3 # depends on the tokenizer
+    predicted = predicted[end_type_idx,:,:].argmax(dim=1)
+    expected = expected[end_type_idx,:]
+    return (predicted == expected).float().mean()
+
+
   print("Ready to go!")
   train_model(
       model=model,
@@ -211,11 +237,15 @@ def train(config:cpb.AbstractGeneratorConfig):
       disable_plots=True,
       disable_batch_report=hvd.rank() != 0,
       num_batches=num_batches,
+      metrics = [
+        ("text_acc", text_accuracy),
+        ("end_type_acc", end_type_accuracy),
+      ]
   )
 
   if hvd.rank() == 0:
     print("Saving model")
-    torch.save(model.state_dict(), model_path)
+    torch.save(model.state_dict(), paths["model_path"])
 
 
 def prep(config:cpb.AbstractGeneratorConfig):

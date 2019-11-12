@@ -7,23 +7,55 @@ import random
 from pymoliere.ml.abstract_generator.abstract_generator import (
     AbstractGeneratorTokenizer
 )
-
-try:
-  from nlgeval import NLGEval
-except ImportError:
-  # This is a heavy dependency, and we don't want to worry all users with it.
-  pass
+import torch.multiprocessing as mp
 
 class AbstractWindowGenerator(object):
   def __init__(
       self,
-      tokenizer:AbstractGeneratorTokenizer,
       records:List[Record],
+      num_workers:int,
+      queue_size:int,
       device:torch.device,
+      **worker_kwargs
+  ):
+    assert num_workers > 0
+    assert queue_size > 0
+    self.queue = mp.Queue(queue_size)
+    self.device = device
+    def get_worker(idx):
+      part_size = int(len(records) / num_workers)
+      records_start = idx * part_size
+      records_end = min(len(records), records_start + part_size)
+      return _AbstractWindowGeneratorWorker(
+          queue=self.queue,
+          records=records[records_start:records_end],
+          **worker_kwargs
+      )
+    self.processes = [get_worker(i) for i in range(num_workers)]
+
+  def generate(self):
+    for p in self.processes:
+      p.start()
+    while not self.queue.empty():
+      kwargs, target =  self.queue.get(block=True, timeout=3)
+      for key in kwargs:
+        kwargs[key] = kwargs[key].to(self.device)
+      target = target.to(self.device)
+      yield kwargs, target
+    for p in self.processes:
+      p.join()
+
+
+class _AbstractWindowGeneratorWorker(mp.Process):
+  def __init__(
+      self,
+      queue:mp.Queue,
+      records:List[Record],
       batch_size:int,
       seed_text_size:int,
       follow_text_size:int,
       difficulty:float,
+      **tokenizer_kwargs,
   ):
     """
     Generates batches asynchronously and infinitely.
@@ -32,27 +64,29 @@ class AbstractWindowGenerator(object):
       - records: the dict objects containing abstract text and metadata
       - batch_size: the number of examples per iteration
     """
+    super(_AbstractWindowGeneratorWorker, self).__init__()
     assert 0 < difficulty < 1
-    self.tokenizer = tokenizer
+    # Can't pickle the tokenizer, so we need to construct one per-process
+    self.tokenizer = AbstractGeneratorTokenizer(**tokenizer_kwargs)
     self.records = records
-    self.device = device
     self.batch_size = batch_size
     self.seed_text_size = seed_text_size
     self.follow_text_size = follow_text_size
     self.difficulty = difficulty
+    self.num_batches = int(len(self.records) / self.batch_size)
+    self.queue = queue
 
-  def __iter__(self):
-    return self
+  def run(self):
+    for batch_idx in range(self.num_batches):
+      self.queue.put(self.generate_batch(batch_idx))
 
-  def __next__(self)->Tuple[Dict[str, torch.tensor], torch.tensor]:
-    return self.generate_batch()
-
-  def generate_batch(self)->Tuple[Dict[str, torch.tensor], torch.tensor]:
+  def generate_batch(self, batch_idx:int)->Tuple[Dict[str, torch.tensor], torch.tensor]:
+    batch_start_idx = batch_idx * self.batch_size
+    assert 0 <= batch_start_idx < len(self.records) - self.batch_size
     seed = []
     follow = []
     # Make batch
-    for _ in range(self.batch_size):
-      record = random.choice(self.records)
+    for record in self.records[batch_start_idx:batch_start_idx+self.batch_size]:
       s, f = self.abstract_to_training_data(record)
       seed.append(torch.LongTensor(s))
       follow.append(torch.LongTensor(f))
@@ -60,8 +94,6 @@ class AbstractWindowGenerator(object):
     seed = torch.nn.utils.rnn.pad_sequence(seed)
     follow = torch.nn.utils.rnn.pad_sequence(follow)
     # Move to dev
-    seed = seed.to(self.device)
-    follow = follow.to(self.device)
     # Training masks tokens
     corrupted = follow.clone()
     corrupted[

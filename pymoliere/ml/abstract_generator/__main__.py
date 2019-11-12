@@ -22,6 +22,7 @@ import sys
 import torch
 from typing import Iterable
 import random
+import os
 
 
 MODES = ["train", "evaluate", "prep"]
@@ -84,6 +85,7 @@ def get_paths(config:cpb.AbstractGeneratorConfig):
 def evaluate(config:cpb.AbstractGeneratorConfig):
   pass
 
+
 def train(config:cpb.AbstractGeneratorConfig):
   if torch.cuda.is_available() and not config.sys.disable_gpu:
     device = torch.device("cuda")
@@ -106,13 +108,8 @@ def train(config:cpb.AbstractGeneratorConfig):
   assert extra_data_path.is_file()
   assert training_data_dir.is_dir()
 
-  print("Loading data")
-  training_data = split_partitions_across_ranks(
-    training_data_dir,
-    rank=hvd.rank(),
-    size=hvd.size(),
-  )
-
+  if hvd.rank() == 0:
+    print("Preparing model")
   tokenizer = AbstractGeneratorTokenizer(
       tokenizer_model_path=tokenizer_model_path,
       extra_data_path=extra_data_path,
@@ -163,7 +160,6 @@ def train(config:cpb.AbstractGeneratorConfig):
     return loss_fn(predicted.view(-1, vocab_size), expected.view(-1))
 
   def on_epoch_start(epoch):
-    random.shuffle(training_data)
     if (
         epoch > 0
         and epoch % 5  == 0
@@ -172,27 +168,43 @@ def train(config:cpb.AbstractGeneratorConfig):
       print("Saving model checkpoint")
       torch.save(model.state_dict(), f"{model_path}.{epoch}")
 
-  def batch_generator_wrapper(epoch):
-    # We're going to make new generators each epoch.
-    # This is going to help change problem difficulty over time
-    return AbstractWindowGenerator(
-        tokenizer=tokenizer,
-        records=training_data,
+  if hvd.rank() == 0:
+    print("Loading")
+  training_data = split_partitions_across_ranks(
+      training_data_dir,
+      rank=hvd.rank(),
+      size=hvd.size(),
+  )
+  num_batches = int(
+      config.examples_per_epoch / (config.sys.batch_size * hvd.size())
+  )
+  def generator_wrapper(epoch):
+    random.shuffle(training_data)
+    generator = AbstractWindowGenerator(
+        num_workers=1,  # one worker, does it async
+        queue_size=10,
         device=device,
+        # Batch generator kwargs
+        records=training_data,
+        difficulty=0.1,
         batch_size=config.sys.batch_size,
         seed_text_size=config.max_seed_text_length,
         follow_text_size=config.max_follow_text_length,
-        difficulty=0.1
+        # tokenizer kwargs
+        tokenizer_model_path=paths["tokenizer_model_path"],
+        extra_data_path=paths["model_extra_data_path"],
+        required_author_count=config.max_author_count,
+        required_mesh_count=config.max_mesh_count,
     )
-
-  num_batches = config.examples_per_epoch / config.sys.batch_size / hvd.size()
+    for batch in generator.generate():
+        yield batch
 
   train_model(
       model=model,
       loss_fn=loss_wrapper,
       num_epochs=config.sys.num_epochs,
       on_epoch_start=on_epoch_start,
-      batch_generator=batch_generator_wrapper,
+      batch_generator=generator_wrapper,
       optimizer=optimizer,
       disable_pbar=True,
       disable_plots=True,
@@ -203,11 +215,6 @@ def train(config:cpb.AbstractGeneratorConfig):
   if hvd.rank() == 0:
     print("Saving model")
     torch.save(model.state_dict(), model_path)
-
-  for seed, follow in generator:
-    print(seed, follow)
-    print(model(seed, follow))
-    break
 
 
 def prep(config:cpb.AbstractGeneratorConfig):

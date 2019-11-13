@@ -24,7 +24,6 @@ from typing import Iterable
 import random
 import os
 
-
 MODES = ["train", "evaluate", "prep"]
 
 def index_items(collection:Iterable[str], max_index:int)->HashedIndex:
@@ -110,6 +109,7 @@ def train(config:cpb.AbstractGeneratorConfig):
 
   if hvd.rank() == 0:
     print("Preparing model")
+
   tokenizer = AbstractGeneratorTokenizer(
       tokenizer_model_path=tokenizer_model_path,
       extra_data_path=extra_data_path,
@@ -131,6 +131,13 @@ def train(config:cpb.AbstractGeneratorConfig):
       intermediate_feedforward_dim=config.hidden_fc_size,
       num_metadata_embeddings=tokenizer.num_metadata_embeddings()
   )
+
+  # load checkpoint if found
+  if config.HasField("restore_from_checkpoint"):
+    if hvd.rank() == 0:
+      print("Loading checkpoint", config.restore_from_checkpoint)
+    model.load_state_dict(torch.load(config.restore_from_checkpoint))
+
   #print_model_summary(model)
   model.to(device)
 
@@ -142,6 +149,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       momentum=0.9
   )
   # Update everybody
+  # in the case we loaded from a checkpoint, this is very important
   hvd.broadcast_parameters(model.state_dict(), root_rank=0)
   hvd.broadcast_optimizer_state(optimizer, root_rank=0)
   # Prep for horovod
@@ -166,7 +174,7 @@ def train(config:cpb.AbstractGeneratorConfig):
   def after_loss_calculation(loss):
       loss.backward()
       optimizer.synchronize()
-      torch.nn.utils.clip_grad_norm(model.parameters(), 1.0)
+      torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
       with optimizer.skip_synchronize():
         optimizer.step()
       optimizer.zero_grad()
@@ -182,7 +190,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       torch.save(model.state_dict(), f"{paths['model_path']}.{epoch}")
 
   if hvd.rank() == 0:
-    print("Loading")
+    print("Loading training data")
   training_data = split_partitions_across_ranks(
       training_data_dir,
       rank=hvd.rank(),
@@ -236,8 +244,6 @@ def train(config:cpb.AbstractGeneratorConfig):
     expected = expected[end_type_idx,:]
     return (predicted == expected).float().mean()
 
-
-  print("Ready to go!")
   train_model(
       model=model,
       loss_fn=loss_wrapper,

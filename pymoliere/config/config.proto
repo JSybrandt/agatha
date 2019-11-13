@@ -215,6 +215,9 @@ message AbstractGeneratorConfig {
   optional int32 author_hash_size = 24 [default=50000];
   optional int32 mesh_hash_size = 25 [default=25000];
 
+  // If set, load these weights. Only used in "mode=train"
+  optional string restore_from_checkpoint = 26;
+
 }
 ////////////////////////////////////////////////////////////////////////////////
 

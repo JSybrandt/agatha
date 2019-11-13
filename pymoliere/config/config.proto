@@ -174,24 +174,6 @@ message SentenceClassifierConfig {
 message AbstractGeneratorConfig {
   optional ClusterConfig cluster = 1;
   optional MlConfig sys = 3;
-  // Note: All of these probabilities are effected by the per-epoch difficulty
-  // modifier. the unchanged prob decreases, while the others increase to
-  // the specified value.
-  // The following effect how often the second training sentence is modified.
-  // This is the probability that the 2nd sentence is unchanged
-  optional float unchanged_prob = 4 [default=0.25];
-  // This is the probability that the whole 2nd sentence is dropped
-  optional float full_mask_prob = 5 [default=0.25];
-  // This is the per-token probability that a single word is dropped (provided
-  // the above conditions have not happened)
-  optional float mask_per_token_prob = 6 [default=0.25];
-  // This is the per-token probability that a single word is replaced in the
-  // second half of the input.  Note that the per-token-prob fields must sum <=
-  // 1
-  optional float replace_per_token_prob = 7 [default=0.25];
-  // This determines the number of examples to generate.
-  // This id divided by batch size and by machines to determine the
-  // speed of the epoch.
   optional int32 examples_per_epoch = 9 [default=50000];
   // May be "train" or "evaluate" or "prep"
   optional string mode = 10 [default="train"];
@@ -218,6 +200,18 @@ message AbstractGeneratorConfig {
   // If set, load these weights. Only used in "mode=train"
   optional string restore_from_checkpoint = 26;
 
+  message AdaptiveDifficulty {
+    // The initial probability that we will mask an arbitrary follow token
+    optional float initial_difficulty = 1 [default=0.1];
+    // The rate at which we will increase the difficulty per-epoch
+    optional float difficulty_step = 2 [default=0.01];
+    // If we match/exceed this value of text accuracy at the end of an epoch,
+    // we will increase the difficulty by the difficulty_step, to a max of 1.
+    // Value from nature communications paper demonstrating that 85% is a good
+    // SGD target.
+    optional float target_text_accuracy = 3 [default=0.85];
+  }
+  optional AdaptiveDifficulty difficulty_schedule = 27;
 }
 ////////////////////////////////////////////////////////////////////////////////
 

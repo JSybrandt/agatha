@@ -7,6 +7,9 @@ from pymoliere.config import config_pb2 as cpb, proto_util
 from pymoliere.construct import dask_checkpoint, file_util, text_util
 from pymoliere.ml.model_summary import print_model_summary
 from pymoliere.ml.abstract_generator.misc_util import HashedIndex
+from pymoliere.ml.abstract_generator.difficulty_schedule import (
+    DifficultySchedule,
+)
 from pymoliere.ml.abstract_generator.abstract_generator import (
     INTERESTING_SENTENCE_LABLES,
     AbstractGeneratorTokenizer,
@@ -179,8 +182,18 @@ def train(config:cpb.AbstractGeneratorConfig):
         optimizer.step()
       optimizer.zero_grad()
 
+  difficulty_schedule = DifficultySchedule(
+    initial_difficulty=config.difficulty_schedule.initial_difficulty,
+    difficulty_step=config.difficulty_schedule.difficulty_step,
+    target_performance=config.difficulty_schedule.target_text_accuracy,
+  )
 
   def on_epoch_start(epoch):
+    if hvd.rank() == 0:
+      print()
+      print()
+      print("Epoch:", epoch)
+      print("Difficulty:", difficulty_schedule.current_difficulty())
     if (
         epoch > 0
         and epoch % 5  == 0
@@ -199,15 +212,17 @@ def train(config:cpb.AbstractGeneratorConfig):
   num_batches = int(
       config.examples_per_epoch / (config.sys.batch_size * hvd.size())
   )
+
+
   def generator_wrapper(epoch):
     random.shuffle(training_data)
     generator = AbstractWindowGenerator(
-        num_workers=3,  # one worker, does it async
+        num_workers=3,
         queue_size=10,
         device=device,
         # Batch generator kwargs
         records=training_data,
-        difficulty=0.1,
+        difficulty=difficulty_schedule.current_difficulty(),
         batch_size=config.sys.batch_size,
         seed_text_size=config.max_seed_text_length,
         follow_text_size=config.max_follow_text_length,
@@ -244,6 +259,16 @@ def train(config:cpb.AbstractGeneratorConfig):
     expected = expected[end_type_idx,:]
     return (predicted == expected).float().mean()
 
+  def on_phase_end(phase, metric2average):
+    if phase == "train":
+      text_acc = hvd.allreduce(
+          metric2average["text_acc"],
+          name="text_acc"
+      )
+      if hvd.rank() == 0:
+        print("Epoch end text accuracy,", float(text_acc))
+      difficulty_schedule.update_current_performance(text_acc)
+
   train_model(
       model=model,
       loss_fn=loss_wrapper,
@@ -251,6 +276,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       on_epoch_start=on_epoch_start,
       batch_generator=generator_wrapper,
       after_loss_calculation=after_loss_calculation,
+      on_phase_end=on_phase_end,
       disable_pbar=True,
       disable_plots=True,
       disable_batch_report=hvd.rank() != 0,

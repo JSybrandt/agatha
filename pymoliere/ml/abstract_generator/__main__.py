@@ -84,16 +84,7 @@ def get_paths(config:cpb.AbstractGeneratorConfig):
       if name.split("_")[-1] in ["dir", "path"]
   }
 
-def evaluate(config:cpb.AbstractGeneratorConfig):
-  pass
-
-
-def train(config:cpb.AbstractGeneratorConfig):
-  if torch.cuda.is_available() and not config.sys.disable_gpu:
-    device = torch.device("cuda")
-  else:
-    device = torch.device("cpu")
-
+def init_everything_for_hvd():
   seed = 42
   hvd.init()
   torch.manual_seed(seed)
@@ -101,26 +92,26 @@ def train(config:cpb.AbstractGeneratorConfig):
   torch.set_num_threads(4)
   torch.cuda.set_device(hvd.local_rank())
 
+def get_tokenizer_from_config(
+    config:cpb.AbstractGeneratorConfig
+)->AbstractGeneratorTokenizer:
   paths = get_paths(config)
   tokenizer_model_path = paths["tokenizer_model_path"]
   extra_data_path = paths["model_extra_data_path"]
-  training_data_dir = paths["model_ckpt_dir"].joinpath("training_data")
-
   assert tokenizer_model_path.is_file()
   assert extra_data_path.is_file()
-  assert training_data_dir.is_dir()
-
-  if hvd.rank() == 0:
-    print("Preparing model")
-
-  tokenizer = AbstractGeneratorTokenizer(
+  return AbstractGeneratorTokenizer(
       tokenizer_model_path=tokenizer_model_path,
       extra_data_path=extra_data_path,
       required_author_count=config.max_author_count,
       required_mesh_count=config.max_mesh_count,
   )
 
-  model = AbstractGenerator(
+def get_model_from_config(
+    config:cpb.AbstractGeneratorConfig,
+    tokenizer:AbstractGeneratorTokenizer,
+)->AbstractGenerator:
+  return AbstractGenerator(
       embedding_size=len(tokenizer),
       embedding_dim=config.embedding_dim,
       max_text_length=max(
@@ -134,6 +125,29 @@ def train(config:cpb.AbstractGeneratorConfig):
       intermediate_feedforward_dim=config.hidden_fc_size,
       num_metadata_embeddings=tokenizer.num_metadata_embeddings()
   )
+
+
+def evaluate(config:cpb.AbstractGeneratorConfig):
+  pass
+
+
+def train(config:cpb.AbstractGeneratorConfig):
+  init_everything_for_hvd()
+  paths = get_paths(config)
+
+  training_data_dir = paths["model_ckpt_dir"].joinpath("training_data")
+  assert training_data_dir.is_dir()
+
+  if hvd.rank() == 0:
+    print("Preparing model")
+
+  if torch.cuda.is_available() and not config.sys.disable_gpu:
+    device = torch.device("cuda")
+  else:
+    device = torch.device("cpu")
+
+  tokenizer = get_tokenizer_from_config(config)
+  model = get_model_from_config(config, tokenizer)
 
   # load checkpoint if found
   if config.HasField("restore_from_checkpoint"):
@@ -161,6 +175,29 @@ def train(config:cpb.AbstractGeneratorConfig):
       named_parameters=model.named_parameters(),
   )
 
+  # Determines the rate at which we're going to mask tokens
+  difficulty_schedule = DifficultySchedule(
+    initial_difficulty=config.difficulty_schedule.initial_difficulty,
+    difficulty_step=config.difficulty_schedule.difficulty_step,
+    target_performance=config.difficulty_schedule.target_text_accuracy,
+  )
+
+  # Number of iterations per-worker
+  num_batches = int(
+      config.examples_per_epoch / (config.sys.batch_size * hvd.size())
+  )
+
+  if hvd.rank() == 0:
+    print("Loading training data")
+  training_data = split_partitions_across_ranks(
+      training_data_dir,
+      rank=hvd.rank(),
+      size=hvd.size(),
+  )
+
+  # At this point, we just need to run train.
+  # To do so, we're going to define a bunch of callback functions
+
   def loss_wrapper(predicted, expected):
     assert len(predicted.shape) == 3
     assert len(expected.shape) == 2
@@ -182,12 +219,6 @@ def train(config:cpb.AbstractGeneratorConfig):
         optimizer.step()
       optimizer.zero_grad()
 
-  difficulty_schedule = DifficultySchedule(
-    initial_difficulty=config.difficulty_schedule.initial_difficulty,
-    difficulty_step=config.difficulty_schedule.difficulty_step,
-    target_performance=config.difficulty_schedule.target_text_accuracy,
-  )
-
   def on_epoch_start(epoch):
     if hvd.rank() == 0:
       print()
@@ -201,18 +232,6 @@ def train(config:cpb.AbstractGeneratorConfig):
     ):
       print("Saving model checkpoint")
       torch.save(model.state_dict(), f"{paths['model_path']}.{epoch}")
-
-  if hvd.rank() == 0:
-    print("Loading training data")
-  training_data = split_partitions_across_ranks(
-      training_data_dir,
-      rank=hvd.rank(),
-      size=hvd.size(),
-  )
-  num_batches = int(
-      config.examples_per_epoch / (config.sys.batch_size * hvd.size())
-  )
-
 
   def generator_wrapper(epoch):
     random.shuffle(training_data)

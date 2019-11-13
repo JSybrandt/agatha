@@ -175,7 +175,7 @@ class AbstractGeneratorTokenizer(object):
 
     # Subset text if nessesary
     # max text length needs to be lowered by 2 for the start / stop seps
-    text_indices = text_indices[:max_text_length-2]
+    text_indices = text_indices[:max_text_length]
 
     def to_required_size(data, size):
       # pad if nessesary
@@ -263,12 +263,13 @@ class AbstractGenerator(torch.nn.Module):
         embedding_dim,
         padding_idx=0,
         max_norm=1,
+        sparse=True,
     )
 
     # Positional encoding is (Max Sequence Length, 1, Embedding Dim)
     self.positional_encoding = torch.nn.Parameter(
         self.generate_positional_encoding(
-          max_sequence_length=max_text_length,
+          max_sequence_length=max_text_length+3, # plus 2 padding
           embedding_dim=embedding_dim,
       )
     )

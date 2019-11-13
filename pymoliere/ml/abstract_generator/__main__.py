@@ -135,10 +135,11 @@ def train(config:cpb.AbstractGeneratorConfig):
   model.to(device)
 
   loss_fn = torch.nn.NLLLoss()
-  optimizer = torch.optim.Adam(
+  optimizer = torch.optim.SGD(
       model.parameters(),
       # facebook paper says linear growth with batch size
       lr=config.sys.learning_rate*hvd.size(),
+      momentum=0.9
   )
   # Update everybody
   hvd.broadcast_parameters(model.state_dict(), root_rank=0)
@@ -147,18 +148,29 @@ def train(config:cpb.AbstractGeneratorConfig):
   optimizer = hvd.DistributedOptimizer(
       optimizer,
       named_parameters=model.named_parameters(),
-      compression=hvd.Compression.fp16,
   )
 
   def loss_wrapper(predicted, expected):
     assert len(predicted.shape) == 3
     assert len(expected.shape) == 2
-    # sequence length
     assert predicted.shape[0] == expected.shape[0]
-    # Batch size
     assert predicted.shape[1] == expected.shape[1]
+    # discard padding
+    valid = expected != tokenizer.padding_idx
     vocab_size = predicted.shape[2]
-    return loss_fn(predicted.view(-1, vocab_size), expected.view(-1))
+    return loss_fn(
+        predicted[valid].view(-1, vocab_size),
+        expected[valid].view(-1),
+    )
+
+  def after_loss_calculation(loss):
+      loss.backward()
+      optimizer.synchronize()
+      torch.nn.utils.clip_grad_norm(model.parameters(), 1.0)
+      with optimizer.skip_synchronize():
+        optimizer.step()
+      optimizer.zero_grad()
+
 
   def on_epoch_start(epoch):
     if (
@@ -232,7 +244,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       num_epochs=config.sys.num_epochs,
       on_epoch_start=on_epoch_start,
       batch_generator=generator_wrapper,
-      optimizer=optimizer,
+      after_loss_calculation=after_loss_calculation,
       disable_pbar=True,
       disable_plots=True,
       disable_batch_report=hvd.rank() != 0,

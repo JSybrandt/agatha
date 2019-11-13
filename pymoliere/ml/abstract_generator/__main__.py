@@ -10,6 +10,9 @@ from pymoliere.ml.abstract_generator.misc_util import HashedIndex
 from pymoliere.ml.abstract_generator.difficulty_schedule import (
     DifficultySchedule,
 )
+from pymoliere.ml.abstract_generator.generation_util import (
+    GenerationEvalBatchGenerator
+)
 from pymoliere.ml.abstract_generator.abstract_generator import (
     INTERESTING_SENTENCE_LABLES,
     AbstractGeneratorTokenizer,
@@ -126,9 +129,69 @@ def get_model_from_config(
       num_metadata_embeddings=tokenizer.num_metadata_embeddings()
   )
 
+def get_device(config:cpb.AbstractGeneratorConfig)->torch.device:
+  if torch.cuda.is_available() and not config.sys.disable_gpu:
+    return torch.device("cuda")
+  else:
+    return torch.device("cpu")
+
 
 def evaluate(config:cpb.AbstractGeneratorConfig):
-  pass
+  init_everything_for_hvd()
+  paths = get_paths(config)
+
+  testing_data_dir = paths["model_ckpt_dir"].joinpath("testing_data")
+  assert testing_data_dir.is_dir()
+
+  device = get_device(config)
+  tokenizer = get_tokenizer_from_config(config)
+  model = get_model_from_config(config, tokenizer)
+  model.load_state_dict(torch.load(paths["model_path"]))
+  model.to(device)
+  model.eval()
+  hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+
+  if hvd.rank() == 0:
+    print("Loading eval data")
+  testing_data = split_partitions_across_ranks(
+      testing_data_dir,
+      rank=hvd.rank(),
+      size=hvd.size(),
+  )
+
+  gen_batch_gen = GenerationEvalBatchGenerator(
+      tokenizer=tokenizer,
+      records=testing_data,
+      device=device,
+      batch_size=config.sys.batch_size,
+      seed_text_size=config.max_seed_text_length,
+      follow_text_size=config.max_follow_text_length,
+      reference_step_size=5,
+      max_num_references=5,
+  )
+
+  def decode(batch_idx, tensor):
+    return tokenizer.decode_all(
+        tensor[:, batch_idx].tolist(),
+    )
+
+  for seeds, follows, references in gen_batch_gen.generate():
+    masked_follows = follows.clone()
+    masked_follows[follows!=tokenizer.padding_idx] = tokenizer.mask_idx
+    # Copy over metadata to the follow-side.
+    masked_follows[:tokenizer.num_metadata_embeddings(), :] = \
+        follows[:tokenizer.num_metadata_embeddings(),:]
+    predictions = model(seeds, masked_follows).argmax(dim=2)
+    assert seeds.shape[1] == follows.shape[1] \
+        == predictions.shape[1] == config.sys.batch_size
+    for batch_idx in range(config.sys.batch_size):
+      print("Seed:")
+      print(decode(batch_idx, seeds)["text"])
+      print("Follow:")
+      print(decode(batch_idx, follows)["text"])
+      print("Prediction:")
+      print(decode(batch_idx, predictions)["text"])
+      print()
 
 
 def train(config:cpb.AbstractGeneratorConfig):
@@ -141,11 +204,7 @@ def train(config:cpb.AbstractGeneratorConfig):
   if hvd.rank() == 0:
     print("Preparing model")
 
-  if torch.cuda.is_available() and not config.sys.disable_gpu:
-    device = torch.device("cuda")
-  else:
-    device = torch.device("cpu")
-
+  device = get_device(config)
   tokenizer = get_tokenizer_from_config(config)
   model = get_model_from_config(config, tokenizer)
 

@@ -75,13 +75,13 @@ class _AbstractWindowGeneratorWorker(mp.Process):
       - batch_size: the number of examples per iteration
     """
     super(_AbstractWindowGeneratorWorker, self).__init__()
-    assert 0 < difficulty < 1
+    assert 0 <= difficulty <= 1
     # Can't pickle the tokenizer, so we need to construct one per-process
     self.tokenizer = AbstractGeneratorTokenizer(**tokenizer_kwargs)
     self.records = records
     self.batch_size = batch_size
-    self.seed_text_size = seed_text_size
-    self.follow_text_size = follow_text_size
+    self.max_seed_text_size = seed_text_size
+    self.max_follow_text_size = follow_text_size
     self.difficulty = difficulty
     self.num_batches = int(len(self.records) / self.batch_size)
     self.queue = queue
@@ -140,12 +140,12 @@ class _AbstractWindowGeneratorWorker(mp.Process):
     # Note, the local [seed/follow]_text_size are randomly chosen based off
     # the object's versions.
     seed_text_size = random.randint(
-        int(self.seed_text_size/2),
-        self.seed_text_size
+        int(self.max_seed_text_size/2),
+        self.max_seed_text_size
     )
     follow_text_size = random.randint(
-        int(self.follow_text_size/2),
-        self.follow_text_size
+        int(self.max_follow_text_size/2),
+        self.max_follow_text_size
     )
     seed_to_window_ratio = seed_text_size / (seed_text_size + follow_text_size)
     # we would like a total selection of this size
@@ -167,7 +167,7 @@ class _AbstractWindowGeneratorWorker(mp.Process):
     follow_selection_end = follow_selection_start + follow_text_size
 
     seed = self.tokenizer.encode_all(
-        max_text_length=seed_text_size,
+        max_text_length=self.max_seed_text_size,
         year=year,
         authors=authors,
         mesh_headings=mesh_headings,
@@ -176,7 +176,7 @@ class _AbstractWindowGeneratorWorker(mp.Process):
         text_indices=total_tokens[seed_selection_start:follow_selection_start]
     )
     follow = self.tokenizer.encode_all(
-        max_text_length=follow_text_size,
+        max_text_length=self.max_follow_text_size,
         year=year,
         authors=authors,
         mesh_headings=mesh_headings,

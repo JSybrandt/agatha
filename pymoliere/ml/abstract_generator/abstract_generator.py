@@ -134,7 +134,7 @@ class AbstractGeneratorTokenizer(object):
     if self.author_start_idx <= idx < self.author_end_idx:
       return ",".join(self.author_index.get_elements(idx - self.author_start_idx))
     if self.mesh_start_idx <= idx < self.mesh_end_idx:
-      return ",".join(self.mesh_index.get_elements(idx - self.author_start_idx))
+      return ",".join(self.mesh_index.get_elements(idx - self.mesh_start_idx))
     if self.vocab_start_idx <= idx < self.vocab_end_idx:
       return self.sp_processor.id_to_piece(idx - self.vocab_start_idx)
     return "[INVALID]"
@@ -187,7 +187,9 @@ class AbstractGeneratorTokenizer(object):
       del data[size:]
 
     to_required_size(author_indices, self.required_author_count)
+    assert len(author_indices) == self.required_author_count
     to_required_size(mesh_indices, self.required_mesh_count)
+    assert len(mesh_indices) == self.required_mesh_count
     return (
         [
           self.start_idx,
@@ -208,8 +210,6 @@ class AbstractGeneratorTokenizer(object):
   def decode_all(
       self,
       indices:List[int],
-      required_author_count:int,
-      required_mesh_count:int,
   )->Dict[str, Any]:
     # skip start at 0
     year_idx = indices[1]
@@ -217,11 +217,11 @@ class AbstractGeneratorTokenizer(object):
     end_type_idx = indices[3]
     indices = indices[4:]
     # slice out authors
-    author_indices = indices[:required_author_count]
-    indices = indices[required_author_count:]
+    author_indices = indices[:self.required_author_count]
+    indices = indices[self.required_author_count:]
     # slice out mesh
-    mesh_indices = indices[:required_mesh_count]
-    indices = indices[required_mesh_count:]
+    mesh_indices = indices[:self.required_mesh_count]
+    indices = indices[self.required_mesh_count:]
     # skip sep at 0 and -1
     text_indices = indices[1:-1]
 

@@ -11,7 +11,8 @@ from pymoliere.ml.abstract_generator.difficulty_schedule import (
     DifficultySchedule,
 )
 from pymoliere.ml.abstract_generator.generation_util import (
-    GenerationEvalBatchGenerator
+    GenerationEvalBatchGenerator,
+    generate,
 )
 from pymoliere.ml.abstract_generator.abstract_generator import (
     INTERESTING_SENTENCE_LABLES,
@@ -176,12 +177,12 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
     )
 
   for seeds, follows, references in gen_batch_gen.generate():
-    masked_follows = follows.clone()
-    masked_follows[follows!=tokenizer.padding_idx] = tokenizer.mask_idx
-    # Copy over metadata to the follow-side.
-    masked_follows[:tokenizer.num_metadata_embeddings(), :] = \
-        follows[:tokenizer.num_metadata_embeddings(),:]
-    predictions = model(seeds, masked_follows).argmax(dim=2)
+    predictions = generate(
+        model=model,
+        tokenizer=tokenizer,
+        seeds=seeds,
+        follow_size=config.max_follow_text_length,
+    )
     assert seeds.shape[1] == follows.shape[1] \
         == predictions.shape[1] == config.sys.batch_size
     for batch_idx in range(config.sys.batch_size):

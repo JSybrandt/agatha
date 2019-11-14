@@ -10,6 +10,43 @@ except ImportError:
  # This is a heavy dependency, and we don't want to worry all users with it.
  pass
 
+def generate(
+  model:torch.nn.Module,
+  tokenizer:AbstractGeneratorTokenizer,
+  seeds:torch.LongTensor,
+  follow_size:int,
+)->torch.Tensor:
+  """
+  Given a model and tokenizer, as well as a set of seeds:
+  For each seed, generate a sequence of length follow_size (F)
+  Seeds size: (S, B)
+  Produce a set of generations predictions: (F, B)
+  using the model.
+  """
+
+  batch_size = seeds.shape[1]
+  # This is what we're outputting
+  generations = torch.LongTensor(
+      follow_size+tokenizer.num_metadata_embeddings(),
+      batch_size,
+  ).to(seeds.device)
+  # start with all set to mask
+  generations[:] = tokenizer.mask_idx
+
+  while tokenizer.mask_idx in generations:
+    confidence, predictions = model(seeds, generations).max(dim=2)
+    # confidence indicates how sure the model was on each position
+    # predictions indicates the value the model wants per-position
+    # destroy the confidence of already-generated results
+    confidence[generations!=tokenizer.mask_idx] = float("-inf")
+    # what position are we most sure about?
+    most_confident_position = confidence.argmax(dim=0)
+    # most_confident_position is a vector of size B
+    # Set the most confident positions
+    generations[most_confident_position, torch.arange(batch_size)] \
+        = predictions[most_confident_position, torch.arange(batch_size)]
+  return generations
+
 
 class GenerationEvalBatchGenerator(object):
   """
@@ -130,4 +167,8 @@ class GenerationEvalBatchGenerator(object):
             )
           )[:self.max_num_references]
       ]
-      yield torch.LongTensor(seed), torch.LongTensor(follow), references
+      yield (
+          torch.LongTensor(seed).to(self.device),
+          torch.LongTensor(follow).to(self.device),
+          references
+      )

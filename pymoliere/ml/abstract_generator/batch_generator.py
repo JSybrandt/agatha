@@ -106,9 +106,15 @@ class _AbstractWindowGeneratorWorker(mp.Process):
     # Move to dev
     # Training masks tokens
     corrupted = follow.clone()
+    # Introduces a change that we mask the whole output
+    batch_difficulty = torch.rand(1)
+    if batch_difficulty < (self.difficulty * 0.1):
+      batch_difficulty = 1
+    else:
+      batch_difficulty *= self.difficulty
     corrupted[
         torch.rand_like(corrupted, dtype=torch.float32)
-        < self.difficulty
+        < batch_difficulty
     ] = self.tokenizer.mask_idx
     return {"seed": seed, "follow": corrupted}, follow
 

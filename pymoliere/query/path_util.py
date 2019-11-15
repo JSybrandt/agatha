@@ -18,19 +18,24 @@ def download_neighbors(
   neighbors exist, we can take a random selection based on limit. If limit is
   0, we take all.
   """
-  return [
-      (neigh["target"], neigh["weight"])
-      for neigh
-      in collection.find(
-        filter={"source": source},
-        projection={
-          "target": 1,
-          "weight": 1,
-          "_id": 0,
-        },
-        limit=limit
-      )
-  ]
+  query_res =  collection.find(
+      {"source": source},
+      projection={
+        "target": 1,
+        "weight": 1,
+        "_id": 0,
+      },
+      limit=limit
+  )
+  res = []
+  for val in query_res:
+    try:
+      res.append((str(val["target"]), float(val["weight"])))
+    except ValueError:
+      print()
+      print(f"Node {source} has an invalid edge: {val}")
+  return res
+
 
 def recover_shortest_path_from_tight_edges(
     graph:nx.Graph,
@@ -61,7 +66,8 @@ def recover_shortest_path_from_tight_edges(
       if not found_next_step:
         raise Exception("Something Terrible Happened")
     return path
-  return list(reversed(path_from_bridge(0))) + path_from_bridge(1)
+  # Don't double count middle
+  return list(reversed(path_from_bridge(0))) + path_from_bridge(1)[1:]
 
 def get_element_with_min_criteria(
     data:Iterable[Any],
@@ -81,6 +87,7 @@ def get_shortest_path(
     source:str,
     target:str,
     max_degree:int,
+    disable_pbar:bool=False,
 )->Tuple[Optional[List[str]], nx.Graph]:
   """
   Gets the exact shortest path between two nodes in the network. This method
@@ -90,6 +97,8 @@ def get_shortest_path(
   source / target distances. We know we're done when we uncover a node with a
   tightened path to both source and target.
   """
+  # pbar is just used to keep track of the # of visted nodes
+  pbar = tqdm(disable=disable_pbar)
   graph = nx.Graph()
   # dist is going to be a node-attr that indicates distance from the query terms
   # downloaded indicates whether we've pulled their values from the database
@@ -123,6 +132,7 @@ def get_shortest_path(
         lambda n: min(*graph.nodes[n]["dists"])
     )
     graph.nodes[curr_node]["visited"] = True
+    pbar.update(1)
     priority.remove(curr_node)
 
 
@@ -227,7 +237,7 @@ def get_nearby_nodes(
       graph.nodes[curr_node]["visited"] = True
       if key_type is None or curr_node[0] == key_type:
         pbar.update(1)
-        result.append(curr_node)
+        result.add(curr_node)
 
       # For each edge
       if not graph.nodes[curr_node]["downloaded"]:

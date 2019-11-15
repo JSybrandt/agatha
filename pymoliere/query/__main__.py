@@ -13,6 +13,7 @@ import json
 import sys
 import pymongo
 import dask
+from tqdm import tqdm
 
 
 def assert_conf_has_field(config:cpb.QueryConfig, field:str)->None:
@@ -49,7 +50,9 @@ if __name__ == "__main__":
   # Note: the graph is stored as an edge list with fields:
   # {source: "...", target: "...", weight: x}
   # This means the finds are just making sure an edge exists
+  print("Asserting source")
   assert database.graph.find_one({"source": config.source}) is not None
+  print("Asserting target")
   assert database.graph.find_one({"source": config.target}) is not None
 
   # Get Path
@@ -80,14 +83,14 @@ if __name__ == "__main__":
       )
     )
 
-  print("Downloading Sentence Text")
-  text_corpus = [
+  print("Downloading Sentence Text for all", len(sentence_ids), "sentences")
+  text_corpus = tqdm([
       database.sentences.find_one(
-        filter={"id": sent_id},
+        {"id": sent_id},
         projection={"bow":1, "_id":0}
       )["bow"]
       for sent_id in sentence_ids
-  ]
+  ])
 
   print("Identifying potential query-specific stopwords")
   min_support = config.topic_model.min_support_count

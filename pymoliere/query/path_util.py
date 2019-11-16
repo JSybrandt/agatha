@@ -226,6 +226,7 @@ def get_nearby_nodes(
   if "downloaded" not in graph.nodes[source]:
     graph.nodes[source]["downloaded"] = False
 
+  cached_count = 0
   with tqdm(total=max_result_size, disable=disable_pbar) as pbar:
     priority = set([source])
     while len(priority) > 0 and len(result) < max_result_size:
@@ -258,6 +259,8 @@ def get_nearby_nodes(
             )
           graph.add_edge(curr_node, neigh, weight=weight)
         graph.nodes[curr_node]["downloaded"] = True
+      else:
+        cached_count += 1
 
       # At this point, we've downloaded the current node
       for neigh, edge_attr in graph[curr_node].items():
@@ -270,4 +273,5 @@ def get_nearby_nodes(
         # Add new nodes to our queue
         if not graph.nodes[neigh]["visited"]:
           priority.add(neigh)
+  print("Used the cache for a bunch of neighbors:", cached_count)
   return result

@@ -84,13 +84,13 @@ if __name__ == "__main__":
     )
 
   print("Downloading Sentence Text for all", len(sentence_ids), "sentences")
-  text_corpus = tqdm([
+  text_corpus = [
       database.sentences.find_one(
         {"id": sent_id},
         projection={"bow":1, "_id":0}
       )["bow"]
-      for sent_id in sentence_ids
-  ])
+      for sent_id in tqdm(sentence_ids)
+  ]
 
   print("Identifying potential query-specific stopwords")
   min_support = config.topic_model.min_support_count

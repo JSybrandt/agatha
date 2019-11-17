@@ -33,11 +33,7 @@ class AbstractGeneratorTokenizer(object):
       self,
       tokenizer_model_path:Path,
       extra_data_path:Path,
-      required_author_count:int,
-      required_mesh_count:int,
   ):
-    self.required_author_count = required_author_count
-    self.required_mesh_count = required_mesh_count
     assert tokenizer_model_path.is_file()
     assert extra_data_path.is_file()
     self.sp_processor = spm.SentencePieceProcessor()
@@ -146,103 +142,30 @@ class AbstractGeneratorTokenizer(object):
       if self.vocab_start_idx <= idx < self.vocab_end_idx
     ])
 
-  def encode_all(
+  def encode_context_sequence(
       self,
-      max_text_length:int,
-      year:int=None,
-      start_sentence_type:str=None,
-      end_sentence_type:str=None,
-      authors:List[str]=None,
-      mesh_headings:List[str]=None,
-      text:str=None,
-      text_indices:List[int]=None,
+      year:int,
+      authors:List[str],
+      mesh_headings:List[str],
   )->List[int]:
-    # Cannot include both raw text and pre-tokenized text
-    assert not (text_indices is not None and text is not None)
-
-    year_idx = self.encode_year(year)
-    start_type_idx = self.encode_sent_type(start_sentence_type)
-    end_type_idx = self.encode_sent_type(end_sentence_type)
-    author_indices = [self.encode_author(a) for a in authors]
-    mesh_indices = [self.encode_mesh(m) for m in mesh_headings]
-
-    # Replace text_indices if not set
-    if text_indices is None:
-      text_indices = self.encode_text(text)
-    else:
-      for t in text_indices:
-        assert self.vocab_start_idx <= t < self.vocab_end_idx
-
-    # Subset text if nessesary
-    # max text length needs to be lowered by 2 for the start / stop seps
-    text_indices = text_indices[:max_text_length]
-
-    def to_required_size(data, size):
-      # pad if nessesary
-      while(len(data) < size):
-        data.append(self.padding_idx)
-      # randomize
-      shuffle(data)
-      # If too long, remove extra
-      del data[size:]
-
-    to_required_size(author_indices, self.required_author_count)
-    assert len(author_indices) == self.required_author_count
-    to_required_size(mesh_indices, self.required_mesh_count)
-    assert len(mesh_indices) == self.required_mesh_count
-    return (
-        [
-          self.start_idx,
-          year_idx,
-          start_type_idx,
-          end_type_idx,
-        ]
-        + author_indices
-        + mesh_indices
-        + [self.sep_idx]
-        + text_indices
-        + [self.sep_idx]
-    )
-
-  def num_metadata_embeddings(self):
-    return 4 + self.required_author_count + self.required_mesh_count
-
-  def decode_all(
-      self,
-      indices:List[int],
-  )->Dict[str, Any]:
-    # skip start at 0
-    year_idx = indices[1]
-    start_type_idx = indices[2]
-    end_type_idx = indices[3]
-    indices = indices[4:]
-    # slice out authors
-    author_indices = indices[:self.required_author_count]
-    indices = indices[self.required_author_count:]
-    # slice out mesh
-    mesh_indices = indices[:self.required_mesh_count]
-    indices = indices[self.required_mesh_count:]
-    # skip sep at 0 and -1
-    text_indices = indices[1:-1]
-
-    # ignore padding
-    author_indices = [a for a in author_indices if a != self.padding_idx]
-    mesh_indices = [a for a in mesh_indices if a != self.padding_idx]
-    text_indices = [a for a in text_indices if a != self.padding_idx]
-
-    return {
-        "year": self.decode_idx(year_idx),
-        "start_sent_type": self.decode_idx(start_type_idx),
-        "end_sent_type": self.decode_idx(end_type_idx),
-        "authors": [self.decode_idx(x) for x in author_indices],
-        "mesh_headings": [self.decode_idx(x) for x in mesh_indices],
-        "text": self.decode_text(text_indices),
-    }
+    year = self.encode_year(year)
+    authors = [
+        self.encode_author(a)
+        for a in authors
+    ] + [self.sep_idx]
+    mesh_headings = [
+        self.encode_mesh(m)
+        for m in mesh_headings
+    ] + [self.sep_idx]
+    return [
+        year,
+        self.sep_idx
+    ] + authors + mesh_headings
 
 
 class AbstractGenerator(torch.nn.Module):
   def __init__(self,
-      embedding_size:int,
+      tokenizer:AbstractGeneratorTokenizer,
       embedding_dim:int,
       max_text_length:int,
       num_attention_heads:int,
@@ -250,26 +173,27 @@ class AbstractGenerator(torch.nn.Module):
       num_decoder_layers:int,
       intermediate_dropout:float,
       intermediate_feedforward_dim:int,
-      num_metadata_embeddings:int,
   ):
     """
     Learns to generate following text given sliding windows across abstracts.
     """
     super(AbstractGenerator, self).__init__()
-    self.num_metadata_embeddings = num_metadata_embeddings
+    self.max_text_length = max_text_length
+    self.tokenizer = tokenizer
 
     self.embeddings = torch.nn.Embedding(
-        embedding_size,
+        len(tokenizer),
         embedding_dim,
         padding_idx=0,
-        max_norm=1,
         sparse=True,
     )
+
+    self.embedding_norm = torch.nn.LayerNorm(embedding_dim)
 
     # Positional encoding is (Max Sequence Length, 1, Embedding Dim)
     self.positional_encoding = torch.nn.Parameter(
         self.generate_positional_encoding(
-          max_sequence_length=max_text_length+3, # plus 2 padding
+          max_text_length=max_text_length,
           embedding_dim=embedding_dim,
       )
     )
@@ -283,16 +207,21 @@ class AbstractGenerator(torch.nn.Module):
         dropout=intermediate_dropout,
     )
 
-    self.predict_output = torch.nn.Linear(
+    self.predicted_text = torch.nn.Linear(
         embedding_dim,
-        embedding_size,
+        tokenizer.vocab_size,
+    )
+    self.predicted_type = torch.nn.Linear(
+        embedding_dim,
+        tokenizer.sent_type_size,
     )
 
-    self.softmax = torch.nn.LogSoftmax(dim=2)
+    self.text_softmax = torch.nn.LogSoftmax(dim=2)
+    self.type_softmax = torch.nn.LogSoftmax(dim=2)
 
   def generate_positional_encoding(
       self,
-      max_sequence_length:int,
+      max_text_length:int,
       embedding_dim:int,
   )->torch.FloatTensor:
     # Dim must be even
@@ -300,7 +229,7 @@ class AbstractGenerator(torch.nn.Module):
 
     # Returns a (seq_len, emb) tensor
     positional_encodings = []
-    for pos in range(max_sequence_length):
+    for pos in range(max_text_length):
       positional_encodings.append([])
       for i in range(0, int(embedding_dim / 2)):
         # Even index
@@ -315,70 +244,67 @@ class AbstractGenerator(torch.nn.Module):
         positional_encodings,
     ).unsqueeze(1)
     result.requires_grad = False
-    assert result.shape == (max_sequence_length, 1, embedding_dim)
+    assert result.shape == (max_text_length, 1, embedding_dim)
     return result
+
+  def get_padding_mask(self, tensor:torch.LongTensor)->torch.BoolTensor:
+    mask = torch.zeros_like(tensor, dtype=torch.bool)
+    mask[tensor==self.tokenizer.padding_idx] = True
+    mask.t_()  # in place transpose, required for trans interf.
+    mask.requires_grad = False
+    return mask
+
 
   def forward(
       self,
-      seed:torch.LongTensor,
-      follow:torch.LongTensor,
+      context:torch.LongTensor,
+      text:torch.LongTensor,
+      types:torch.LongTensor,
   ):
-    # S is the sequence length of seed
-    # F is the sequence length of follow
+    # C is the sequence length of context
+    # T is the sequence length of text AND types
     # B is the batch size
-    # Expected shapes:
-    #   - seed : (S, B)
-    #   - follow : (F, B)
-    assert len(seed.shape) == 2
-    assert len(follow.shape) == 2
-    assert seed.shape[1] == follow.shape[1]
+    assert len(context.shape) == 2
+    assert len(text.shape) == 2
+    assert len(types.shape) == 2
+    # Batch size is consistent
+    assert context.shape[1] == text.shape[1] == types.shape[1]
+    # T is consistent, and less than the expected max
+    assert text.shape[0] == types.shape[0]
+    assert text.shape[0] <= self.max_text_length
 
-    # Set padding masks to ignore out-of-bound tokens
-    # Relies on tokenizer using 0 as padding
-    # padding is shape (B, S) and (B, F)
-    # Note, true values should correspond to padded values.
-    seed_padding_mask = torch.zeros_like(seed, dtype=torch.bool)
-    seed_padding_mask[seed == 0] = True
-    seed_padding_mask.t_()  # in place transpose
-    seed_padding_mask.requires_grad = False
-    follow_padding_mask = torch.zeros_like(follow, dtype=torch.bool)
-    follow_padding_mask[follow == 0] = True
-    follow_padding_mask.t_()
-    follow_padding_mask.requires_grad = False
+    # True if padded
+    context_padding_mask = self.get_padding_mask(context)
+    text_padding_mask = self.get_padding_mask(text)
 
-    # E is the embedding dimensionality
-    seed = self.embeddings(seed)
-    # seed is now (S, B, E)
-    follow = self.embeddings(follow)
-    # follow is now (F, B, E)
+    # Adds an additional E-sized embedding vector for each long
+    context = self.embeddings(context)
+    text = self.embeddings(text)
+    types = self.embeddings(types)
+    # Need to merge text, types, and position
+    txt_typ_pos = text + types + self.positional_encoding[:text.shape[0],:,:]
+    text_seq_len = txt_typ_pos.shape[0]
 
-    # Add positional encodings
-    # Remember, the positional encodings are set to have batch of 1
-    seed_text_length = seed.shape[0] - self.num_metadata_embeddings
-    assert seed_text_length >= 0
-    assert seed_text_length <= self.positional_encoding.shape[0]
-    assert seed.shape[2] == self.positional_encoding.shape[2]
-    seed[self.num_metadata_embeddings:] += \
-        self.positional_encoding[:seed_text_length, :, :]
+    # Normalize
+    txt_typ_pos = self.embedding_norm(txt_typ_pos)
 
-    follow_text_length = follow.shape[0] - self.num_metadata_embeddings
-    assert follow_text_length >= 0
-    assert follow_text_length <= self.positional_encoding.shape[0]
-    assert follow.shape[2] == self.positional_encoding.shape[2]
-    follow[self.num_metadata_embeddings:] += \
-        self.positional_encoding[:follow_text_length, :, :]
-
-    output = self.transformer(
-        src=seed,
-        tgt=follow,
-        src_key_padding_mask=seed_padding_mask,
-        tgt_key_padding_mask=follow_padding_mask,
+    encoded = self.transformer(
+        src=context,
+        tgt=txt_typ_pos,
+        tgt_key_padding_mask=text_padding_mask,
+        tgt_mask=(
+          self.transformer
+          .generate_square_subsequent_mask(text_seq_len)
+          .t()
+          .to(txt_typ_pos.device)
+        ),
     )
-    # output is (F, B, E), however the transformer has been computed
 
-    # V is the size of the "vocab" (total embedding size)
-    output = self.predict_output(output)
-    # follow is now (F, B, V)
+    predicted_text = self.predicted_text(encoded)
+    predicted_type = self.predicted_type(encoded)
 
     # produce softmax results across "vocab"
-    return self.softmax(output)
+    return {
+        "text": self.text_softmax(predicted_text),
+        "types": self.type_softmax(predicted_type),
+    }

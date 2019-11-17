@@ -7,9 +7,6 @@ from pymoliere.config import config_pb2 as cpb, proto_util
 from pymoliere.construct import dask_checkpoint, file_util, text_util
 from pymoliere.ml.model_summary import print_model_summary
 from pymoliere.ml.abstract_generator.misc_util import HashedIndex
-from pymoliere.ml.abstract_generator.difficulty_schedule import (
-    DifficultySchedule,
-)
 from pymoliere.ml.abstract_generator.generation_util import (
     GenerationEvalBatchGenerator,
     generate,
@@ -107,8 +104,6 @@ def get_tokenizer_from_config(
   return AbstractGeneratorTokenizer(
       tokenizer_model_path=tokenizer_model_path,
       extra_data_path=extra_data_path,
-      required_author_count=config.max_author_count,
-      required_mesh_count=config.max_mesh_count,
   )
 
 def get_model_from_config(
@@ -116,18 +111,14 @@ def get_model_from_config(
     tokenizer:AbstractGeneratorTokenizer,
 )->AbstractGenerator:
   return AbstractGenerator(
-      embedding_size=len(tokenizer),
+      tokenizer=tokenizer,
       embedding_dim=config.embedding_dim,
-      max_text_length=max(
-        config.max_seed_text_length,
-        config.max_follow_text_length
-      ),
+      max_text_length=config.text_length,
       num_attention_heads=config.num_attention_heads,
       num_encoder_layers=config.num_encoder_layers,
       num_decoder_layers=config.num_decoder_layers,
       intermediate_dropout=0.1,
       intermediate_feedforward_dim=config.hidden_fc_size,
-      num_metadata_embeddings=tokenizer.num_metadata_embeddings()
   )
 
 def get_device(config:cpb.AbstractGeneratorConfig)->torch.device:
@@ -165,8 +156,8 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
       records=testing_data,
       device=device,
       batch_size=config.sys.batch_size,
-      seed_text_size=config.max_seed_text_length,
-      follow_text_size=config.max_follow_text_length,
+      seed_text_size=config.text_length,
+      follow_text_size=config.text_length,
       reference_step_size=5,
       max_num_references=5,
   )
@@ -235,13 +226,6 @@ def train(config:cpb.AbstractGeneratorConfig):
       named_parameters=model.named_parameters(),
   )
 
-  # Determines the rate at which we're going to mask tokens
-  difficulty_schedule = DifficultySchedule(
-    initial_difficulty=config.difficulty_schedule.initial_difficulty,
-    difficulty_step=config.difficulty_schedule.difficulty_step,
-    target_performance=config.difficulty_schedule.target_text_accuracy,
-  )
-
   # Number of iterations per-worker
   num_batches = int(
       config.examples_per_epoch / (config.sys.batch_size * hvd.size())
@@ -259,17 +243,18 @@ def train(config:cpb.AbstractGeneratorConfig):
   # To do so, we're going to define a bunch of callback functions
 
   def loss_wrapper(predicted, expected):
-    assert len(predicted.shape) == 3
-    assert len(expected.shape) == 2
-    assert predicted.shape[0] == expected.shape[0]
-    assert predicted.shape[1] == expected.shape[1]
-    # discard padding
     valid = expected != tokenizer.padding_idx
-    vocab_size = predicted.shape[2]
-    return loss_fn(
-        predicted[valid].view(-1, vocab_size),
-        expected[valid].view(-1),
-    )
+    def part(pre, exp):
+      assert len(pre.shape) == 3
+      assert len(exp.shape) == 2
+      assert pre.shape[0] == exp.shape[0]
+      assert pre.shape[1] == exp.shape[1]
+      return loss_fn(
+          pre[valid].view(-1, pre.shape[2]),
+          exp[valid].view(-1),
+      )
+    return part(predicted["text"], expected["text"]) \
+        + part(predicted["types"], expected["types"])
 
   def after_loss_calculation(loss):
       loss.backward()
@@ -284,7 +269,6 @@ def train(config:cpb.AbstractGeneratorConfig):
       print()
       print()
       print("Epoch:", epoch)
-      print("Difficulty:", difficulty_schedule.current_difficulty())
     if (
         epoch > 0
         and epoch % 5  == 0
@@ -301,34 +285,35 @@ def train(config:cpb.AbstractGeneratorConfig):
         device=device,
         # Batch generator kwargs
         records=training_data,
-        difficulty=difficulty_schedule.current_difficulty(),
         batch_size=config.sys.batch_size,
-        seed_text_size=config.max_seed_text_length,
-        follow_text_size=config.max_follow_text_length,
+        text_size=config.text_length,
         # tokenizer kwargs
         tokenizer_model_path=paths["tokenizer_model_path"],
         extra_data_path=paths["model_extra_data_path"],
-        required_author_count=config.max_author_count,
-        required_mesh_count=config.max_mesh_count,
     )
     for batch in generator.generate():
-        yield batch
+      model_in = {x: batch[x] for x in ["context", "text", "types"]}
+      targets = {
+          x.split("_")[-1]: batch[x]
+          for x in ["shifted_text", "shifted_types"]
+      }
+      yield model_in, targets
 
-  def text_accuracy(predicted, expected):
-    # Predicted is size (F, B, V) and expected is size (F, B)
+  def partial_accuracy(predicted, expected, value):
+    predicted = predicted[value].argmax(dim=2)
+    expected = expected[value]
     assert predicted.shape[0] == expected.shape[0]
     assert predicted.shape[1] == expected.shape[1]
-    metadata_size = tokenizer.num_metadata_embeddings()
-    assert predicted.shape[0] > metadata_size + 2
-    # strip out metadata columns
-    predicted = predicted[metadata_size:, :, :].argmax(dim=2)
-    expected = expected[metadata_size:, :]
     mask = torch.ones_like(expected, dtype=torch.bool)
-    # set to false the padding and sep tokens, leaving only the real text
     mask &= expected != tokenizer.padding_idx
-    mask &= expected != tokenizer.sep_idx
     # Correct text prediction rate across batch
     return (predicted[mask] == expected[mask]).float().mean()
+
+  def text_accuracy(predicted, expected):
+    return partial_accuracy(predicted, expected, "text")
+
+  def type_accuracy(predicted, expected):
+    return partial_accuracy(predicted, expected, "types")
 
   def end_type_accuracy(predicted, expected):
     assert predicted.shape[0] == expected.shape[0]
@@ -346,7 +331,6 @@ def train(config:cpb.AbstractGeneratorConfig):
       )
       if hvd.rank() == 0:
         print("Epoch end text accuracy,", float(text_acc))
-      difficulty_schedule.update_current_performance(text_acc)
 
   train_model(
       model=model,
@@ -362,7 +346,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       num_batches=num_batches,
       metrics = [
         ("text_acc", text_accuracy),
-        ("end_type_acc", end_type_accuracy),
+        ("type_acc", type_accuracy),
       ]
   )
 

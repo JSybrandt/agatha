@@ -196,7 +196,6 @@ def train(config:cpb.AbstractGeneratorConfig):
       model.parameters(),
       # facebook paper says linear growth with batch size
       lr=config.sys.learning_rate*hvd.size(),
-      momentum=0.9
   )
   # Update everybody
   # in the case we loaded from a checkpoint, this is very important
@@ -211,6 +210,14 @@ def train(config:cpb.AbstractGeneratorConfig):
   # Number of iterations per-worker
   num_batches = int(
       config.examples_per_epoch / (config.sys.batch_size * hvd.size())
+  )
+
+  scheduler = torch.optim.lr_scheduler.OneCycleLR(
+      optimizer=optimizer,
+      max_lr=1,
+      steps_per_epoch=num_batches,
+      epochs=config.sys.num_epochs,
+      pct_start=(2000.0/num_batches*config.sys.num_epochs),
   )
 
   if hvd.rank() == 0:
@@ -235,8 +242,8 @@ def train(config:cpb.AbstractGeneratorConfig):
           pre[valid].view(-1, pre.shape[2]),
           exp[valid].view(-1),
       )
-    return part(predicted["text"], expected["text"]) \
-        + part(predicted["types"], expected["types"])
+    return 0.9*part(predicted["text"], expected["text"]) \
+        + 0.1*part(predicted["types"], expected["types"])
 
   def after_loss_calculation(loss):
       loss.backward()
@@ -245,6 +252,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       with optimizer.skip_synchronize():
         optimizer.step()
       optimizer.zero_grad()
+      scheduler.step()
 
   def on_epoch_start(epoch):
     if hvd.rank() == 0:

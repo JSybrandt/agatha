@@ -62,6 +62,8 @@ class _AbstractWindowGeneratorWorker(mp.Process):
       records:List[Record],
       batch_size:int,
       text_size:int,
+      return_eval_data:bool=False,
+      return_training_data:bool=True,
       **tokenizer_kwargs,
   ):
     """
@@ -79,6 +81,8 @@ class _AbstractWindowGeneratorWorker(mp.Process):
     self.text_size = text_size
     self.num_batches = int(len(self.records) / self.batch_size)
     self.queue = queue
+    self.return_training_data = return_training_data
+    self.return_eval_data = return_eval_data
 
 
   def run(self):
@@ -86,7 +90,10 @@ class _AbstractWindowGeneratorWorker(mp.Process):
       self.queue.put(self.generate_batch(batch_idx))
 
 
-  def generate_batch(self, batch_idx:int)->Dict[str, torch.tensor]:
+  def generate_batch(
+      self,
+      batch_idx:int,
+  )->Dict[str, torch.tensor]:
     batch_start_idx = batch_idx * self.batch_size
     assert 0 <= batch_start_idx < len(self.records) - self.batch_size
     context = []
@@ -94,36 +101,40 @@ class _AbstractWindowGeneratorWorker(mp.Process):
     types = []
     shifted_text = []
     shifted_types = []
+    remaining_texts = []
+    remaining_types = []
     # Make batch
     for record in self.records[batch_start_idx:batch_start_idx+self.batch_size]:
       data = self.abstract_to_training_data(record)
       context.append(torch.LongTensor(data["context"]))
       text.append(torch.LongTensor(data["text"][:-1]))
       types.append(torch.LongTensor(data["types"][:-1]))
-      # we are going to set the domain of shifted indices to the smaller ranges
-      shifted_text.append(
-          torch.LongTensor(data["text"][1:])\
-              -self.tokenizer.vocab_start_idx
+      if self.return_training_data:
+        # we are going to set the domain of shifted indices to the smaller ranges
+        shifted_text.append(
+            torch.LongTensor(data["text"][1:])\
+                -self.tokenizer.vocab_start_idx
+        )
+        shifted_types.append(
+            torch.LongTensor(data["types"][1:])\
+                -self.tokenizer.sent_type_start_idx
+        )
+      if self.return_eval_data:
+        remaining_texts.append(torch.LongTensor(data["remaining_text"]))
+        remaining_types.append(torch.LongTensor(data["remaining_types"]))
 
-      )
-      shifted_types.append(
-          torch.LongTensor(data["types"][1:])\
-              -self.tokenizer.sent_type_start_idx
-      )
-
-    # pad
-    context = torch.nn.utils.rnn.pad_sequence(context)
-    text = torch.nn.utils.rnn.pad_sequence(text)
-    types = torch.nn.utils.rnn.pad_sequence(types)
-    shifted_text = torch.nn.utils.rnn.pad_sequence(shifted_text)
-    shifted_types = torch.nn.utils.rnn.pad_sequence(shifted_types)
-    return {
-        "context": context,
-        "text": text,
-        "types": types,
-        "shifted_text": shifted_text,
-        "shifted_types": shifted_types,
+    res = {
+        "context": torch.nn.utils.rnn.pad_sequence(context),
+        "text": torch.nn.utils.rnn.pad_sequence(text),
+        "types": torch.nn.utils.rnn.pad_sequence(types),
     }
+    if self.return_training_data:
+      res["shifted_text"] = torch.nn.utils.rnn.pad_sequence(shifted_text)
+      res["shifted_types"] = torch.nn.utils.rnn.pad_sequence(shifted_types)
+    if self.return_eval_data:
+      res["remaining_text"] = torch.nn.utils.rnn.pad_sequence(remaining_texts)
+      res["remaining_types"] = torch.nn.utils.rnn.pad_sequence(remaining_types)
+    return res
 
 
   def abstract_to_training_data(
@@ -161,8 +172,12 @@ class _AbstractWindowGeneratorWorker(mp.Process):
     )
     text = all_text_tokens[selection_start:selection_end]
     types = all_type_tokens[selection_start:selection_end]
-    return {
+    res = {
         "context": context,
         "text": text,
         "types": types,
     }
+    if self.return_eval_data:
+      res["remaining_text"] = all_text_tokens[selection_end:]
+      res["remaining_types"] = all_type_tokens[selection_end:]
+    return res

@@ -151,39 +151,21 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
       size=hvd.size(),
   )
 
-  gen_batch_gen = GenerationEvalBatchGenerator(
-      tokenizer=tokenizer,
-      records=testing_data,
+  batch_generator = AbstractWindowGenerator(
+      num_workers=3,
+      queue_size=10,
       device=device,
+      # Batch generator kwargs
+      records=training_data,
       batch_size=config.sys.batch_size,
-      seed_text_size=config.text_length,
-      follow_text_size=config.text_length,
-      reference_step_size=5,
-      max_num_references=5,
+      text_size=config.text_length,
+      return_eval_data=True,
+      return_training_data=False,
+      # tokenizer kwargs
+      tokenizer_model_path=paths["tokenizer_model_path"],
+      extra_data_path=paths["model_extra_data_path"],
   )
-
-  def decode(batch_idx, tensor):
-    return tokenizer.decode_all(
-        tensor[:, batch_idx].tolist(),
-    )
-
-  for seeds, follows, references in gen_batch_gen.generate():
-    predictions = generate(
-        model=model,
-        tokenizer=tokenizer,
-        seeds=seeds,
-        follow_size=config.max_follow_text_length,
-    )
-    assert seeds.shape[1] == follows.shape[1] \
-        == predictions.shape[1] == config.sys.batch_size
-    for batch_idx in range(config.sys.batch_size):
-      print("Seed:")
-      print(decode(batch_idx, seeds)["text"])
-      print("Follow:")
-      print(decode(batch_idx, follows)["text"])
-      print("Prediction:")
-      print(decode(batch_idx, predictions)["text"])
-      print()
+  # todo: rewrite with generation generator
 
 
 def train(config:cpb.AbstractGeneratorConfig):

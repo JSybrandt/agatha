@@ -58,7 +58,7 @@ class AbstractGeneratorTokenizer(object):
     # Sentence Types
     self.sent_type_size = len(INTERESTING_SENTENCE_LABLES)
     self.sent_type_start_idx = self.special_end_idx
-    self.sent_type_end_idx = self.sent_type_size
+    self.sent_type_end_idx = self.sent_type_start_idx + self.sent_type_size
     # Dates
     self.year_size = get_current_year() - self.oldest_year
     self.year_start_idx = self.sent_type_end_idx

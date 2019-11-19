@@ -7,6 +7,9 @@ from pymoliere.config import config_pb2 as cpb, proto_util
 from pymoliere.construct import dask_checkpoint, file_util, text_util
 from pymoliere.ml.model_summary import print_model_summary
 from pymoliere.ml.abstract_generator.misc_util import HashedIndex, OrderedIndex
+from pymoliere.ml.abstract_generator.generation_util import (
+    generate_new_text,
+)
 from pymoliere.ml.abstract_generator.abstract_generator import (
     INTERESTING_SENTENCE_LABLES,
     AbstractGeneratorTokenizer,
@@ -169,7 +172,7 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
   testing_data = split_partitions_across_ranks(
       testing_data_dir,
       rank=hvd.rank(),
-      size=hvd.size(),
+      size=10 if config.debug else hvd.size(),
   )
 
   batch_generator = AbstractWindowGenerator(
@@ -177,8 +180,8 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
       queue_size=10,
       device=device,
       # Batch generator kwargs
-      records=training_data,
-      batch_size=config.sys.batch_size,
+      records=testing_data,
+      batch_size=1,
       text_size=config.text_length,
       return_eval_data=True,
       return_training_data=False,
@@ -186,8 +189,23 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
       tokenizer_model_path=paths["tokenizer_model_path"],
       extra_data_path=paths["model_extra_data_path"],
   )
-  # todo: rewrite with generation generator
 
+  for batch in batch_generator.generate():
+    print(
+        "Original Text:",
+        tokenizer.decode_text(batch["text"].flatten().tolist())
+    )
+    text_generator = generate_new_text(
+        model=model,
+        tokenizer=tokenizer,
+        context=batch["context"],
+        text=batch["text"],
+        types=batch["types"]
+    )
+    texts = []
+    for _ in range(100):
+      texts.append(next(text_generator)[0])
+    print("Following text:", tokenizer.decode_text(texts))
 
 def train(config:cpb.AbstractGeneratorConfig):
   init_everything_for_hvd()

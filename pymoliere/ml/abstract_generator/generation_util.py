@@ -22,23 +22,32 @@ def generate_new_text(
   assert text.shape[0] == types.shape[0]
   assert context.shape[1] == text.shape[1] == types.shape[1] == 1
 
+  tmp_text = text.clone()
+  tmp_types = types.clone()
+
   while True:
-    text = torch.LongTensor(text.flatten().tolist() + [tokenizer.mask_idx]).unsqueeze(1)
-    types = torch.LongTensor(types.flatten().tolist() + [tokenizer.mask_idx]).unsqueeze(1)
-    if text.shape[0] > model.max_text_length:
-      text = text[-model.max_text_length:]
-      types = types[-model.max_text_length:]
+    text[:-1, 0] = tmp_text[1:, 0]
+    text[-1, 0] = tokenizer.mask_idx
+    types[:-1, 0] = tmp_types[1:, 0]
+    types[-1, 0] = tokenizer.mask_idx
+
     predictions = model(context, text, types)
-    new_word = predictions["text"][-1, 0].argmax() \
+
+    new_word = predictions["text"][-1, 0, :].argmax() \
         + tokenizer.vocab_start_idx
-    new_type = predictions["types"][-1, 0].argmax() \
+
+    new_type = predictions["types"][-1, 0, :].argmax() \
         + tokenizer.sent_type_start_idx
-    print(new_word, new_type)
+
     yield (
-        tokenizer.decode_idx(int(new_word)),
-        tokenizer.decode_idx(int(new_type))
+        int(new_word),
+        int(new_type)
     )
-    text[-1, 0] = new_word
-    types[-1, 0] = new_type
+
+    tmp_text = text.clone()
+    tmp_text[-1, 0] = new_word
+
+    tmp_types = types.clone()
+    tmp_types[-1, 0] = new_type
 
 

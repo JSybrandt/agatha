@@ -49,11 +49,6 @@ class AbstractWindowGenerator(object):
     for p in self.processes:
       p.terminate()
 
-  def __del__(self):
-    for p in self.processes:
-      p.terminate()
-
-
 
 class _AbstractWindowGeneratorWorker(mp.Process):
   def __init__(

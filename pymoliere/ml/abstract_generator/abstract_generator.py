@@ -128,8 +128,8 @@ class AbstractGeneratorTokenizer(object):
       return INDEX_TO_SENTENCE_LABEL[idx - self.sent_type_start_idx]
     if self.year_start_idx <= idx < self.year_end_idx:
       return str(idx - self.year_start_idx + self.oldest_year)
-    if self.author_start_idx <= idx < self.author_end_idx:
-      return ",".join(self.author_index.get_elements(idx - self.author_start_idx))
+    # if self.author_start_idx <= idx < self.author_end_idx:
+      # return ",".join(self.author_index.get_elements(idx - self.author_start_idx))
     if self.mesh_start_idx <= idx < self.mesh_end_idx:
       return ",".join(self.mesh_index.get_elements(idx - self.mesh_start_idx))
     if self.vocab_start_idx <= idx < self.vocab_end_idx:

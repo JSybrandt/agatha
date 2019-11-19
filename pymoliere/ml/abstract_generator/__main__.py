@@ -26,6 +26,25 @@ import os
 
 MODES = ["train", "evaluate", "prep"]
 
+# Taken from transformers module. This function (get_linear_schedule_with_warmup)
+# is under the Apache2 License
+def get_linear_schedule_with_warmup(
+    optimizer,
+    num_warmup_steps,
+    num_training_steps,
+    last_epoch=-1
+):
+  """
+    Create a schedule with a learning rate that decreases linearly after
+    linearly increasing during a warmup period.
+  """
+  def lr_lambda(current_step):
+    if current_step < num_warmup_steps:
+      return float(current_step) / float(max(1, num_warmup_steps))
+    return max(0.0, float(num_training_steps - current_step) \
+        / float(max(1, num_training_steps - num_warmup_steps)))
+  return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch)
+
 def items_to_hashed_index(collection:Iterable[str], max_index:int)->HashedIndex:
   res = HashedIndex(max_index=max_index)
   for elem in collection:
@@ -214,12 +233,16 @@ def train(config:cpb.AbstractGeneratorConfig):
       config.examples_per_epoch / (config.sys.batch_size * hvd.size())
   )
 
-  scheduler = torch.optim.lr_scheduler.OneCycleLR(
+  if hvd.rank() == 0:
+    print(
+        f"Expecting to compute {num_batches*config.sys.num_epochs} batches, "
+        f"each with {config.sys.batch_size*hvd.size()} examples."
+    )
+
+  scheduler = get_linear_schedule_with_warmup(
       optimizer=optimizer,
-      max_lr=1,
-      steps_per_epoch=num_batches,
-      epochs=config.sys.num_epochs,
-      pct_start=(2000.0/(num_batches*config.sys.num_epochs)),
+      num_warmup_steps=2000,
+      num_training_steps=num_batches * config.sys.num_epochs,
   )
 
   if hvd.rank() == 0:

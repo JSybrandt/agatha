@@ -182,7 +182,7 @@ class AbstractGenerator(torch.nn.Module):
     self.embeddings = torch.nn.Embedding(
         len(tokenizer),
         embedding_dim,
-        padding_idx=0,
+        padding_idx=tokenizer.padding_idx,
     )
 
     # Positional encoding is (Max Sequence Length, 1, Embedding Dim)

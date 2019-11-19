@@ -5,6 +5,16 @@ from pymoliere.util.misc_util import Record
 from math import log
 import pandas as pd
 
+def nxgraphs_to_tsv_edge_list(graphs:Iterable[nx.Graph])->Iterable[str]:
+  res = []
+  for graph in graphs:
+    for (source, target, data) in graph.edges(data=True):
+      source = source.replace("\t", " ")
+      target = target.replace("\t", " ")
+      weight = data["weight"]
+      res.append(f"{source}\t{target}\t{weight}")
+  return res
+
 def nxgraph_to_edge_records(graph:nx.Graph)->Iterable[Record]:
   return [
       {

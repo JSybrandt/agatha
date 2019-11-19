@@ -21,28 +21,11 @@ from pymoliere.ml.sentence_classifier import (
 )
 from copy import copy
 from pathlib import Path
-from random import shuffle
-from typing import Dict, Any, Callable
 import dask
 import dask.bag as dbag
-import faiss
-import socket
-from pprint import pprint
 import shutil
-from google.protobuf.json_format import MessageToDict
-from datetime import datetime
-import pymoliere
+import json
 
-def get_meta_record(config:cpb.ConstructConfig)->misc_util.Record:
-  """
-  These are things we would want to store that indicate the properties of the
-  system
-  """
-  metadata = MessageToDict(config)
-  metadata["__date__"] = str(datetime.now())
-  metadata["__version__"] = pymoliere.__VERSION__
-  metadata["id"] = "__meta__"
-  return metadata
 
 if __name__ == "__main__":
   config = cpb.ConstructConfig()
@@ -91,6 +74,16 @@ if __name__ == "__main__":
   _, faiss_index_dir = scratch("faiss_index")
   _, checkpoint_dir = scratch("dask_checkpoints")
   faiss_index_path = faiss_index_dir.joinpath("final.index")
+  # This directory holds the information necessary to import the mongo database
+  _, mongo_data_dir = scratch("mongo_data")
+
+  # export directories
+  # This one will hold edge tsv data
+  mongo_graph_dir = mongo_data_dir.joinpath("graph")
+  mongo_graph_dir.mkdir(parents=True, exist_ok=True)
+  # This one will hold sentences stored as json dumps
+  mongo_sentences_dir = mongo_data_dir.joinpath("sentences")
+  mongo_sentences_dir.mkdir(parents=True, exist_ok=True)
 
   # Initialize Helper Objects ###
   print("Registering Helper Objects")
@@ -123,10 +116,6 @@ if __name__ == "__main__":
       data_dir=Path(config.pretrained.sentence_classifier_path)
     ))
   dpg.add_global_preloader(client=dask_client, preloader=preloader)
-
-  print("Writing meta info to database.")
-  database_util.clear_collection("meta")
-  database_util.put([get_meta_record(config)], collection="meta")
 
   if config.cluster.clear_checkpoints:
     print("Clearing checkpoint dir")
@@ -260,14 +249,6 @@ if __name__ == "__main__":
   )
   ckpt("sentence_edges_adj")
 
-  # Join them all together and write to DB
-  sentence_edges = dbag.concat([
-    sentence_edges_terms,
-    sentence_edges_entities,
-    sentence_edges_mesh,
-    sentence_edges_ngrams,
-    sentence_edges_adj,
-  ])
 
   # At this point we have to do the embedding
 
@@ -360,24 +341,23 @@ if __name__ == "__main__":
   )
   ckpt("nearest_neighbors_edges")
 
-  print("Writing everything to database")
-  dask.compute(
-      [
-        database_util.put_bag(
-          sentence_edges.map(graph_util.nxgraph_to_edge_records),
-          collection="graph",
-          indexed_field_name="source",
-        ),
-        database_util.put_bag(
-          nearest_neighbors_edges.map(graph_util.nxgraph_to_edge_records),
-          collection="graph",
-          indexed_field_name="source",
-        ),
-        database_util.put_bag(
-          sentences_with_bow,
-          collection="sentences",
-          indexed_field_name="id"
-        ),
-      ],
-      sync=True,
+  print("Writing edges to database dump")
+  (
+      dbag.concat([
+        sentence_edges_terms,
+        sentence_edges_entities,
+        sentence_edges_mesh,
+        sentence_edges_ngrams,
+        sentence_edges_adj,
+        nearest_neighbors_edges,
+      ])
+      .map_partitions(graph_util.nxgraphs_to_tsv_edge_list)
+      .to_textfiles(f"{mongo_graph_dir}/*.tsv")
+  )
+
+  print("Writing sentences to database dump")
+  (
+      sentences_with_bow
+      .map(json.dumps)
+      .to_textfiles(f"{mongo_sentences_dir}/*.json")
   )

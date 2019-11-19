@@ -70,7 +70,8 @@ def nearest_neighbors_network_from_index(
       graph_keys = database_util.get(
           values=hashes,
           collection=inverted_index_collection,
-          field_name="hash"
+          field_name="hash",
+          desired_fields=["strid"]
       )
       for k, v in zip(hashes, graph_keys):
         inverted_index[k] = v["strid"]

@@ -66,10 +66,19 @@ def get(
     values:Iterable[str],
     collection:str,
     field_name:str,
+    desired_fields:List[str]=None,
     **kwargs
 )->Iterable[Record]:
   db = dpg.get("database:db")
-  return [db[collection].find_one({field_name: v}) for v in values]
+  if desired_fields is None:
+    proj_obj = {}
+  else:
+    proj_obj = {
+        field_name: 1
+        for field_name in desired_fields
+    }
+  proj_obj["_id"] = 0
+  return [db[collection].find_one({field_name: v}, proj_obj) for v in values]
 
 
 def clear_collection(collection:str, **kwargs)->None:
@@ -81,7 +90,7 @@ def put_bag(
     bag:dbag.Bag,
     collection:str,
     indexed_field_name:Optional[str]=None,
-    index_type:MONGO_INDEX=pymongo.TEXT,
+    index_type:MONGO_INDEX=pymongo.HASHED,
 )->dbag.Bag:
   """
   Writes all the records to collection. Sets index if specified. Returns a bag
@@ -92,7 +101,6 @@ def put_bag(
     put(*args, **kwargs)
     return [True]
 
-  index_task = None
   if indexed_field_name is not None:
     print(f"\t- Setting index: {collection}.{indexed_field_name}:{index_type}")
     set_index(
@@ -104,7 +112,6 @@ def put_bag(
     dask.delayed(put_part_wrapper)(
       records=part,
       collection=collection,
-      index_task=index_task
     )
     for part in bag.to_delayed()
   ])

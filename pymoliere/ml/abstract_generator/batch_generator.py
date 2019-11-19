@@ -39,11 +39,10 @@ class AbstractWindowGenerator(object):
       p.start()
     try:
       while True:
-        kwargs, target =  self.queue.get(block=True, timeout=1)
-        for key in kwargs:
-          kwargs[key] = kwargs[key].to(self.device)
-        target = target.to(self.device)
-        yield kwargs, target
+        data =  self.queue.get(block=True, timeout=1)
+        for key in data:
+          data[key] = data[key].to(self.device)
+        yield data
     except queue.Empty:
       print("Empty queue")
       pass
@@ -62,9 +61,9 @@ class _AbstractWindowGeneratorWorker(mp.Process):
       queue:mp.Queue,
       records:List[Record],
       batch_size:int,
-      seed_text_size:int,
-      follow_text_size:int,
-      difficulty:float,
+      text_size:int,
+      return_eval_data:bool=False,
+      return_training_data:bool=True,
       **tokenizer_kwargs,
   ):
     """
@@ -75,119 +74,110 @@ class _AbstractWindowGeneratorWorker(mp.Process):
       - batch_size: the number of examples per iteration
     """
     super(_AbstractWindowGeneratorWorker, self).__init__()
-    assert 0 <= difficulty <= 1
     # Can't pickle the tokenizer, so we need to construct one per-process
     self.tokenizer = AbstractGeneratorTokenizer(**tokenizer_kwargs)
     self.records = records
     self.batch_size = batch_size
-    self.max_seed_text_size = seed_text_size
-    self.max_follow_text_size = follow_text_size
-    self.difficulty = difficulty
+    self.text_size = text_size
     self.num_batches = int(len(self.records) / self.batch_size)
     self.queue = queue
+    self.return_training_data = return_training_data
+    self.return_eval_data = return_eval_data
+
 
   def run(self):
     for batch_idx in range(self.num_batches):
       self.queue.put(self.generate_batch(batch_idx))
 
-  def generate_batch(self, batch_idx:int)->Tuple[Dict[str, torch.tensor], torch.tensor]:
+
+  def generate_batch(
+      self,
+      batch_idx:int,
+  )->Dict[str, torch.tensor]:
     batch_start_idx = batch_idx * self.batch_size
     assert 0 <= batch_start_idx < len(self.records) - self.batch_size
-    seed = []
-    follow = []
+    context = []
+    text = []
+    types = []
+    shifted_text = []
+    shifted_types = []
+    remaining_texts = []
+    remaining_types = []
     # Make batch
     for record in self.records[batch_start_idx:batch_start_idx+self.batch_size]:
-      s, f = self.abstract_to_training_data(record)
-      seed.append(torch.LongTensor(s))
-      follow.append(torch.LongTensor(f))
-    # pad
-    seed = torch.nn.utils.rnn.pad_sequence(seed)
-    follow = torch.nn.utils.rnn.pad_sequence(follow)
-    # Move to dev
-    # Training masks tokens
-    corrupted = follow.clone()
-    # Introduces a change that we mask the whole output
-    batch_difficulty = torch.rand(1)
-    if batch_difficulty < (self.difficulty * 0.1):
-      batch_difficulty = 1
-    else:
-      batch_difficulty *= self.difficulty
-    corrupted[
-        torch.rand_like(corrupted, dtype=torch.float32)
-        < batch_difficulty
-    ] = self.tokenizer.mask_idx
-    return {"seed": seed, "follow": corrupted}, follow
+      data = self.abstract_to_training_data(record)
+      context.append(torch.LongTensor(data["context"]))
+      text.append(torch.LongTensor(data["text"][:-1]))
+      types.append(torch.LongTensor(data["types"][:-1]))
+      if self.return_training_data:
+        # we are going to set the domain of shifted indices to the smaller ranges
+        shifted_text.append(
+            torch.LongTensor(data["text"][1:])\
+                -self.tokenizer.vocab_start_idx
+        )
+        shifted_types.append(
+            torch.LongTensor(data["types"][1:])\
+                -self.tokenizer.sent_type_start_idx
+        )
+      if self.return_eval_data:
+        remaining_texts.append(torch.LongTensor(data["remaining_text"]))
+        remaining_types.append(torch.LongTensor(data["remaining_types"]))
+
+    res = {
+        "context": torch.nn.utils.rnn.pad_sequence(context),
+        "text": torch.nn.utils.rnn.pad_sequence(text),
+        "types": torch.nn.utils.rnn.pad_sequence(types),
+    }
+    if self.return_training_data:
+      res["shifted_text"] = torch.nn.utils.rnn.pad_sequence(shifted_text)
+      res["shifted_types"] = torch.nn.utils.rnn.pad_sequence(shifted_types)
+    if self.return_eval_data:
+      res["remaining_text"] = torch.nn.utils.rnn.pad_sequence(remaining_texts)
+      res["remaining_types"] = torch.nn.utils.rnn.pad_sequence(remaining_types)
+    return res
 
 
   def abstract_to_training_data(
       self,
       abstract:Record,
-  )->Tuple[List[int], List[int]]:
+  )->Dict[str, List[int]]:
     """
-    Given an abstract, randomly select a seed and target.
-    Process these text windows using the tokenizer.
-    Return seed and target token sequences
+    Returns context, text, and shifted
     """
 
-    year = int(abstract["date"].split("-")[0])
-    mesh_headings = abstract["mesh_headings"]
-    authors = abstract["authors"]
-
-    total_tokens = []
-    total_types = []
+    all_text_tokens = []
+    all_type_tokens = []
     for text_field in abstract["text_data"]:
-      ab_tokens = self.tokenizer.encode_text(text_field["text"])
-      ab_types = [text_field["type"]] * len(ab_tokens)
-      total_tokens += ab_tokens
-      total_types += ab_types
+      tmp_text_tokens = self.tokenizer.encode_text(text_field["text"])
+      all_type_tokens += [
+          self.tokenizer.encode_sent_type(text_field["type"])
+      ] * len(tmp_text_tokens)
+      all_text_tokens += tmp_text_tokens
 
-    # pick a window of variable size
-    # we're going to look at windows of size n/2 -> n
-    # Note, the local [seed/follow]_text_size are randomly chosen based off
-    # the object's versions.
-    seed_text_size = random.randint(
-        int(self.max_seed_text_size/2),
-        self.max_seed_text_size
-    )
-    follow_text_size = random.randint(
-        int(self.max_follow_text_size/2),
-        self.max_follow_text_size
-    )
-    seed_to_window_ratio = seed_text_size / (seed_text_size + follow_text_size)
-    # we would like a total selection of this size
-    window_size = min(
-        seed_text_size + follow_text_size,  # desired
-        len(total_tokens), # largest possible
-    )
-    assert window_size > 1
-    seed_text_size = int(seed_to_window_ratio * window_size)
-    follow_text_size = window_size - seed_text_size
-    assert seed_text_size >= 1
-    assert follow_text_size >= 1
+    if len(all_type_tokens) <= self.text_size:
+      selection_start = 0
+      selection_end = len(all_text_tokens)
+    else:
+      selection_start = random.randint(0, len(all_type_tokens)-self.text_size-1)
+      selection_end = selection_start + self.text_size
 
-    assert seed_text_size + follow_text_size == window_size
-    assert window_size <= len(total_tokens)
+    assert selection_start >= 0
+    assert selection_end <= len(all_text_tokens)
+    assert 0 <= selection_start < selection_end <= len(all_text_tokens)
 
-    seed_selection_start = random.randint(0, len(total_tokens)-window_size)
-    follow_selection_start = seed_selection_start + seed_text_size
-    follow_selection_end = follow_selection_start + follow_text_size
-
-    seed = self.tokenizer.encode_all(
-        max_text_length=self.max_seed_text_size,
-        year=year,
-        authors=authors,
-        mesh_headings=mesh_headings,
-        start_sentence_type=total_types[seed_selection_start],
-        end_sentence_type=total_types[follow_selection_start-1],
-        text_indices=total_tokens[seed_selection_start:follow_selection_start]
+    context = self.tokenizer.encode_context_sequence(
+        year=int(abstract["date"].split("-")[0]),
+        authors=abstract["authors"],
+        mesh_headings=abstract["mesh_headings"],
     )
-    follow = self.tokenizer.encode_all(
-        max_text_length=self.max_follow_text_size,
-        year=year,
-        authors=authors,
-        mesh_headings=mesh_headings,
-        start_sentence_type=total_types[follow_selection_start],
-        end_sentence_type=total_types[follow_selection_start-1],
-        text_indices=total_tokens[follow_selection_start:follow_selection_end]
-    )
-    return seed, follow
+    text = all_text_tokens[selection_start:selection_end]
+    types = all_type_tokens[selection_start:selection_end]
+    res = {
+        "context": context,
+        "text": text,
+        "types": types,
+    }
+    if self.return_eval_data:
+      res["remaining_text"] = all_text_tokens[selection_end:]
+      res["remaining_types"] = all_type_tokens[selection_end:]
+    return res

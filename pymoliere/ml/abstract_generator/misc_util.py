@@ -1,5 +1,6 @@
 from pymoliere.util.misc_util import hash_str_to_int
 from typing import Any, Set
+
 class HashedIndex(object):
   """
   This class acts as a dict that maps items to a fixed range of values.
@@ -42,3 +43,44 @@ class HashedIndex(object):
 
   def has_index(self, idx:int)->bool:
     return idx in self.idx2elems
+
+class OrderedIndex(object):
+  """
+  Same exact interface as hashed index, without the hashing
+  """
+  def __init__(self):
+    self.max_index = None
+    self.idx2elem = {}
+    self.elem2idx = {}
+
+  def add(self, elem:Any)->None:
+    if self.max_index is None:
+      idx = 0
+      self.max_index = 1
+    else:
+      idx = self.max_index
+      self.max_index += 1
+    self.idx2elem[idx] = elem
+    self.elem2idx[elem] = idx
+
+  def get_index(self, elem:Any)->int:
+    if elem in self.elem2idx:
+      return self.elem2idx[elem]
+    else:
+      return None
+
+  def get_elements(self, idx:int)->Set[Any]:
+    assert 0 <= idx < self.max_index
+    if idx in self.idx2elem:
+      return {self.idx2elem[idx]}
+    else:
+      return None
+
+  def __len__(self)->int:
+    return self.max_index
+
+  def has_element(self, elem:Any)->bool:
+    return elem in self.elem2idx
+
+  def has_index(self, idx:int)->bool:
+    return idx in self.idx2elem

@@ -6,14 +6,7 @@ import pickle
 from pymoliere.config import config_pb2 as cpb, proto_util
 from pymoliere.construct import dask_checkpoint, file_util, text_util
 from pymoliere.ml.model_summary import print_model_summary
-from pymoliere.ml.abstract_generator.misc_util import HashedIndex
-from pymoliere.ml.abstract_generator.difficulty_schedule import (
-    DifficultySchedule,
-)
-from pymoliere.ml.abstract_generator.generation_util import (
-    GenerationEvalBatchGenerator,
-    generate,
-)
+from pymoliere.ml.abstract_generator.misc_util import HashedIndex, OrderedIndex
 from pymoliere.ml.abstract_generator.abstract_generator import (
     INTERESTING_SENTENCE_LABLES,
     AbstractGeneratorTokenizer,
@@ -33,8 +26,33 @@ import os
 
 MODES = ["train", "evaluate", "prep"]
 
-def index_items(collection:Iterable[str], max_index:int)->HashedIndex:
+# Taken from transformers module. This function (get_linear_schedule_with_warmup)
+# is under the Apache2 License
+def get_linear_schedule_with_warmup(
+    optimizer,
+    num_warmup_steps,
+    num_training_steps,
+    last_epoch=-1
+):
+  """
+    Create a schedule with a learning rate that decreases linearly after
+    linearly increasing during a warmup period.
+  """
+  def lr_lambda(current_step):
+    if current_step < num_warmup_steps:
+      return float(current_step) / float(max(1, num_warmup_steps))
+    return max(0.0, float(num_training_steps - current_step) \
+        / float(max(1, num_training_steps - num_warmup_steps)))
+  return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch)
+
+def items_to_hashed_index(collection:Iterable[str], max_index:int)->HashedIndex:
   res = HashedIndex(max_index=max_index)
+  for elem in collection:
+    res.add(elem)
+  return res
+
+def items_to_ordered_index(collection:Iterable[str])->OrderedIndex:
+  res = OrderedIndex()
   for elem in collection:
     res.add(elem)
   return res
@@ -107,8 +125,6 @@ def get_tokenizer_from_config(
   return AbstractGeneratorTokenizer(
       tokenizer_model_path=tokenizer_model_path,
       extra_data_path=extra_data_path,
-      required_author_count=config.max_author_count,
-      required_mesh_count=config.max_mesh_count,
   )
 
 def get_model_from_config(
@@ -116,18 +132,14 @@ def get_model_from_config(
     tokenizer:AbstractGeneratorTokenizer,
 )->AbstractGenerator:
   return AbstractGenerator(
-      embedding_size=len(tokenizer),
+      tokenizer=tokenizer,
       embedding_dim=config.embedding_dim,
-      max_text_length=max(
-        config.max_seed_text_length,
-        config.max_follow_text_length
-      ),
+      max_text_length=config.text_length,
       num_attention_heads=config.num_attention_heads,
       num_encoder_layers=config.num_encoder_layers,
       num_decoder_layers=config.num_decoder_layers,
       intermediate_dropout=0.1,
       intermediate_feedforward_dim=config.hidden_fc_size,
-      num_metadata_embeddings=tokenizer.num_metadata_embeddings()
   )
 
 def get_device(config:cpb.AbstractGeneratorConfig)->torch.device:
@@ -160,39 +172,21 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
       size=hvd.size(),
   )
 
-  gen_batch_gen = GenerationEvalBatchGenerator(
-      tokenizer=tokenizer,
-      records=testing_data,
+  batch_generator = AbstractWindowGenerator(
+      num_workers=2,
+      queue_size=10,
       device=device,
+      # Batch generator kwargs
+      records=training_data,
       batch_size=config.sys.batch_size,
-      seed_text_size=config.max_seed_text_length,
-      follow_text_size=config.max_follow_text_length,
-      reference_step_size=5,
-      max_num_references=5,
+      text_size=config.text_length,
+      return_eval_data=True,
+      return_training_data=False,
+      # tokenizer kwargs
+      tokenizer_model_path=paths["tokenizer_model_path"],
+      extra_data_path=paths["model_extra_data_path"],
   )
-
-  def decode(batch_idx, tensor):
-    return tokenizer.decode_all(
-        tensor[:, batch_idx].tolist(),
-    )
-
-  for seeds, follows, references in gen_batch_gen.generate():
-    predictions = generate(
-        model=model,
-        tokenizer=tokenizer,
-        seeds=seeds,
-        follow_size=config.max_follow_text_length,
-    )
-    assert seeds.shape[1] == follows.shape[1] \
-        == predictions.shape[1] == config.sys.batch_size
-    for batch_idx in range(config.sys.batch_size):
-      print("Seed:")
-      print(decode(batch_idx, seeds)["text"])
-      print("Follow:")
-      print(decode(batch_idx, follows)["text"])
-      print("Prediction:")
-      print(decode(batch_idx, predictions)["text"])
-      print()
+  # todo: rewrite with generation generator
 
 
 def train(config:cpb.AbstractGeneratorConfig):
@@ -219,11 +213,10 @@ def train(config:cpb.AbstractGeneratorConfig):
   model.to(device)
 
   loss_fn = torch.nn.NLLLoss()
-  optimizer = torch.optim.SGD(
+  optimizer = torch.optim.AdamW(
       model.parameters(),
       # facebook paper says linear growth with batch size
       lr=config.sys.learning_rate*hvd.size(),
-      momentum=0.9
   )
   # Update everybody
   # in the case we loaded from a checkpoint, this is very important
@@ -235,16 +228,21 @@ def train(config:cpb.AbstractGeneratorConfig):
       named_parameters=model.named_parameters(),
   )
 
-  # Determines the rate at which we're going to mask tokens
-  difficulty_schedule = DifficultySchedule(
-    initial_difficulty=config.difficulty_schedule.initial_difficulty,
-    difficulty_step=config.difficulty_schedule.difficulty_step,
-    target_performance=config.difficulty_schedule.target_text_accuracy,
-  )
-
   # Number of iterations per-worker
   num_batches = int(
       config.examples_per_epoch / (config.sys.batch_size * hvd.size())
+  )
+
+  if hvd.rank() == 0:
+    print(
+        f"Expecting to compute {num_batches*config.sys.num_epochs} batches, "
+        f"each with {config.sys.batch_size*hvd.size()} examples."
+    )
+
+  scheduler = get_linear_schedule_with_warmup(
+      optimizer=optimizer,
+      num_warmup_steps=2000,
+      num_training_steps=num_batches * config.sys.num_epochs,
   )
 
   if hvd.rank() == 0:
@@ -252,24 +250,28 @@ def train(config:cpb.AbstractGeneratorConfig):
   training_data = split_partitions_across_ranks(
       training_data_dir,
       rank=hvd.rank(),
-      size=hvd.size(),
+      size=100 if config.debug else hvd.size(),
   )
+
+  if config.debug:
+    print_model_summary(model)
 
   # At this point, we just need to run train.
   # To do so, we're going to define a bunch of callback functions
 
   def loss_wrapper(predicted, expected):
-    assert len(predicted.shape) == 3
-    assert len(expected.shape) == 2
-    assert predicted.shape[0] == expected.shape[0]
-    assert predicted.shape[1] == expected.shape[1]
-    # discard padding
     valid = expected != tokenizer.padding_idx
-    vocab_size = predicted.shape[2]
-    return loss_fn(
-        predicted[valid].view(-1, vocab_size),
-        expected[valid].view(-1),
-    )
+    def part(pre, exp):
+      assert len(pre.shape) == 3
+      assert len(exp.shape) == 2
+      assert pre.shape[0] == exp.shape[0]
+      assert pre.shape[1] == exp.shape[1]
+      return loss_fn(
+          pre[valid].view(-1, pre.shape[2]),
+          exp[valid].view(-1),
+      )
+    return 0.9*part(predicted["text"], expected["text"]) \
+        + 0.1*part(predicted["types"], expected["types"])
 
   def after_loss_calculation(loss):
       loss.backward()
@@ -277,6 +279,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
       with optimizer.skip_synchronize():
         optimizer.step()
+      scheduler.step()
       optimizer.zero_grad()
 
   def on_epoch_start(epoch):
@@ -284,7 +287,6 @@ def train(config:cpb.AbstractGeneratorConfig):
       print()
       print()
       print("Epoch:", epoch)
-      print("Difficulty:", difficulty_schedule.current_difficulty())
     if (
         epoch > 0
         and epoch % 5  == 0
@@ -301,34 +303,35 @@ def train(config:cpb.AbstractGeneratorConfig):
         device=device,
         # Batch generator kwargs
         records=training_data,
-        difficulty=difficulty_schedule.current_difficulty(),
         batch_size=config.sys.batch_size,
-        seed_text_size=config.max_seed_text_length,
-        follow_text_size=config.max_follow_text_length,
+        text_size=config.text_length,
         # tokenizer kwargs
         tokenizer_model_path=paths["tokenizer_model_path"],
         extra_data_path=paths["model_extra_data_path"],
-        required_author_count=config.max_author_count,
-        required_mesh_count=config.max_mesh_count,
     )
     for batch in generator.generate():
-        yield batch
+      model_in = {x: batch[x] for x in ["context", "text", "types"]}
+      targets = {
+          x.split("_")[-1]: batch[x]
+          for x in ["shifted_text", "shifted_types"]
+      }
+      yield model_in, targets
 
-  def text_accuracy(predicted, expected):
-    # Predicted is size (F, B, V) and expected is size (F, B)
+  def partial_accuracy(predicted, expected, value):
+    predicted = predicted[value].argmax(dim=2)
+    expected = expected[value]
     assert predicted.shape[0] == expected.shape[0]
     assert predicted.shape[1] == expected.shape[1]
-    metadata_size = tokenizer.num_metadata_embeddings()
-    assert predicted.shape[0] > metadata_size + 2
-    # strip out metadata columns
-    predicted = predicted[metadata_size:, :, :].argmax(dim=2)
-    expected = expected[metadata_size:, :]
     mask = torch.ones_like(expected, dtype=torch.bool)
-    # set to false the padding and sep tokens, leaving only the real text
     mask &= expected != tokenizer.padding_idx
-    mask &= expected != tokenizer.sep_idx
     # Correct text prediction rate across batch
     return (predicted[mask] == expected[mask]).float().mean()
+
+  def text_accuracy(predicted, expected):
+    return partial_accuracy(predicted, expected, "text")
+
+  def type_accuracy(predicted, expected):
+    return partial_accuracy(predicted, expected, "types")
 
   def end_type_accuracy(predicted, expected):
     assert predicted.shape[0] == expected.shape[0]
@@ -346,7 +349,6 @@ def train(config:cpb.AbstractGeneratorConfig):
       )
       if hvd.rank() == 0:
         print("Epoch end text accuracy,", float(text_acc))
-      difficulty_schedule.update_current_performance(text_acc)
 
   train_model(
       model=model,
@@ -356,13 +358,12 @@ def train(config:cpb.AbstractGeneratorConfig):
       batch_generator=generator_wrapper,
       after_loss_calculation=after_loss_calculation,
       on_phase_end=on_phase_end,
-      disable_pbar=True,
       disable_plots=True,
       disable_batch_report=hvd.rank() != 0,
       num_batches=num_batches,
       metrics = [
         ("text_acc", text_accuracy),
-        ("end_type_acc", end_type_accuracy),
+        ("type_acc", type_accuracy),
       ]
   )
 
@@ -441,7 +442,7 @@ def prep(config:cpb.AbstractGeneratorConfig):
       .compute()
   )
   print(f"Hashing {len(all_authors)} to {config.author_hash_size}")
-  author_index = index_items(all_authors, config.author_hash_size)
+  author_index = items_to_hashed_index(all_authors, config.author_hash_size)
 
   print("Collecting all mesh headings")
   all_mesh_headings = (
@@ -450,8 +451,8 @@ def prep(config:cpb.AbstractGeneratorConfig):
       .distinct()
       .compute()
   )
-  print(f"Hashing {len(all_mesh_headings)} to {config.mesh_hash_size}")
-  mesh_index = index_items(all_mesh_headings, config.mesh_hash_size)
+  print(f"Indexing all {len(all_mesh_headings)} mesh headings")
+  mesh_index = items_to_ordered_index(all_mesh_headings)
 
   ###
 

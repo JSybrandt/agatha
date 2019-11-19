@@ -10,165 +10,35 @@ except ImportError:
  # This is a heavy dependency, and we don't want to worry all users with it.
  pass
 
-def generate(
+def generate_new_text(
   model:torch.nn.Module,
   tokenizer:AbstractGeneratorTokenizer,
-  seeds:torch.LongTensor,
-  follow_size:int,
-)->torch.Tensor:
-  """
-  Given a model and tokenizer, as well as a set of seeds:
-  For each seed, generate a sequence of length follow_size (F)
-  Seeds size: (S, B)
-  Produce a set of generations predictions: (F, B)
-  using the model.
-  """
+  context:torch.LongTensor,
+  text:torch.LongTensor,
+  types:torch.LongTensor,
+)->Iterable[Tuple[str, str]]:
 
-  batch_size = seeds.shape[1]
-  # This is what we're outputting
-  generations = torch.LongTensor(
-      follow_size+tokenizer.num_metadata_embeddings(),
-      batch_size,
-  ).to(seeds.device)
-  # start with all set to mask
-  generations[:] = tokenizer.mask_idx
+  # Only supporting batch size 1 for now
+  assert text.shape[0] == types.shape[0]
+  assert context.shape[1] == text.shape[1] == types.shape[1] == 1
 
-  while tokenizer.mask_idx in generations:
-    confidence, predictions = model(seeds, generations).max(dim=2)
-    # confidence indicates how sure the model was on each position
-    # predictions indicates the value the model wants per-position
-    # destroy the confidence of already-generated results
-    confidence[generations!=tokenizer.mask_idx] = float("-inf")
-    # what position are we most sure about?
-    most_confident_position = confidence.argmax(dim=0)
-    # most_confident_position is a vector of size B
-    # Set the most confident positions
-    generations[most_confident_position, torch.arange(batch_size)] \
-        = predictions[most_confident_position, torch.arange(batch_size)]
-  return generations
+  while True:
+    text = torch.LongTensor(text.flatten().tolist() + [tokenizer.mask_idx]).unsqueeze(1)
+    types = torch.LongTensor(types.flatten().tolist() + [tokenizer.mask_idx]).unsqueeze(1)
+    if text.shape[0] > model.max_text_length:
+      text = text[-model.max_text_length:]
+      types = types[-model.max_text_length:]
+    predictions = model(context, text, types)
+    new_word = predictions["text"][-1, 0].argmax() \
+        + tokenizer.vocab_start_idx
+    new_type = predictions["types"][-1, 0].argmax() \
+        + tokenizer.sent_type_start_idx
+    print(new_word, new_type)
+    yield (
+        tokenizer.decode_idx(int(new_word)),
+        tokenizer.decode_idx(int(new_type))
+    )
+    text[-1, 0] = new_word
+    types[-1, 0] = new_type
 
 
-class GenerationEvalBatchGenerator(object):
-  """
-  The goal here is to generate predictable inputs for the model, and a range of
-  reference outputs that could be valid to generate.
-  """
-
-  def __init__(
-      self,
-      tokenizer:AbstractGeneratorTokenizer,
-      records:List[Record],
-      device:torch.device,
-      batch_size:int,
-      seed_text_size:int,
-      follow_text_size:int,
-      reference_step_size:int,
-      max_num_references:int,
-  ):
-    """
-
-    We're going to loop through each abstract, and pull out all possible
-    non-overlapping seeds.  Then, for each seed, we're going to produce a mask,
-    as well as a list of references that could be valid follow-ups to the seed.
-    The goal will be to generate one of the references given (seed, [mask]) as
-    input.
-
-    reference_step_size: the number of tokens to jump between the start of each reference
-    max_num_references: the maximal number of references to produce
-    """
-
-    self.tokenizer = tokenizer
-    self.records = records
-    self.device = device
-    self.batch_size = batch_size
-    self.seed_text_size = seed_text_size
-    self.follow_text_size = follow_text_size
-    self.reference_step_size = reference_step_size
-    self.max_num_references = max_num_references
-    self.seed_to_window_ratio = \
-        seed_text_size / (seed_text_size + follow_text_size)
-    self.window_size = seed_text_size + follow_text_size
-
-  def generate(
-      self
-  )->Iterable[Tuple[torch.Tensor, torch.Tensor, List[List[str]]]]:
-    for batch in iter_to_batches(self.iterate_all_windows(), self.batch_size):
-      seed = torch.nn.utils.rnn.pad_sequence([s for s, f, rs in batch])
-      follow = torch.nn.utils.rnn.pad_sequence([f for s, f, rs in batch])
-      references = [rs for s, f, rs in batch]
-      yield seed.to(self.device), follow.to(self.device), references
-
-  def iterate_all_windows(
-      self
-  )->Iterable[Tuple[torch.Tensor, torch.Tensor, List[str]]]:
-    for record in self.records:
-      for seed, follow, references in self.iterate_windows_in_abstract(record):
-        yield seed, follow, references
-
-  def iterate_windows_in_abstract(
-      self,
-      abstract:Record
-  )->Iterable[Tuple[torch.Tensor, torch.Tensor, List[str]]]:
-    """
-    Returns seed, original follow, and list of references
-    """
-    # metadata
-    year = int(abstract["date"].split("-")[0])
-    mesh_headings = abstract["mesh_headings"]
-    authors = abstract["authors"]
-
-    # list of tokens and types at each token
-    total_tokens = []
-    total_types = []
-    for text_field in abstract["text_data"]:
-      ab_tokens = self.tokenizer.encode_text(text_field["text"])
-      ab_types = [text_field["type"]] * len(ab_tokens)
-      total_tokens += ab_tokens
-      total_types += ab_types
-
-    for start_idx in range(0, len(abstract), self.seed_text_size):
-      window_size = min(
-          self.window_size,
-          len(total_tokens) - start_idx
-      )
-      seed_text_size = int(window_size * self.seed_to_window_ratio)
-      follow_text_size = window_size - seed_text_size
-
-      seed_end = start_idx + seed_text_size
-      window_end = start_idx + window_size
-
-      seed = self.tokenizer.encode_all(
-          max_text_length=self.seed_text_size,
-          year=year,
-          authors=authors,
-          mesh_headings=mesh_headings,
-          start_sentence_type=total_types[start_idx],
-          end_sentence_type=total_types[seed_end-1],
-          text_indices=total_tokens[start_idx:seed_end]
-      )
-      follow = self.tokenizer.encode_all(
-          max_text_length=self.follow_text_size,
-          year=year,
-          authors=authors,
-          mesh_headings=mesh_headings,
-          start_sentence_type=total_types[seed_end],
-          end_sentence_type=total_types[window_end-1],
-          text_indices=total_tokens[seed_end:window_end]
-      )
-      references = [
-          self.tokenizer.decode_text(
-            total_tokens[ref_start_idx:(ref_start_idx+follow_text_size)]
-          )
-          for ref_start_idx in list(
-            range(
-              seed_end,
-              len(total_tokens)-follow_text_size,
-              self.reference_step_size
-            )
-          )[:self.max_num_references]
-      ]
-      yield (
-          torch.LongTensor(seed).to(self.device),
-          torch.LongTensor(follow).to(self.device),
-          references
-      )

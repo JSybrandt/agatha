@@ -97,7 +97,6 @@ def train_model(
     loss_fn:torch.nn.modules.loss._Loss,
     num_epochs:int,
     after_loss_calculation:AfterLossCalculationFn=None,
-    disable_pbar:bool=False,
     disable_plots:bool=False,
     disable_batch_report:bool=False,
     metrics:Tuple[str, MetricFn]=None,
@@ -165,6 +164,7 @@ def train_model(
       for metric_name, _ in metrics
   }
 
+  global_training_batch_idx = 0
   for epoch in range(num_epochs):
     if on_epoch_start is not None:
       on_epoch_start(epoch)
@@ -189,8 +189,7 @@ def train_model(
 
       device = get_device_from_model(model)
 
-      pbar = tqdm(gen(epoch), total=num, disable=disable_pbar)
-      for batch_idx, (in_kwargs, expected_output) in enumerate(pbar):
+      for batch_idx, (in_kwargs, expected_output) in enumerate(gen(epoch)):
         batch_timer.start_batch_time = time.monotonic()
 
         predicted_output = model(**in_kwargs)
@@ -207,18 +206,21 @@ def train_model(
 
         # Only print info on training set.
         if phase == "train":
+          global_training_batch_idx += 1
+
           metric_desc_str = " ".join([
-            f"{name}:{metric2running_sum[name]/running_total:0.4f}"
+            f"{name}:{metric2running_sum[name]/running_total:0.3f}"
             for name in metric2running_sum
           ])
-          if not disable_pbar:
-            pbar.set_description(f"{phase}:{metric_desc_str}")
-          elif not disable_batch_report:
+          if not disable_batch_report:
             if num is None:
               batch_desc = batch_idx
             else:
-              batch_desc = f"{(batch_idx/num)*100:2.2f}%"
-            print(f"Epoch:{epoch} {phase} {batch_desc} {metric_desc_str}")
+              batch_desc = f"({(batch_idx/num)*100:2.1f}%)"
+            print(
+                f"E:{epoch} B:{global_training_batch_idx} {phase} {batch_desc} "
+                f"{metric_desc_str}"
+            )
 
         if num is not None and batch_idx >= num - 1:
           break

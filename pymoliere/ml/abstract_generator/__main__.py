@@ -358,7 +358,6 @@ def train(config:cpb.AbstractGeneratorConfig):
       batch_generator=generator_wrapper,
       after_loss_calculation=after_loss_calculation,
       on_phase_end=on_phase_end,
-      disable_pbar=True,
       disable_plots=True,
       disable_batch_report=hvd.rank() != 0,
       num_batches=num_batches,

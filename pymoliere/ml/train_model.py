@@ -7,6 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 import horovod.torch as hvd
 from pymoliere.construct import file_util
 from pathlib import Path
+import time
 
 # We call this on epoch start, starts with epoch number
 OnEpochStartFn = Callable[[int], None]
@@ -85,6 +86,11 @@ def print_line_plots(line_plots:List[Tuple[str,List[float]]])->None:
 def get_device_from_model(model:torch.nn.Module)->torch.device:
   return next(model.parameters()).device
 
+def batch_timer(predicted, expected)->float:
+  # needs to be set at start of batch
+  assert hasattr(batch_timer, "start_batch_time")
+  return time.monotonic() - batch_timer.start_batch_time
+
 def train_model(
     model:torch.nn.Module,
     batch_generator:BatchGenerator,
@@ -153,7 +159,7 @@ def train_model(
   if validation_batch_generator is not None:
     phases.append("validate")
   # place loss as the first metric
-  metrics = [("loss", loss_fn)] + metrics
+  metrics = [("loss", loss_fn), ("btime", batch_timer)] + metrics
   metric2phase2values = {
       metric_name: {phase: [] for phase in phases}
       for metric_name, _ in metrics
@@ -185,6 +191,7 @@ def train_model(
 
       pbar = tqdm(gen(epoch), total=num, disable=disable_pbar)
       for batch_idx, (in_kwargs, expected_output) in enumerate(pbar):
+        batch_timer.start_batch_time = time.monotonic()
 
         predicted_output = model(**in_kwargs)
 

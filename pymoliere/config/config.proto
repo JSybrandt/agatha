@@ -172,6 +172,7 @@ message SentenceClassifierConfig {
 }
 
 message AbstractGeneratorConfig {
+  optional bool debug = 2 [default=false];
   optional ClusterConfig cluster = 1;
   optional MlConfig sys = 3;
   optional int32 examples_per_epoch = 9 [default=50000];
@@ -192,7 +193,6 @@ message AbstractGeneratorConfig {
   // These influence the quality of the tokenization
   optional int32 vocab_size = 13 [default=16000];
   optional int32 author_hash_size = 24 [default=50000];
-  optional int32 mesh_hash_size = 25 [default=25000];
 
   // If set, load these weights. Only used in "mode=train"
   optional string restore_from_checkpoint = 26;

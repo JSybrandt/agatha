@@ -6,11 +6,7 @@ import pickle
 from pymoliere.config import config_pb2 as cpb, proto_util
 from pymoliere.construct import dask_checkpoint, file_util, text_util
 from pymoliere.ml.model_summary import print_model_summary
-from pymoliere.ml.abstract_generator.misc_util import HashedIndex
-from pymoliere.ml.abstract_generator.generation_util import (
-    GenerationEvalBatchGenerator,
-    generate,
-)
+from pymoliere.ml.abstract_generator.misc_util import HashedIndex, OrderedIndex
 from pymoliere.ml.abstract_generator.abstract_generator import (
     INTERESTING_SENTENCE_LABLES,
     AbstractGeneratorTokenizer,
@@ -30,8 +26,14 @@ import os
 
 MODES = ["train", "evaluate", "prep"]
 
-def index_items(collection:Iterable[str], max_index:int)->HashedIndex:
+def items_to_hashed_index(collection:Iterable[str], max_index:int)->HashedIndex:
   res = HashedIndex(max_index=max_index)
+  for elem in collection:
+    res.add(elem)
+  return res
+
+def items_to_ordered_index(collection:Iterable[str])->OrderedIndex:
+  res = OrderedIndex()
   for elem in collection:
     res.add(elem)
   return res
@@ -152,7 +154,7 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
   )
 
   batch_generator = AbstractWindowGenerator(
-      num_workers=3,
+      num_workers=2,
       queue_size=10,
       device=device,
       # Batch generator kwargs
@@ -192,7 +194,7 @@ def train(config:cpb.AbstractGeneratorConfig):
   model.to(device)
 
   loss_fn = torch.nn.NLLLoss()
-  optimizer = torch.optim.SGD(
+  optimizer = torch.optim.AdamW(
       model.parameters(),
       # facebook paper says linear growth with batch size
       lr=config.sys.learning_rate*hvd.size(),
@@ -217,7 +219,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       max_lr=1,
       steps_per_epoch=num_batches,
       epochs=config.sys.num_epochs,
-      pct_start=(2000.0/num_batches*config.sys.num_epochs),
+      pct_start=(2000.0/(num_batches*config.sys.num_epochs)),
   )
 
   if hvd.rank() == 0:
@@ -225,8 +227,11 @@ def train(config:cpb.AbstractGeneratorConfig):
   training_data = split_partitions_across_ranks(
       training_data_dir,
       rank=hvd.rank(),
-      size=hvd.size(),
+      size=100 if config.debug else hvd.size(),
   )
+
+  if config.debug:
+    print_model_summary(model)
 
   # At this point, we just need to run train.
   # To do so, we're going to define a bunch of callback functions
@@ -251,8 +256,8 @@ def train(config:cpb.AbstractGeneratorConfig):
       torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
       with optimizer.skip_synchronize():
         optimizer.step()
-      optimizer.zero_grad()
       scheduler.step()
+      optimizer.zero_grad()
 
   def on_epoch_start(epoch):
     if hvd.rank() == 0:
@@ -415,7 +420,7 @@ def prep(config:cpb.AbstractGeneratorConfig):
       .compute()
   )
   print(f"Hashing {len(all_authors)} to {config.author_hash_size}")
-  author_index = index_items(all_authors, config.author_hash_size)
+  author_index = items_to_hashed_index(all_authors, config.author_hash_size)
 
   print("Collecting all mesh headings")
   all_mesh_headings = (
@@ -424,8 +429,8 @@ def prep(config:cpb.AbstractGeneratorConfig):
       .distinct()
       .compute()
   )
-  print(f"Hashing {len(all_mesh_headings)} to {config.mesh_hash_size}")
-  mesh_index = index_items(all_mesh_headings, config.mesh_hash_size)
+  print(f"Indexing all {len(all_mesh_headings)} mesh headings")
+  mesh_index = items_to_ordered_index(all_mesh_headings)
 
   ###
 

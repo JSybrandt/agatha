@@ -63,18 +63,19 @@ class AbstractGeneratorTokenizer(object):
     self.year_size = get_current_year() - self.oldest_year
     self.year_start_idx = self.sent_type_end_idx
     self.year_end_idx = self.year_start_idx + self.year_size
-    # Authors
-    self.author_size = len(self.author_index)
-    self.author_start_idx = self.year_end_idx
-    self.author_end_idx = self.author_start_idx + self.author_size
     # Mesh terms
     self.mesh_size = len(self.mesh_index)
-    self.mesh_start_idx = self.author_end_idx
+    self.mesh_start_idx = self.year_end_idx
     self.mesh_end_idx = self.mesh_start_idx + self.mesh_size
     # Voccab
     self.vocab_size = len(self.sp_processor)
     self.vocab_start_idx = self.mesh_end_idx
     self.vocab_end_idx = self.vocab_start_idx + self.vocab_size
+
+    # # Authors
+    # self.author_size = len(self.author_index)
+    # self.author_start_idx = self.year_end_idx
+    # self.author_end_idx = self.author_start_idx + self.author_size
 
     self.total_index_size = self.vocab_end_idx
 
@@ -149,18 +150,15 @@ class AbstractGeneratorTokenizer(object):
       mesh_headings:List[str],
   )->List[int]:
     year = self.encode_year(year)
-    authors = [
-        self.encode_author(a)
-        for a in authors
-    ] + [self.sep_idx]
+    # authors = [
+        # self.encode_author(a)
+        # for a in authors
+    # ] + [self.sep_idx]
     mesh_headings = [
         self.encode_mesh(m)
         for m in mesh_headings
-    ] + [self.sep_idx]
-    return [
-        year,
-        self.sep_idx
-    ] + authors + mesh_headings
+    ]
+    return [year] + mesh_headings + [self.sep_idx] #+ authors
 
 
 class AbstractGenerator(torch.nn.Module):
@@ -185,17 +183,15 @@ class AbstractGenerator(torch.nn.Module):
         len(tokenizer),
         embedding_dim,
         padding_idx=0,
-        sparse=True,
     )
 
-    self.embedding_norm = torch.nn.LayerNorm(embedding_dim)
-
     # Positional encoding is (Max Sequence Length, 1, Embedding Dim)
-    self.positional_encoding = torch.nn.Parameter(
+    self.register_buffer(
+        "positional_encoding",
         self.generate_positional_encoding(
           max_text_length=max_text_length,
           embedding_dim=embedding_dim,
-      )
+        )
     )
 
     self.transformer = torch.nn.Transformer(
@@ -207,6 +203,13 @@ class AbstractGenerator(torch.nn.Module):
         dropout=intermediate_dropout,
     )
 
+    # This mask has -inf for all values that follow the target input
+    # Of size (text, text)
+    self.register_buffer(
+        "text_attention_mask",
+        self.transformer.generate_square_subsequent_mask(max_text_length).t_(),
+    )
+
     self.predicted_text = torch.nn.Linear(
         embedding_dim,
         tokenizer.vocab_size,
@@ -216,8 +219,8 @@ class AbstractGenerator(torch.nn.Module):
         tokenizer.sent_type_size,
     )
 
-    self.text_softmax = torch.nn.LogSoftmax(dim=2)
-    self.type_softmax = torch.nn.LogSoftmax(dim=2)
+    self.softmax = torch.nn.LogSoftmax(dim=2)
+
 
   def generate_positional_encoding(
       self,
@@ -243,17 +246,8 @@ class AbstractGenerator(torch.nn.Module):
     result = torch.FloatTensor(
         positional_encodings,
     ).unsqueeze(1)
-    result.requires_grad = False
     assert result.shape == (max_text_length, 1, embedding_dim)
     return result
-
-  def get_padding_mask(self, tensor:torch.LongTensor)->torch.BoolTensor:
-    mask = torch.zeros_like(tensor, dtype=torch.bool)
-    mask[tensor==self.tokenizer.padding_idx] = True
-    mask.t_()  # in place transpose, required for trans interf.
-    mask.requires_grad = False
-    return mask
-
 
   def forward(
       self,
@@ -273,31 +267,20 @@ class AbstractGenerator(torch.nn.Module):
     assert text.shape[0] == types.shape[0]
     assert text.shape[0] <= self.max_text_length
 
-    # True if padded
-    context_padding_mask = self.get_padding_mask(context)
-    text_padding_mask = self.get_padding_mask(text)
-
     # Adds an additional E-sized embedding vector for each long
-    context = self.embeddings(context)
-    text = self.embeddings(text)
-    types = self.embeddings(types)
-    # Need to merge text, types, and position
-    txt_typ_pos = text + types + self.positional_encoding[:text.shape[0],:,:]
-    text_seq_len = txt_typ_pos.shape[0]
-
-    # Normalize
-    txt_typ_pos = self.embedding_norm(txt_typ_pos)
+    context_emb = self.embeddings(context)
+    text_emb = self.embeddings(text)
+    types_emb = self.embeddings(types)
+    # Need to merge text and position
+    text_length = text.shape[0]
+    txt_typ_pos = text_emb + types_emb + self.positional_encoding[text_length,:,:]
 
     encoded = self.transformer(
-        src=context,
+        src=context_emb,
+        src_key_padding_mask=(context==self.tokenizer.padding_idx).t_(),
         tgt=txt_typ_pos,
-        tgt_key_padding_mask=text_padding_mask,
-        tgt_mask=(
-          self.transformer
-          .generate_square_subsequent_mask(text_seq_len)
-          .t()
-          .to(txt_typ_pos.device)
-        ),
+        tgt_key_padding_mask=(text==self.tokenizer.padding_idx).t_(),
+        tgt_mask=self.text_attention_mask[:text_length,:text_length],
     )
 
     predicted_text = self.predicted_text(encoded)
@@ -305,6 +288,6 @@ class AbstractGenerator(torch.nn.Module):
 
     # produce softmax results across "vocab"
     return {
-        "text": self.text_softmax(predicted_text),
-        "types": self.type_softmax(predicted_type),
+        "text": self.softmax(predicted_text),
+        "types": self.softmax(predicted_type),
     }

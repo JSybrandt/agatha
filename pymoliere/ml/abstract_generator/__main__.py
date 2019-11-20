@@ -288,8 +288,9 @@ def train(config:cpb.AbstractGeneratorConfig):
           pre[valid].view(-1, pre.shape[2]),
           exp[valid].view(-1),
       )
-    return 0.9*part(predicted["text"], expected["text"]) \
-        + 0.1*part(predicted["types"], expected["types"])
+    return part(predicted["text"], expected["text"])
+    # return 0.9*part(predicted["text"], expected["text"]) \
+        # + 0.1*part(predicted["types"], expected["types"])
 
   def after_loss_calculation(loss):
       loss.backward()
@@ -507,7 +508,7 @@ def prep(config:cpb.AbstractGeneratorConfig):
       f"--model_prefix={paths['tokenizer_model_path'].parent}/tokenizer "
       f"--vocab_size={config.vocab_size} "
       f"--character_coverage=1.0 "
-      f"--model_type=unigram "
+      f"--model_type=BPE "
       f"--input_sentence_size={config.max_tokenizer_sentences} "
       f"--shuffle_input_sentence=true "
   )

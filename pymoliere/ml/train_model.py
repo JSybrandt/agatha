@@ -224,7 +224,7 @@ def train_model(
 
         if num is not None and batch_idx >= num - 1:
           break
-      if on_phase_end is not None:
+      if on_phase_end is not None and running_total > 0:
         on_phase_end(
             phase,
             {

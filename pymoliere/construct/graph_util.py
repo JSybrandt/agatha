@@ -13,17 +13,8 @@ def nxgraphs_to_tsv_edge_list(graphs:Iterable[nx.Graph])->Iterable[str]:
       target = target.replace("\t", " ")
       weight = data["weight"]
       res.append(f"{source}\t{target}\t{weight}")
+      res.append(f"{target}\t{source}\t{weight}")
   return res
-
-def nxgraph_to_edge_records(graph:nx.Graph)->Iterable[Record]:
-  return [
-      {
-        "source": s,
-        "target": t,
-        "weight": d["weight"],
-      }
-      for (s, t, d) in graph.edges(data=True)
-  ]
 
 def record_to_bipartite_edges(
     records:dbag.Bag,

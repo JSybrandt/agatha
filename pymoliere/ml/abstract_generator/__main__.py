@@ -177,18 +177,13 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
   )
 
   batch_generator = AbstractWindowGenerator(
-      num_workers=2,
-      queue_size=10,
+      tokenizer=tokenizer,
       device=device,
-      # Batch generator kwargs
       records=testing_data,
       batch_size=1,
       text_size=config.text_length,
       return_eval_data=True,
       return_training_data=False,
-      # tokenizer kwargs
-      tokenizer_model_path=paths["tokenizer_model_path"],
-      extra_data_path=paths["model_extra_data_path"],
   )
 
   for batch in batch_generator.generate():

@@ -7,6 +7,7 @@ from pymoliere.config import config_pb2 as cpb, proto_util
 from pymoliere.construct import dask_checkpoint, file_util, text_util
 from pymoliere.ml.model_summary import print_model_summary
 from pymoliere.ml.abstract_generator.misc_util import HashedIndex, OrderedIndex
+from pymoliere.ml.abstract_generator.lamb_optimizer import Lamb
 from pymoliere.ml.abstract_generator.generation_util import (
     generate_new_text,
 )
@@ -252,10 +253,11 @@ def train(config:cpb.AbstractGeneratorConfig):
   model.to(device)
 
   loss_fn = torch.nn.NLLLoss()
-  optimizer = torch.optim.AdamW(
+  optimizer = Lamb(
       model.parameters(),
       # facebook paper says linear growth with batch size
       lr=config.sys.learning_rate*hvd.size(),
+      weight_decay=0.01,
   )
   # Update everybody
   # in the case we loaded from a checkpoint, this is very important
@@ -268,13 +270,17 @@ def train(config:cpb.AbstractGeneratorConfig):
   )
 
   # Number of iterations per-worker
-  batches_per_epoch = int(examples_per_worker_per_epoch / config.sys.batch_size)
+  batches_per_epoch = min(
+      # max we can handle
+      int(examples_per_worker_per_epoch / config.sys.batch_size),
+      # amount we want to handle
+      10000
+  )
   schedule = get_linear_schedule_with_warmup(
       optimizer=optimizer,
       num_warmup_steps=2000,
       num_training_steps=batches_per_epoch * config.sys.num_epochs,
   )
-
 
   if config.debug:
     print_model_summary(model)

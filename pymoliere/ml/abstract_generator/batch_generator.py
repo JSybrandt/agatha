@@ -7,84 +7,30 @@ import random
 from pymoliere.ml.abstract_generator.abstract_generator import (
     AbstractGeneratorTokenizer
 )
-import torch.multiprocessing as mp
-import queue
 
 class AbstractWindowGenerator(object):
   def __init__(
       self,
+      tokenizer: AbstractGeneratorTokenizer,
       records:List[Record],
-      num_workers:int,
-      queue_size:int,
       device:torch.device,
-      **worker_kwargs
-  ):
-    assert num_workers > 0
-    assert queue_size > 0
-    self.queue = mp.Queue(queue_size)
-    self.device = device
-    def get_worker(idx):
-      part_size = int(len(records) / num_workers)
-      records_start = idx * part_size
-      records_end = min(len(records), records_start + part_size)
-      return _AbstractWindowGeneratorWorker(
-          queue=self.queue,
-          records=records[records_start:records_end],
-          **worker_kwargs
-      )
-    self.processes = [get_worker(i) for i in range(num_workers)]
-
-  def generate(self):
-    for p in self.processes:
-      p.start()
-    try:
-      while True:
-        data =  self.queue.get(block=True, timeout=1)
-        for key in data:
-          data[key] = data[key].to(self.device)
-        yield data
-    except queue.Empty:
-      print("Empty queue")
-      pass
-    for p in self.processes:
-      p.terminate()
-
-
-class _AbstractWindowGeneratorWorker(mp.Process):
-  def __init__(
-      self,
-      queue:mp.Queue,
-      records:List[Record],
       batch_size:int,
       text_size:int,
       return_eval_data:bool=False,
       return_training_data:bool=True,
-      **tokenizer_kwargs,
   ):
-    """
-    Generates batches asynchronously and infinitely.
-    Parameters:
-      - tokenizer: the object used to process abstracts
-      - records: the dict objects containing abstract text and metadata
-      - batch_size: the number of examples per iteration
-    """
-    super(_AbstractWindowGeneratorWorker, self).__init__()
-    # Can't pickle the tokenizer, so we need to construct one per-process
-    self.tokenizer = AbstractGeneratorTokenizer(**tokenizer_kwargs)
+    self.tokenizer=tokenizer
     self.records = records
     self.batch_size = batch_size
     self.text_size = text_size
-    self.num_batches = int(len(self.records) / self.batch_size)
-    self.queue = queue
+    self.maximum_num_batches = int(len(self.records) / self.batch_size)
     self.return_training_data = return_training_data
     self.return_eval_data = return_eval_data
+    self.device = device
 
-
-  def run(self):
-    while True:
-      for batch_idx in range(self.num_batches):
-        self.queue.put(self.generate_batch(batch_idx))
-
+  def generate(self):
+    for idx in range(self.maximum_num_batches):
+      yield self.generate_batch(idx)
 
   def generate_batch(
       self,
@@ -106,19 +52,11 @@ class _AbstractWindowGeneratorWorker(mp.Process):
       text.append(torch.LongTensor(data["text"][:-1]))
       types.append(torch.LongTensor(data["types"][:-1]))
       if self.return_training_data:
-        # we are going to set the domain of shifted indices to the smaller ranges
-        shifted_text.append(
-            torch.LongTensor(data["text"][1:])\
-                -self.tokenizer.vocab_start_idx
-        )
-        shifted_types.append(
-            torch.LongTensor(data["types"][1:])\
-                -self.tokenizer.sent_type_start_idx
-        )
+        shifted_text.append(torch.LongTensor(data["text"][1:]))
+        shifted_types.append(torch.LongTensor(data["types"][1:]))
       if self.return_eval_data:
         remaining_texts.append(torch.LongTensor(data["remaining_text"]))
         remaining_types.append(torch.LongTensor(data["remaining_types"]))
-
     res = {
         "context": torch.nn.utils.rnn.pad_sequence(context),
         "text": torch.nn.utils.rnn.pad_sequence(text),
@@ -130,8 +68,7 @@ class _AbstractWindowGeneratorWorker(mp.Process):
     if self.return_eval_data:
       res["remaining_text"] = torch.nn.utils.rnn.pad_sequence(remaining_texts)
       res["remaining_types"] = torch.nn.utils.rnn.pad_sequence(remaining_types)
-    return res
-
+    return {k: v.to(self.device) for k, v in res.items()}
 
   def abstract_to_training_data(
       self,

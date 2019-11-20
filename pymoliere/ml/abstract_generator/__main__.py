@@ -233,6 +233,7 @@ def train(config:cpb.AbstractGeneratorConfig):
         examples_per_worker_per_epoch*hvd.size()*config.sys.batch_size,
         "total examples per epoch."
     )
+    print("Effective batch size:", config.sys.batch_size*hvd.size())
 
   if hvd.rank() == 0:
     print("Preparing model")
@@ -268,7 +269,7 @@ def train(config:cpb.AbstractGeneratorConfig):
 
   # Number of iterations per-worker
   batches_per_epoch = int(examples_per_worker_per_epoch / config.sys.batch_size)
-  scheduler = get_linear_schedule_with_warmup(
+  schedule = get_linear_schedule_with_warmup(
       optimizer=optimizer,
       num_warmup_steps=2000,
       num_training_steps=batches_per_epoch * config.sys.num_epochs,
@@ -282,18 +283,18 @@ def train(config:cpb.AbstractGeneratorConfig):
   # To do so, we're going to define a bunch of callback functions
 
   def loss_wrapper(predicted, expected):
-    valid = expected != tokenizer.padding_idx
-    def part(pre, exp):
+    mask = expected["text"] != tokenizer.padding_idx
+    def part(pre, exp, start_idx):
       assert len(pre.shape) == 3
       assert len(exp.shape) == 2
       assert pre.shape[0] == exp.shape[0]
       assert pre.shape[1] == exp.shape[1]
       return loss_fn(
-          pre[valid].view(-1, pre.shape[2]),
-          exp[valid].view(-1),
+          pre[mask].view(-1, pre.shape[2]),
+          exp[mask].view(-1)-start_idx,
       )
-    return 0.9*part(predicted["text"], expected["text"]) \
-        + 0.1*part(predicted["types"], expected["types"])
+    return 0.9*part(predicted["text"], expected["text"], tokenizer.vocab_start_idx) \
+        + 0.1*part(predicted["types"], expected["types"], tokenizer.sent_type_start_idx)
 
   def after_loss_calculation(loss):
       loss.backward()
@@ -301,7 +302,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
       with optimizer.skip_synchronize():
         optimizer.step()
-      scheduler.step()
+      schedule.step()
       optimizer.zero_grad()
 
   def on_epoch_start(epoch):
@@ -320,16 +321,11 @@ def train(config:cpb.AbstractGeneratorConfig):
   def generator_wrapper(epoch):
     random.shuffle(training_data)
     generator = AbstractWindowGenerator(
-        num_workers=3,
-        queue_size=10,
+        tokenizer=tokenizer,
         device=device,
-        # Batch generator kwargs
         records=training_data,
         batch_size=config.sys.batch_size,
         text_size=config.text_length,
-        # tokenizer kwargs
-        tokenizer_model_path=paths["tokenizer_model_path"],
-        extra_data_path=paths["model_extra_data_path"],
     )
     for batch in generator.generate():
       model_in = {x: batch[x] for x in ["context", "text", "types"]}
@@ -337,23 +333,29 @@ def train(config:cpb.AbstractGeneratorConfig):
           x.split("_")[-1]: batch[x]
           for x in ["shifted_text", "shifted_types"]
       }
+      assert (model_in["text"][2,:] == targets["text"][1,:]).all()
       yield model_in, targets
 
-  def partial_accuracy(predicted, expected, value):
+  def partial_accuracy(predicted, expected, value, start_idx):
+    mask = expected != tokenizer.padding_idx
     predicted = predicted[value].argmax(dim=2)
-    expected = expected[value]
+    expected = expected[value] - start_idx
     assert predicted.shape[0] == expected.shape[0]
     assert predicted.shape[1] == expected.shape[1]
-    mask = torch.ones_like(expected, dtype=torch.bool)
-    mask &= expected != tokenizer.padding_idx
+    # if hvd.rank() == 0 and value == "text":
+      # from pprint import pprint
+      # print("Predicted", value)
+      # print(predicted[:, 0].tolist())
+      # print("Expected", value)
+      # print(expected[:, 0].tolist())
     # Correct text prediction rate across batch
     return (predicted[mask] == expected[mask]).float().mean()
 
   def text_accuracy(predicted, expected):
-    return partial_accuracy(predicted, expected, "text")
+    return partial_accuracy(predicted, expected, "text", tokenizer.vocab_start_idx)
 
   def type_accuracy(predicted, expected):
-    return partial_accuracy(predicted, expected, "types")
+    return partial_accuracy(predicted, expected, "types", tokenizer.sent_type_start_idx)
 
   def end_type_accuracy(predicted, expected):
     assert predicted.shape[0] == expected.shape[0]

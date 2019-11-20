@@ -312,7 +312,6 @@ def train(config:cpb.AbstractGeneratorConfig):
       print("Epoch:", epoch)
     if (
         epoch > 0
-        and epoch % 5  == 0
         and hvd.rank() == 0
     ):
       print("Saving model checkpoint")

@@ -175,7 +175,6 @@ message AbstractGeneratorConfig {
   optional bool debug = 2 [default=false];
   optional ClusterConfig cluster = 1;
   optional MlConfig sys = 3;
-  optional int32 examples_per_epoch = 9 [default=50000];
   // May be "train" or "evaluate" or "prep"
   optional string mode = 10 [default="train"];
   optional string model_path = 11;

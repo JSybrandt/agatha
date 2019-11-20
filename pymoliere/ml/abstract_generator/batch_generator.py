@@ -81,8 +81,9 @@ class _AbstractWindowGeneratorWorker(mp.Process):
 
 
   def run(self):
-    for batch_idx in range(self.num_batches):
-      self.queue.put(self.generate_batch(batch_idx))
+    while True:
+      for batch_idx in range(self.num_batches):
+        self.queue.put(self.generate_batch(batch_idx))
 
 
   def generate_batch(

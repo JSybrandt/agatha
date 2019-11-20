@@ -215,6 +215,26 @@ def train(config:cpb.AbstractGeneratorConfig):
   assert training_data_dir.is_dir()
 
   if hvd.rank() == 0:
+    print("Loading training data")
+  training_data = split_partitions_across_ranks(
+      training_data_dir,
+      rank=hvd.rank(),
+      size=100 if config.debug else hvd.size(),
+  )
+  # Calculate the smallest data size of any amount across the cluster.
+  examples_per_worker_per_epoch = int(
+      hvd.allgather(torch.LongTensor([len(training_data)])).min()
+  )
+  if hvd.rank() == 0:
+    print(
+        "Expecting",
+        examples_per_worker_per_epoch,
+        "batches and",
+        examples_per_worker_per_epoch*hvd.size()*config.sys.batch_size,
+        "total examples per epoch."
+    )
+
+  if hvd.rank() == 0:
     print("Preparing model")
 
   device = get_device(config)
@@ -247,29 +267,13 @@ def train(config:cpb.AbstractGeneratorConfig):
   )
 
   # Number of iterations per-worker
-  num_batches = int(
-      config.examples_per_epoch / (config.sys.batch_size * hvd.size())
-  )
-
-  if hvd.rank() == 0:
-    print(
-        f"Expecting to compute {num_batches*config.sys.num_epochs} batches, "
-        f"each with {config.sys.batch_size*hvd.size()} examples."
-    )
-
+  batches_per_epoch = int(examples_per_worker_per_epoch / config.sys.batch_size)
   scheduler = get_linear_schedule_with_warmup(
       optimizer=optimizer,
       num_warmup_steps=2000,
-      num_training_steps=num_batches * config.sys.num_epochs,
+      num_training_steps=batches_per_epoch * config.sys.num_epochs,
   )
 
-  if hvd.rank() == 0:
-    print("Loading training data")
-  training_data = split_partitions_across_ranks(
-      training_data_dir,
-      rank=hvd.rank(),
-      size=100 if config.debug else hvd.size(),
-  )
 
   if config.debug:
     print_model_summary(model)
@@ -288,9 +292,8 @@ def train(config:cpb.AbstractGeneratorConfig):
           pre[valid].view(-1, pre.shape[2]),
           exp[valid].view(-1),
       )
-    return part(predicted["text"], expected["text"])
-    # return 0.9*part(predicted["text"], expected["text"]) \
-        # + 0.1*part(predicted["types"], expected["types"])
+    return 0.9*part(predicted["text"], expected["text"]) \
+        + 0.1*part(predicted["types"], expected["types"])
 
   def after_loss_calculation(loss):
       loss.backward()
@@ -379,7 +382,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       on_phase_end=on_phase_end,
       disable_plots=True,
       disable_batch_report=hvd.rank() != 0,
-      num_batches=num_batches,
+      num_batches=batches_per_epoch,
       metrics = [
         ("text_acc", text_accuracy),
         ("type_acc", type_accuracy),

@@ -196,18 +196,7 @@ message AbstractGeneratorConfig {
   // If set, load these weights. Only used in "mode=train"
   optional string restore_from_checkpoint = 26;
 
-  message AdaptiveDifficulty {
-    // The initial probability that we will mask an arbitrary follow token
-    optional float initial_difficulty = 1 [default=0.1];
-    // The rate at which we will increase the difficulty per-epoch
-    optional float difficulty_step = 2 [default=0.01];
-    // If we match/exceed this value of text accuracy at the end of an epoch,
-    // we will increase the difficulty by the difficulty_step, to a max of 1.
-    // Value from nature communications paper demonstrating that 85% is a good
-    // SGD target.
-    optional float target_text_accuracy = 3 [default=0.85];
-  }
-  optional AdaptiveDifficulty difficulty_schedule = 27;
+  optional int32 num_warmup_steps = 27 [default=100];
 }
 ////////////////////////////////////////////////////////////////////////////////
 

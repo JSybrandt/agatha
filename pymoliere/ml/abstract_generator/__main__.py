@@ -273,7 +273,7 @@ def train(config:cpb.AbstractGeneratorConfig):
   )
   schedule = get_linear_schedule_with_warmup(
       optimizer=optimizer,
-      num_warmup_steps=2000,
+      num_warmup_steps=config.num_warmup_steps,
       num_training_steps=batches_per_epoch * config.sys.num_epochs,
   )
 

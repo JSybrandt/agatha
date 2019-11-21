@@ -78,14 +78,19 @@ class AbstractWindowGenerator(object):
     Returns context, text, and shifted
     """
 
-    all_text_tokens = []
-    all_type_tokens = []
+    # Start with [START] Character
+    all_text_tokens = [self.tokenizer.start_symbol_idx]
+    all_type_tokens = [self.tokenizer.encode_sent_type("title")]
+
     for text_field in abstract["text_data"]:
       tmp_text_tokens = self.tokenizer.encode_text(text_field["text"])
       all_type_tokens += [
           self.tokenizer.encode_sent_type(text_field["type"])
       ] * len(tmp_text_tokens)
       all_text_tokens += tmp_text_tokens
+    # End with [END] Character
+    all_text_tokens.append(self.tokenizer.end_symbol_idx)
+    all_type_tokens.append(all_type_tokens[-1])
 
     if len(all_type_tokens) <= self.text_size:
       selection_start = 0
@@ -100,7 +105,6 @@ class AbstractWindowGenerator(object):
 
     context = self.tokenizer.encode_context_sequence(
         year=int(abstract["date"].split("-")[0]),
-        authors=abstract["authors"],
         mesh_headings=abstract["mesh_headings"],
     )
     text = all_text_tokens[selection_start:selection_end]

@@ -187,8 +187,9 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
   )
 
   for batch in batch_generator.generate():
+    size = len(batch["text"].flatten())
     print(
-        "Original Text:",
+        f"Original Text ({size} tokens):",
         tokenizer.decode_text(batch["text"].flatten().tolist())
     )
     text_generator = generate_new_text(
@@ -199,9 +200,13 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
         types=batch["types"]
     )
     texts = []
-    for _ in range(100):
+    for idx in range(size-1):
       texts.append(next(text_generator)[0])
-    print("Following text:", tokenizer.decode_text(texts))
+    print("Predictions within window:", tokenizer.decode_text(texts))
+    texts = []
+    for _ in range(10):
+      texts.append(next(text_generator)[0])
+    print("Next 10 words:", tokenizer.decode_text(texts))
 
 def train(config:cpb.AbstractGeneratorConfig):
   init_everything_for_hvd()
@@ -221,15 +226,14 @@ def train(config:cpb.AbstractGeneratorConfig):
   examples_per_worker_per_epoch = int(
       hvd.allgather(torch.LongTensor([len(training_data)])).min()
   )
+  effective_batch_size = config.sys.batch_size*hvd.size()
   if hvd.rank() == 0:
+    print("Effective batch size:", effective_batch_size)
     print(
         "Expecting",
-        examples_per_worker_per_epoch,
-        "batches and",
-        examples_per_worker_per_epoch*hvd.size()*config.sys.batch_size,
-        "total examples per epoch."
+        int(examples_per_worker_per_epoch/config.sys.batch_size),
+        "batches"
     )
-    print("Effective batch size:", config.sys.batch_size*hvd.size())
 
   if hvd.rank() == 0:
     print("Preparing model")
@@ -251,7 +255,7 @@ def train(config:cpb.AbstractGeneratorConfig):
   optimizer = Lamb(
       model.parameters(),
       # facebook paper says linear growth with batch size
-      lr=config.sys.learning_rate*hvd.size(),
+      lr=config.sys.learning_rate,
       weight_decay=0.01,
   )
   # Update everybody
@@ -458,16 +462,6 @@ def prep(config:cpb.AbstractGeneratorConfig):
 
   ###
 
-  print("Collecting all authors")
-  all_authors = (
-      training_data
-      .map_partitions(get_distinct_from_list, field="authors")
-      .distinct()
-      .compute()
-  )
-  print(f"Hashing {len(all_authors)} to {config.author_hash_size}")
-  author_index = items_to_hashed_index(all_authors, config.author_hash_size)
-
   print("Collecting all mesh headings")
   all_mesh_headings = (
       training_data
@@ -498,7 +492,7 @@ def prep(config:cpb.AbstractGeneratorConfig):
       .random_sample(0.1)
       .map_partitions(text_util.split_sentences)
       # Only need the text. We are doing a case-insensitive model.
-      .map(lambda rec: rec["sent_text"].lower())
+      .map(lambda rec: rec["sent_text"])
       # Only take 10% of sentences, ultimately,'re subsetting again
       .random_sample(0.1)
       # Reduce the total number of files
@@ -513,7 +507,7 @@ def prep(config:cpb.AbstractGeneratorConfig):
       f"--model_prefix={paths['tokenizer_model_path'].parent}/tokenizer "
       f"--vocab_size={config.vocab_size} "
       f"--character_coverage=1.0 "
-      f"--model_type=BPE "
+      f"--model_type=unigram "
       f"--input_sentence_size={config.max_tokenizer_sentences} "
       f"--shuffle_input_sentence=true "
   )
@@ -521,7 +515,6 @@ def prep(config:cpb.AbstractGeneratorConfig):
   assert paths["tokenizer_vocab_path"].is_file()
 
   extra_data = {
-      "author_index": author_index,
       "mesh_index": mesh_index,
       "oldest_year": oldest_year,
   }

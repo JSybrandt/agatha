@@ -22,16 +22,18 @@ def generate_new_text(
   assert text.shape[0] == types.shape[0]
   assert context.shape[1] == text.shape[1] == types.shape[1] == 1
 
-  tmp_text = text.clone()
-  tmp_types = types.clone()
-
+  first_run = True
   while True:
-    text[:-1, 0] = tmp_text[1:, 0]
-    text[-1, 0] = tokenizer.mask_idx
-    types[:-1, 0] = tmp_types[1:, 0]
-    types[-1, 0] = tokenizer.mask_idx
-
     predictions = model(context, text, types)
+
+    if first_run:
+      first_run = False
+      inner_words = predictions["text"][:-1, 0, :].argmax(dim=1) \
+          + tokenizer.vocab_start_idx
+      inner_types = predictions["types"][:-1, 0, :].argmax(dim=1) \
+          + tokenizer.sent_type_start_idx
+      for idx in range(len(inner_words)):
+        yield(int(inner_words[idx]), int(inner_types[idx]))
 
     new_word = predictions["text"][-1, 0, :].argmax() \
         + tokenizer.vocab_start_idx
@@ -45,9 +47,11 @@ def generate_new_text(
     )
 
     tmp_text = text.clone()
-    tmp_text[-1, 0] = new_word
+    text[:-1] = tmp_text[1:]
+    text[-1, 0] = new_word
 
     tmp_types = types.clone()
-    tmp_types[-1, 0] = new_type
+    types[:-1] = tmp_types[1:]
+    types[-1, 0] = new_type
 
 

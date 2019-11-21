@@ -41,17 +41,15 @@ class AbstractGeneratorTokenizer(object):
       raise ValueError("Invalid model path", tokenizer_model_path)
     with open(extra_data_path, "rb") as f:
       extra_data = pickle.load(f)
-    self.author_index = extra_data["author_index"]
     self.mesh_index = extra_data["mesh_index"]
     self.oldest_year = extra_data["oldest_year"]
 
     self.padding_idx = 0
     self.unknown_idx = 1
-    self.start_idx = 2
-    self.sep_idx = 3
-    self.mask_idx = 4
-    self.special_markers = ["[PAD]", "[UNK]", "[START]", "[SEP]", "[MASK]"]
-    self.special_size = 5
+    self.sep_idx = 2
+    self.mask_idx = 3
+    self.special_markers = ["[PAD]", "[UNK]", "[SEP]", "[MASK]"]
+    self.special_size = 4
     self.special_start_idx = 0
     self.special_end_idx = self.special_start_idx + self.special_size
 
@@ -68,28 +66,24 @@ class AbstractGeneratorTokenizer(object):
     self.mesh_start_idx = self.year_end_idx
     self.mesh_end_idx = self.mesh_start_idx + self.mesh_size
     # Voccab
-    self.vocab_size = len(self.sp_processor)
     self.vocab_start_idx = self.mesh_end_idx
+    self.traditional_vocab_size = len(self.sp_processor)
+    self.traditional_vocab_end_idx = \
+        self.vocab_start_idx + self.traditional_vocab_size
+    self.special_vocab_size = 2
+    self.vocab_size = self.traditional_vocab_size + self.special_vocab_size
     self.vocab_end_idx = self.vocab_start_idx + self.vocab_size
-
-    # # Authors
-    # self.author_size = len(self.author_index)
-    # self.author_start_idx = self.year_end_idx
-    # self.author_end_idx = self.author_start_idx + self.author_size
+    # fill in the two extra symbols
+    self.start_symbol_idx = self.vocab_end_idx-2
+    self.end_symbol_idx = self.vocab_end_idx-1
+    self.start_symbol = "[START]"
+    self.end_symbol = "[END]"
 
     self.total_index_size = self.vocab_end_idx
 
 
   def __len__(self)->int:
     return self.total_index_size
-
-  def encode_author(self, author_name:str)->int:
-    if author_name is None:
-      return self.padding_idx
-    if self.author_index.has_element(author_name):
-      return self.author_index.get_index(author_name) + self.author_start_idx
-    else:
-      return self.unknown_idx
 
   def encode_mesh(self, mesh_code:str)->int:
     if mesh_code is None:
@@ -111,7 +105,7 @@ class AbstractGeneratorTokenizer(object):
       return []
     return [
         token + self.vocab_start_idx
-        for token in self.sp_processor.encode_as_ids(text.lower())
+        for token in self.sp_processor.encode_as_ids(text)
     ]
 
   def encode_sent_type(self, sent_type:str)->int:
@@ -128,8 +122,6 @@ class AbstractGeneratorTokenizer(object):
       return INDEX_TO_SENTENCE_LABEL[idx - self.sent_type_start_idx]
     if self.year_start_idx <= idx < self.year_end_idx:
       return str(idx - self.year_start_idx + self.oldest_year)
-    # if self.author_start_idx <= idx < self.author_end_idx:
-      # return ",".join(self.author_index.get_elements(idx - self.author_start_idx))
     if self.mesh_start_idx <= idx < self.mesh_end_idx:
       return ",".join(self.mesh_index.get_elements(idx - self.mesh_start_idx))
     if self.vocab_start_idx <= idx < self.vocab_end_idx:
@@ -137,28 +129,36 @@ class AbstractGeneratorTokenizer(object):
     return "[INVALID]"
 
   def decode_text(self, indices:List[int])->str:
-    return self.sp_processor.decode_ids([
-      idx - self.vocab_start_idx
-      for idx in indices
-      if self.vocab_start_idx <= idx < self.vocab_end_idx
-    ])
+    # list of strings
+    substrs = []
+    # working list of tokens
+    working_list = []
+    for idx in indices:
+      if idx in {self.start_symbol_idx, self.end_symbol_idx}:
+        substrs.append(self.sp_processor.decode_ids(working_list))
+        working_list = []
+        if idx == self.start_symbol_idx:
+          substrs.append(self.start_symbol)
+        if idx == self.end_symbol_idx:
+          substrs.append(self.end_symbol)
+      elif self.vocab_start_idx <= idx < self.traditional_vocab_end_idx:
+        working_list.append(idx-self.vocab_start_idx)
+      else:
+        raise ValueError("Invalid idx in text")
+    substrs.append(self.sp_processor.decode_ids(working_list))
+    return "".join(substrs)
 
   def encode_context_sequence(
       self,
       year:int,
-      authors:List[str],
       mesh_headings:List[str],
   )->List[int]:
     year = self.encode_year(year)
-    # authors = [
-        # self.encode_author(a)
-        # for a in authors
-    # ] + [self.sep_idx]
     mesh_headings = [
         self.encode_mesh(m)
         for m in mesh_headings
     ]
-    return [year] + mesh_headings + [self.sep_idx] #+ authors
+    return [year] + mesh_headings + [self.sep_idx]
 
 
 class AbstractGenerator(torch.nn.Module):

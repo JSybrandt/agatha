@@ -160,6 +160,16 @@ class AbstractGeneratorTokenizer(object):
     ]
     return [year] + mesh_headings + [self.sep_idx]
 
+  def decode_context(
+      self,
+      indices:List[str],
+  )->Dict[str, Any]:
+    assert indices[-1] == self.sep_idx
+    res = {}
+    res["year"] = self.decode_idx(indices[0])
+    res["mesh_headings"] = [self.decode_idx(i) for i in indices[1:-1]]
+    return res
+
 
 class AbstractGenerator(torch.nn.Module):
   def __init__(self,

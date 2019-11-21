@@ -1,6 +1,7 @@
 import dask
 from dask.distributed import Client
 import horovod.torch as hvd
+from nltk.tokenize import sent_tokenize
 from pathlib import Path
 import pickle
 from pymoliere.config import config_pb2 as cpb, proto_util
@@ -184,29 +185,38 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
       text_size=config.text_length,
       return_eval_data=True,
       return_training_data=False,
+      must_start_at_start=True,
   )
 
-  for batch in batch_generator.generate():
-    size = len(batch["text"].flatten())
-    print(
-        f"Original Text ({size} tokens):",
-        tokenizer.decode_text(batch["text"].flatten().tolist())
+  for record in testing_data:
+    print("PMID", record["pmid"])
+    year = int(record["date"].split("-")[0])
+    title_rec = record["text_data"][0]
+    assert title_rec["type"] == "title"
+    print(title_rec["text"])
+
+    title_tokens = \
+        [tokenizer.start_symbol_idx] + tokenizer.encode_text(title_rec["text"])
+    title_types = [tokenizer.encode_sent_type("title")] * len(title_tokens)
+
+    context = tokenizer.encode_context_sequence(
+        year=year,
+        mesh_headings=record["mesh_headings"],
     )
     text_generator = generate_new_text(
         model=model,
         tokenizer=tokenizer,
-        context=batch["context"],
-        text=batch["text"],
-        types=batch["types"]
+        context=torch.LongTensor(context).unsqueeze(1).to(device),
+        text=torch.LongTensor(title_tokens).unsqueeze(1).to(device),
+        types=torch.LongTensor(title_types).unsqueeze(1).to(device),
     )
     texts = []
-    for idx in range(size-1):
-      texts.append(next(text_generator)[0])
-    print("Predictions within window:", tokenizer.decode_text(texts))
-    texts = []
-    for _ in range(10):
-      texts.append(next(text_generator)[0])
-    print("Next 10 words:", tokenizer.decode_text(texts))
+    for idx in range(200):
+      te, ty = next(text_generator)
+      texts.append(te)
+    print("Predicted Abstract:")
+    print(tokenizer.decode_text(texts))
+    print()
 
 def train(config:cpb.AbstractGeneratorConfig):
   init_everything_for_hvd()

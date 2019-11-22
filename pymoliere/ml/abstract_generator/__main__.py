@@ -167,10 +167,7 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
   model.load_state_dict(torch.load(paths["model_path"]))
   model.to(device)
   model.eval()
-  hvd.broadcast_parameters(model.state_dict(), root_rank=0)
 
-  if hvd.rank() == 0:
-    print("Loading eval data")
   testing_data = split_partitions_across_ranks(
       testing_data_dir,
       rank=hvd.rank(),
@@ -185,23 +182,24 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
       text_size=config.text_length,
       return_eval_data=True,
       return_training_data=False,
-      must_start_at_start=True,
+      window_includes_start_token_prob=1,
   )
 
   for record in testing_data:
-    print("PMID", record["pmid"])
+    pmid = record["pmid"]
     year = int(record["date"].split("-")[0])
     title_rec = record["text_data"][0]
     assert title_rec["type"] == "title"
-    print(title_rec["text"])
+    title=title_rec["text"]
+    mesh_headings=record["mesh_headings"]
 
     title_tokens = \
-        [tokenizer.start_symbol_idx] + tokenizer.encode_text(title_rec["text"])
+        [tokenizer.start_symbol_idx] + tokenizer.encode_text(title)
     title_types = [tokenizer.encode_sent_type("title")] * len(title_tokens)
 
     context = tokenizer.encode_context_sequence(
         year=year,
-        mesh_headings=record["mesh_headings"],
+        mesh_headings=mesh_headings,
     )
     text_generator = generate_new_text(
         model=model,
@@ -214,9 +212,11 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
     for idx in range(200):
       te, ty = next(text_generator)
       texts.append(te)
-    print("Predicted Abstract:")
-    print(tokenizer.decode_text(texts))
-    print()
+    prediction=tokenizer.decode_text(texts)
+
+    print(
+        f"{pmid},{year},'{','.join(mesh_headings)}','{title}','{prediction}'"
+    )
 
 def train(config:cpb.AbstractGeneratorConfig):
   init_everything_for_hvd()

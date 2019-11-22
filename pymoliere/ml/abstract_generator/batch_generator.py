@@ -18,8 +18,9 @@ class AbstractWindowGenerator(object):
       text_size:int,
       return_eval_data:bool=False,
       return_training_data:bool=True,
-      must_start_at_start:bool=False,
+      window_includes_start_token_prob:float=0.2,
   ):
+    assert 0 < window_includes_start_token_prob <= 1
     self.tokenizer=tokenizer
     self.records = records
     self.batch_size = batch_size
@@ -28,7 +29,7 @@ class AbstractWindowGenerator(object):
     self.return_training_data = return_training_data
     self.return_eval_data = return_eval_data
     self.device = device
-    self.must_start_at_start = must_start_at_start
+    self.window_includes_start_token_prob = window_includes_start_token_prob
 
   def generate(self):
     for idx in range(self.maximum_num_batches):
@@ -98,7 +99,7 @@ class AbstractWindowGenerator(object):
       selection_start = 0
       selection_end = len(all_text_tokens)
     else:
-      if self.must_start_at_start:
+      if random.random() < self.window_includes_start_token_prob:
         selection_start = 0
       else:
         selection_start = random.randint(0, len(all_type_tokens)-self.text_size-1)

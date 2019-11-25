@@ -92,6 +92,7 @@ message MlConfig {
   optional bool single_gpu = 5 [default=false];
   optional float test_ratio = 6 [default=0.2];
   optional float learning_rate = 7 [default=0.002];
+  optional int32 steps_per_epoch = 8 [default=10000];
 }
 
 message ConstructDebugConfig {
@@ -196,6 +197,7 @@ message AbstractGeneratorConfig {
   optional string restore_from_checkpoint = 26;
 
   optional int32 num_warmup_steps = 27 [default=100];
+  optional bool lowercase = 28 [default=false];
 }
 ////////////////////////////////////////////////////////////////////////////////
 

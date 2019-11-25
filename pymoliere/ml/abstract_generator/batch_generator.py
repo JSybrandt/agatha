@@ -1,5 +1,5 @@
 from typing import Dict, Any, Iterable, Tuple
-from pymoliere.util.misc_util import Record
+from pymoliere.util.misc_util import Record, iter_to_batches
 import torch
 from copy import copy
 from typing import List
@@ -13,114 +13,94 @@ class AbstractWindowGenerator(object):
       self,
       tokenizer: AbstractGeneratorTokenizer,
       records:List[Record],
-      device:torch.device,
       batch_size:int,
       text_size:int,
-      return_eval_data:bool=False,
       return_training_data:bool=True,
-      window_includes_start_token_prob:float=0.2,
+      lowercase:bool=True,
+      only_first_window_per_abstract:bool=False,
+      window_step:int=64,
+      minimum_window_size:int=10,
   ):
-    assert 0 < window_includes_start_token_prob <= 1
     self.tokenizer=tokenizer
     self.records = records
     self.batch_size = batch_size
     self.text_size = text_size
     self.maximum_num_batches = int(len(self.records) / self.batch_size)
     self.return_training_data = return_training_data
-    self.return_eval_data = return_eval_data
-    self.device = device
-    self.window_includes_start_token_prob = window_includes_start_token_prob
+    self.lowercase = lowercase
+    self.only_first_window_per_abstract = only_first_window_per_abstract
+    self.window_step = window_step
+    self.minimum_window_size = minimum_window_size
 
-  def generate(self):
-    for idx in range(self.maximum_num_batches):
-      yield self.generate_batch(idx)
+  def iterate_batches(
+      self
+  )->Iterable[Dict[str, torch.tensor]]:
+    for batch_data in iter_to_batches(
+        self.iterate_data_across_abstracts(),
+        self.batch_size,
+    ):
+      yield {
+          field: AbstractWindowGenerator.field_to_long_tensor(batch_data, field)
+          for field in batch_data[0]
+      }
 
-  def generate_batch(
-      self,
-      batch_idx:int,
-  )->Dict[str, torch.tensor]:
-    batch_start_idx = batch_idx * self.batch_size
-    assert 0 <= batch_start_idx < len(self.records) - self.batch_size
-    context = []
-    text = []
-    types = []
-    shifted_text = []
-    shifted_types = []
-    remaining_texts = []
-    remaining_types = []
-    # Make batch
-    for record in self.records[batch_start_idx:batch_start_idx+self.batch_size]:
-      data = self.abstract_to_training_data(record)
-      context.append(torch.LongTensor(data["context"]))
-      text.append(torch.LongTensor(data["text"][:-1]))
-      types.append(torch.LongTensor(data["types"][:-1]))
-      if self.return_training_data:
-        shifted_text.append(torch.LongTensor(data["text"][1:]))
-        shifted_types.append(torch.LongTensor(data["types"][1:]))
-      if self.return_eval_data:
-        remaining_texts.append(torch.LongTensor(data["remaining_text"]))
-        remaining_types.append(torch.LongTensor(data["remaining_types"]))
-    res = {
-        "context": torch.nn.utils.rnn.pad_sequence(context),
-        "text": torch.nn.utils.rnn.pad_sequence(text),
-        "types": torch.nn.utils.rnn.pad_sequence(types),
-    }
-    if self.return_training_data:
-      res["shifted_text"] = torch.nn.utils.rnn.pad_sequence(shifted_text)
-      res["shifted_types"] = torch.nn.utils.rnn.pad_sequence(shifted_types)
-    if self.return_eval_data:
-      res["remaining_text"] = torch.nn.utils.rnn.pad_sequence(remaining_texts)
-      res["remaining_types"] = torch.nn.utils.rnn.pad_sequence(remaining_types)
-    return {k: v.to(self.device) for k, v in res.items()}
+  def field_to_long_tensor(
+      batch_data:List[Dict[str, List[int]]],
+      field:str,
+  )->torch.LongTensor:
+    return torch.nn.utils.rnn.pad_sequence(
+        [torch.LongTensor(d[field]) for d in batch_data],
+    )
 
-  def abstract_to_training_data(
+  def iterate_data_across_abstracts(self)->Iterable[Dict[str, List[int]]]:
+    for record in self.records:
+      for res in self.iterate_data_within_abstract(record):
+        yield res
+        if self.only_first_window_per_abstract:
+          break
+
+  def iterate_data_within_abstract(
       self,
       abstract:Record,
-  )->Dict[str, List[int]]:
+  )->Iterable[Dict[str, List[int]]]:
     """
     Returns context, text, and shifted
     """
 
     # Start with [START] Character
     all_text_tokens = [self.tokenizer.start_symbol_idx]
-    all_type_tokens = [self.tokenizer.encode_sent_type("title")]
 
     for text_field in abstract["text_data"]:
-      tmp_text_tokens = self.tokenizer.encode_text(text_field["text"])
-      all_type_tokens += [
-          self.tokenizer.encode_sent_type(text_field["type"])
-      ] * len(tmp_text_tokens)
-      all_text_tokens += tmp_text_tokens
+      text = text_field["text"]
+      if self.lowercase:
+        text = text.lower()
+      all_text_tokens += self.tokenizer.encode_text(text)
     # End with [END] Character
     all_text_tokens.append(self.tokenizer.end_symbol_idx)
-    all_type_tokens.append(all_type_tokens[-1])
 
-    if len(all_type_tokens) <= self.text_size:
-      selection_start = 0
-      selection_end = len(all_text_tokens)
-    else:
-      if random.random() < self.window_includes_start_token_prob:
-        selection_start = 0
-      else:
-        selection_start = random.randint(0, len(all_type_tokens)-self.text_size-1)
-      selection_end = selection_start + self.text_size
-
-    assert selection_start >= 0
-    assert selection_end <= len(all_text_tokens)
-    assert 0 <= selection_start < selection_end <= len(all_text_tokens)
-
+    date = abstract["date"]
+    year = int(date.split("-")[0]) if date is not None else -1
     context = self.tokenizer.encode_context_sequence(
-        year=int(abstract["date"].split("-")[0]),
+        year=year,
         mesh_headings=abstract["mesh_headings"],
     )
-    text = all_text_tokens[selection_start:selection_end]
-    types = all_type_tokens[selection_start:selection_end]
-    res = {
-        "context": context,
-        "text": text,
-        "types": types,
-    }
-    if self.return_eval_data:
-      res["remaining_text"] = all_text_tokens[selection_end:]
-      res["remaining_types"] = all_type_tokens[selection_end:]
-    return res
+
+    for selection_start in range(0, len(all_text_tokens), self.window_step):
+      selection_end = min(
+          selection_start + self.text_size,
+          len(all_text_tokens)
+      )
+      if selection_end - selection_start < self.minimum_window_size:
+        break
+
+      assert 0 <= selection_start < selection_end <= len(all_text_tokens)
+
+      res = {
+          "context": context,
+          "text": all_text_tokens[selection_start:selection_end],
+      }
+      if self.return_training_data:
+        res["shifted_text"] = all_text_tokens[selection_start+1:selection_end+1]
+        while len(res["shifted_text"]) < len(res["text"]):
+          res["shifted_text"].append(self.tokenizer.end_symbol_idx)
+      yield res

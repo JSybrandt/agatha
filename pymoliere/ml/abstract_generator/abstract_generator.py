@@ -53,13 +53,9 @@ class AbstractGeneratorTokenizer(object):
     self.special_start_idx = 0
     self.special_end_idx = self.special_start_idx + self.special_size
 
-    # Sentence Types
-    self.sent_type_size = len(INTERESTING_SENTENCE_LABLES)
-    self.sent_type_start_idx = self.special_end_idx
-    self.sent_type_end_idx = self.sent_type_start_idx + self.sent_type_size
     # Dates
     self.year_size = get_current_year() - self.oldest_year
-    self.year_start_idx = self.sent_type_end_idx
+    self.year_start_idx = self.special_end_idx
     self.year_end_idx = self.year_start_idx + self.year_size
     # Mesh terms
     self.mesh_size = len(self.mesh_index)
@@ -108,18 +104,9 @@ class AbstractGeneratorTokenizer(object):
         for token in self.sp_processor.encode_as_ids(text)
     ]
 
-  def encode_sent_type(self, sent_type:str)->int:
-    if sent_type is None:
-      return self.padding_idx
-    if sent_type not in INTERESTING_SENTENCE_LABLES:
-      return self.unknown_idx
-    return INTERESTING_SENTENCE_LABLES[sent_type] + self.sent_type_start_idx
-
   def decode_idx(self, idx:int)->str:
     if 0 <= idx < self.special_end_idx:
       return self.special_markers[idx]
-    if self.sent_type_start_idx <= idx < self.sent_type_end_idx:
-      return INDEX_TO_SENTENCE_LABEL[idx - self.sent_type_start_idx]
     if self.year_start_idx <= idx < self.year_end_idx:
       return str(idx - self.year_start_idx + self.oldest_year)
     if self.mesh_start_idx <= idx < self.mesh_end_idx:
@@ -186,7 +173,7 @@ class AbstractGenerator(torch.nn.Module):
     Learns to generate following text given sliding windows across abstracts.
     """
     super(AbstractGenerator, self).__init__()
-    self.max_text_length = max_text_length
+    self.max_text_length = max_text_length+1
     self.tokenizer = tokenizer
 
     self.embeddings = torch.nn.Embedding(
@@ -199,7 +186,7 @@ class AbstractGenerator(torch.nn.Module):
     self.register_buffer(
         "positional_encoding",
         self.generate_positional_encoding(
-          max_text_length=max_text_length,
+          max_text_length=self.max_text_length,
           embedding_dim=embedding_dim,
         )
     )
@@ -217,16 +204,12 @@ class AbstractGenerator(torch.nn.Module):
     # Of size (text, text)
     self.register_buffer(
         "text_attention_mask",
-        self.transformer.generate_square_subsequent_mask(max_text_length).t_(),
+        self.transformer.generate_square_subsequent_mask(self.max_text_length).t_(),
     )
 
     self.predicted_text = torch.nn.Linear(
         embedding_dim,
         tokenizer.vocab_size,
-    )
-    self.predicted_type = torch.nn.Linear(
-        embedding_dim,
-        tokenizer.sent_type_size,
     )
 
     self.softmax = torch.nn.LogSoftmax(dim=2)
@@ -263,27 +246,23 @@ class AbstractGenerator(torch.nn.Module):
       self,
       context:torch.LongTensor,
       text:torch.LongTensor,
-      types:torch.LongTensor,
   ):
     # C is the sequence length of context
-    # T is the sequence length of text AND types
+    # T is the sequence length of text
     # B is the batch size
     assert len(context.shape) == 2
     assert len(text.shape) == 2
-    assert len(types.shape) == 2
     # Batch size is consistent
-    assert context.shape[1] == text.shape[1] == types.shape[1]
+    assert context.shape[1] == text.shape[1]
     # T is consistent, and less than the expected max
-    assert text.shape[0] == types.shape[0]
     assert text.shape[0] <= self.max_text_length
 
     # Adds an additional E-sized embedding vector for each long
     context_emb = self.embeddings(context)
     text_emb = self.embeddings(text)
-    types_emb = self.embeddings(types)
     # Need to merge text and position
     text_length = text.shape[0]
-    txt_typ_pos = text_emb + types_emb + self.positional_encoding[text_length,:,:]
+    txt_typ_pos = text_emb + self.positional_encoding[text_length, :, :]
 
     encoded = self.transformer(
         src=context_emb,
@@ -294,10 +273,8 @@ class AbstractGenerator(torch.nn.Module):
     )
 
     predicted_text = self.predicted_text(encoded)
-    predicted_type = self.predicted_type(encoded)
 
     # produce softmax results across "vocab"
     return {
         "text": self.softmax(predicted_text),
-        "types": self.softmax(predicted_type),
     }

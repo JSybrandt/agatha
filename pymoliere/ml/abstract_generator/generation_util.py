@@ -16,41 +16,25 @@ def generate_new_text(
   tokenizer:AbstractGeneratorTokenizer,
   context:torch.LongTensor,
   text:torch.LongTensor=None,
-  types:torch.LongTensor=None,
 )->Iterable[Tuple[str, str]]:
   # Can give both or neither
-  assert (text is None) == (types is None)
-
   if text is None:
     text = (
         torch.LongTensor([tokenizer.start_symbol_idx])
         .unsqueeze(1)
         .to(context.device)
     )
-  if types is None:
-    types = (
-        torch.LongTensor([tokenizer.encode_sent_type("title")])
-        .unsqueeze(1)
-        .to(context.device)
-    )
 
   # Only supporting batch size 1 for now
-  assert text.shape[0] == types.shape[0]
-  assert context.shape[1] == text.shape[1] == types.shape[1] == 1
+  assert context.shape[1] == text.shape[1] == 1
 
   while True:
-    predictions = model(context, text, types)
+    predictions = model(context, text)
 
     new_word = predictions["text"][-1, 0, :].argmax() \
         + tokenizer.vocab_start_idx
 
-    new_type = predictions["types"][-1, 0, :].argmax() \
-        + tokenizer.sent_type_start_idx
-
-    yield (
-        int(new_word),
-        int(new_type)
-    )
+    yield int(new_word)
 
     def add_or_shift(tensor, new_element):
       l = tensor.flatten().tolist()
@@ -60,4 +44,3 @@ def generate_new_text(
       return torch.LongTensor(l).unsqueeze(1).to(tensor.device)
 
     text = add_or_shift(text, int(new_word))
-    types = add_or_shift(types, int(new_type))

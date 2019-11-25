@@ -28,14 +28,13 @@ MetricFn = Callable[[torch.Tensor, torch.Tensor], float]
 # Given phase and final metric values. Note the score is a 1-element tensor.
 OnPhaseEnd = Callable[[str, Dict[str, torch.Tensor]], None]
 
-def split_data_across_ranks(data:List[Any])->None:
-  "Each rank selects a different subset of the input data"
-  # Need to split input into just my section
-  vals_per_part = int(len(data) / hvd.size())
-  my_start_idx = hvd.rank() * vals_per_part
-  del data[:my_start_idx]
-  if len(data) >= 2*vals_per_part:
-    del data[vals_per_part:]
+def split_list_by_rank(data:List[Any], rank:int, size:int)->List[Any]:
+  assert 0 <= rank < size
+  vals = []
+  for idx, v in enumerate(data):
+    if idx % size == rank:
+      vals.append(v)
+  return vals
 
 
 def split_partitions_across_ranks(

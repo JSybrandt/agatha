@@ -5,7 +5,7 @@ from nltk.tokenize import sent_tokenize
 from pathlib import Path
 import pickle
 from pymoliere.config import config_pb2 as cpb, proto_util
-from pymoliere.construct import dask_checkpoint, file_util, text_util
+from pymoliere.construct import dask_checkpoint, file_util, text_util, ftp_util
 from pymoliere.ml.model_summary import print_model_summary
 from pymoliere.ml.abstract_generator.misc_util import HashedIndex, OrderedIndex
 from pymoliere.ml.abstract_generator.lamb_optimizer import Lamb
@@ -20,14 +20,19 @@ from pymoliere.ml.abstract_generator.abstract_generator import (
 from pymoliere.ml.abstract_generator.batch_generator import (
     AbstractWindowGenerator
 )
-from pymoliere.ml.train_model import train_model, split_partitions_across_ranks
-from pymoliere.util.misc_util import Record
+from pymoliere.ml.train_model import (
+    train_model,
+    split_partitions_across_ranks,
+    split_list_by_rank,
+)
+from pymoliere.util.misc_util import Record, iter_to_batches
 import sentencepiece as spm
 import sys
 import torch
-from typing import Iterable
+from typing import Iterable, List, Dict
 import random
 import os
+from tqdm import tqdm
 
 MODES = ["train", "evaluate", "prep"]
 
@@ -82,6 +87,8 @@ def get_paths(config:cpb.AbstractGeneratorConfig):
   # Location we can find the existing data
   assert config.cluster.HasField("shared_scratch")
   scratch_root_dir = Path(config.cluster.shared_scratch)
+  pmc_download_dir = scratch_root_dir.joinpath("pmc_raw")
+  pmc_download_dir.mkdir(parents=True, exist_ok=True)
   checkpoint_dir = scratch_root_dir.joinpath("dask_checkpoints")
   model_root_dir = scratch_root_dir.joinpath("models").joinpath("abstract_generator")
   if config.HasField("model_path"):
@@ -182,7 +189,7 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
       text_size=config.text_length,
       return_eval_data=True,
       return_training_data=False,
-      window_includes_start_token_prob=1,
+      only_first_window_per_abstract=True,
   )
 
   for record in testing_data:
@@ -195,7 +202,6 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
 
     title_tokens = \
         [tokenizer.start_symbol_idx] + tokenizer.encode_text(title)
-    title_types = [tokenizer.encode_sent_type("title")] * len(title_tokens)
 
     context = tokenizer.encode_context_sequence(
         year=year,
@@ -206,11 +212,10 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
         tokenizer=tokenizer,
         context=torch.LongTensor(context).unsqueeze(1).to(device),
         text=torch.LongTensor(title_tokens).unsqueeze(1).to(device),
-        types=torch.LongTensor(title_types).unsqueeze(1).to(device),
     )
     texts = []
     for idx in range(200):
-      te, ty = next(text_generator)
+      te = next(text_generator)
       texts.append(te)
     prediction=tokenizer.decode_text(texts)
 
@@ -218,32 +223,45 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
         f"{pmid},{year},'{','.join(mesh_headings)}','{title}','{prediction}'"
     )
 
+def distribute_training_partitions(
+    partition_files:List[Path],
+    rank:int,
+    size:int,
+    max_result_size:int,
+)->List[Dict[str, torch.Tensor]]:
+  if hvd.rank() == 0:
+    print(f"Splitting {len(partition_files)} paths across {size} machines")
+  # everyone needs to setup the index tensor
+  indices = torch.randperm(len(partition_files))
+  # reset everyone to the tensor owned by rank 0
+  indices = hvd.broadcast(indices, root_rank=0, name="indices").tolist()
+  # split the indies list up
+  indices = split_list_by_rank(indices, rank, size)
+  #print(f"I'm responsible for {len(indices)} files:", indices)
+  res = []
+  for idx in indices:
+    with open(partition_files[idx], 'rb') as f:
+      res += pickle.load(f)
+  if max_result_size / len(res) < 0.75:
+    print(f"Warning, only selecting {max_result_size} out of {len(res)}")
+  random.shuffle(res)
+  return res[:max_result_size]
+
 def train(config:cpb.AbstractGeneratorConfig):
   init_everything_for_hvd()
   paths = get_paths(config)
 
-  training_data_dir = paths["model_ckpt_dir"].joinpath("training_data")
+  training_data_dir = paths["model_ckpt_dir"].joinpath("training_data_windows")
   assert training_data_dir.is_dir()
 
-  if hvd.rank() == 0:
-    print("Loading training data")
-  training_data = split_partitions_across_ranks(
-      training_data_dir,
-      rank=hvd.rank(),
-      size=100 if config.debug else hvd.size(),
-  )
-  # Calculate the smallest data size of any amount across the cluster.
-  examples_per_worker_per_epoch = int(
-      hvd.allgather(torch.LongTensor([len(training_data)])).min()
-  )
+  all_training_files = list(training_data_dir.glob("*.pkl"))
+  assert len(all_training_files) > 0
+  all_training_files.sort()
+
   effective_batch_size = config.sys.batch_size*hvd.size()
   if hvd.rank() == 0:
     print("Effective batch size:", effective_batch_size)
-    print(
-        "Expecting",
-        int(examples_per_worker_per_epoch/config.sys.batch_size),
-        "batches"
-    )
+
 
   if hvd.rank() == 0:
     print("Preparing model")
@@ -278,17 +296,10 @@ def train(config:cpb.AbstractGeneratorConfig):
       named_parameters=model.named_parameters(),
   )
 
-  # Number of iterations per-worker
-  batches_per_epoch = min(
-      # max we can handle
-      int(examples_per_worker_per_epoch / config.sys.batch_size),
-      # amount we want to handle
-      10000
-  )
   schedule = get_linear_schedule_with_warmup(
       optimizer=optimizer,
       num_warmup_steps=config.num_warmup_steps,
-      num_training_steps=batches_per_epoch * config.sys.num_epochs,
+      num_training_steps=config.sys.steps_per_epoch * config.sys.num_epochs,
   )
 
   if config.debug:
@@ -308,8 +319,7 @@ def train(config:cpb.AbstractGeneratorConfig):
           pre[mask].view(-1, pre.shape[2]),
           exp[mask].view(-1)-start_idx,
       )
-    return 0.9*part(predicted["text"], expected["text"], tokenizer.vocab_start_idx) \
-        + 0.1*part(predicted["types"], expected["types"], tokenizer.sent_type_start_idx)
+    return part(predicted["text"], expected["text"], tokenizer.vocab_start_idx) \
 
   def after_loss_calculation(loss):
       loss.backward()
@@ -333,22 +343,26 @@ def train(config:cpb.AbstractGeneratorConfig):
       torch.save(model.state_dict(), f"{paths['model_path']}.{epoch}")
 
   def generator_wrapper(epoch):
-    random.shuffle(training_data)
-    generator = AbstractWindowGenerator(
-        tokenizer=tokenizer,
-        device=device,
-        records=training_data,
-        batch_size=config.sys.batch_size,
-        text_size=config.text_length,
+    training_data = distribute_training_partitions(
+        all_training_files,
+        rank=hvd.rank(),
+        size=100 if config.debug else hvd.size(),
+        max_result_size=config.sys.steps_per_epoch * config.sys.batch_size
     )
-    for batch in generator.generate():
-      model_in = {x: batch[x] for x in ["context", "text", "types"]}
-      targets = {
-          x.split("_")[-1]: batch[x]
-          for x in ["shifted_text", "shifted_types"]
+    for batch_data in iter_to_batches(training_data, config.sys.batch_size):
+      vals = {
+          f: (
+            AbstractWindowGenerator
+            .field_to_long_tensor(batch_data, f)
+            .to(device)
+          )
+          for f in batch_data[0]
       }
-      assert (model_in["text"][2,:] == targets["text"][1,:]).all()
-      yield model_in, targets
+      yield (
+          {"text": vals["text"], "context": vals["context"]},
+          {"text": vals["shifted_text"]},
+      )
+
 
   def partial_accuracy(predicted, expected, value, start_idx):
     mask = expected != tokenizer.padding_idx
@@ -367,17 +381,6 @@ def train(config:cpb.AbstractGeneratorConfig):
 
   def text_accuracy(predicted, expected):
     return partial_accuracy(predicted, expected, "text", tokenizer.vocab_start_idx)
-
-  def type_accuracy(predicted, expected):
-    return partial_accuracy(predicted, expected, "types", tokenizer.sent_type_start_idx)
-
-  def end_type_accuracy(predicted, expected):
-    assert predicted.shape[0] == expected.shape[0]
-    assert predicted.shape[1] == expected.shape[1]
-    end_type_idx = 3 # depends on the tokenizer
-    predicted = predicted[end_type_idx,:,:].argmax(dim=1)
-    expected = expected[end_type_idx,:]
-    return (predicted == expected).float().mean()
 
   def on_phase_end(phase, metric2average):
     if phase == "train":
@@ -398,10 +401,9 @@ def train(config:cpb.AbstractGeneratorConfig):
       on_phase_end=on_phase_end,
       disable_plots=True,
       disable_batch_report=hvd.rank() != 0,
-      num_batches=batches_per_epoch,
+      num_batches=config.sys.steps_per_epoch,
       metrics = [
         ("text_acc", text_accuracy),
-        ("type_acc", type_accuracy),
       ]
   )
 
@@ -411,9 +413,20 @@ def train(config:cpb.AbstractGeneratorConfig):
 
 
 def prep(config:cpb.AbstractGeneratorConfig):
-  connect_to_dask_cluster(config)
   # all important paths
   paths = get_paths(config)
+  # print("Downloading PMC")
+  # with ftp_util.ftp_connect(
+      # address="ftp.ncbi.nlm.nih.gov",
+      # workdir="/pub/pmc/oa_bulk/",
+  # ) as conn:
+    # xml_paths = ftp_util.ftp_retreive_all(
+        # conn=conn,
+        # pattern="^.*\.xml\.tar\.gz$",
+        # directory=paths["pmc_download_dir"],
+        # show_progress=True,
+    # )
+  connect_to_dask_cluster(config)
   def ckpt(val, name):
     print("Checkpoint", name)
     return dask_checkpoint.checkpoint(
@@ -437,46 +450,42 @@ def prep(config:cpb.AbstractGeneratorConfig):
 
   interesting_abstracts = (
       abstracts
+      # don't want the ones that are title-only
       .filter(lambda rec: len(rec["text_data"]) > 1)
-      .filter(all_text_fields_labeled)
+      # Allow unlabeled abstracts
+      #.filter(all_text_fields_labeled)
   )
-  ckpt(interesting_abstracts, "interesting_abstracts")
+  interesting_abstracts = ckpt(interesting_abstracts, "interesting_abstracts")
 
   is_test_data = (
       interesting_abstracts
       .map(lambda rec: (random.random() <= config.sys.test_ratio, rec))
   )
-  ckpt(is_test_data, "is_test_data")
+  is_test_data = ckpt(is_test_data, "is_test_data")
 
   testing_data = (
       is_test_data
       .filter(lambda b_r: b_r[0])
       .map(lambda b_r: b_r[1])
   )
-  ckpt(testing_data, "testing_data")
+  testing_data = ckpt(testing_data, "testing_data")
 
   training_data = (
       is_test_data
       .filter(lambda b_r: not b_r[0])
       .map(lambda b_r: b_r[1])
   )
-  ckpt(training_data, "training_data")
-
-  ###
-  def get_distinct_from_list(records, field):
-    res = set()
-    for record in records:
-      for elem in record[field]:
-        res.add(elem)
-    return res
-
-  ###
+  training_data = ckpt(training_data, "training_data")
 
   print("Collecting all mesh headings")
+  min_support = 5
   all_mesh_headings = (
       training_data
-      .map_partitions(get_distinct_from_list, field="mesh_headings")
-      .distinct()
+      .map(lambda rec: rec["mesh_headings"])
+      .flatten()
+      .frequencies()
+      .filter(lambda mesh_freq: mesh_freq[1] >= min_support)
+      .map(lambda mesh_freq: mesh_freq[0])
       .compute()
   )
   print(f"Indexing all {len(all_mesh_headings)} mesh headings")
@@ -487,7 +496,9 @@ def prep(config:cpb.AbstractGeneratorConfig):
   print("Getting oldest year")
   oldest_year = (
       training_data
+      .filter(lambda rec: rec["date"] is not None)
       .map(lambda rec: int(rec["date"].split("-")[0]))
+      .filter(lambda year: year > 1000)  # some invalid years are crazy
       .min()
       .compute()
   )
@@ -498,11 +509,12 @@ def prep(config:cpb.AbstractGeneratorConfig):
   print("Collecting training data for tokenizer")
   training_data_files = (
       training_data
-      # Only collect 10% of abstracts
-      .random_sample(0.1)
+      # Only collect 30% of abstracts
+      .random_sample(0.3)
       .map_partitions(text_util.split_sentences)
       # Only need the text. We are doing a case-insensitive model.
       .map(lambda rec: rec["sent_text"])
+      .map(lambda text: text.lower() if config.lowercase else text)
       # Only take 10% of sentences, ultimately,'re subsetting again
       .random_sample(0.1)
       # Reduce the total number of files
@@ -531,6 +543,23 @@ def prep(config:cpb.AbstractGeneratorConfig):
   with open(paths["model_extra_data_path"], 'wb') as f:
     pickle.dump(extra_data, f)
   print("\t- Written:", paths["model_extra_data_path"])
+
+  def abstracts_to_windows(records):
+    tokenizer = AbstractGeneratorTokenizer(
+      tokenizer_model_path = paths["tokenizer_model_path"],
+      extra_data_path = paths["model_extra_data_path"],
+    )
+    generator = AbstractWindowGenerator(
+      tokenizer=tokenizer,
+      records=list(records),
+      batch_size=config.sys.batch_size,
+      text_size=config.text_length,
+      lowercase=config.lowercase,
+    )
+    return list(generator.iterate_data_across_abstracts())
+
+  training_data_windows = training_data.map_partitions(abstracts_to_windows)
+  training_data_windows = ckpt(training_data_windows, "training_data_windows")
 
 
 if __name__ == "__main__":

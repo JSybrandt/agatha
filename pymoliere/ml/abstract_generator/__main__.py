@@ -240,8 +240,8 @@ def distribute_training_partitions(
   for idx in indices:
     with open(partition_files[idx], 'rb') as f:
       res += pickle.load(f)
-  if max_result_size / len(res) < 0.75:
-    print(f"Warning, only selecting {max_result_size} out of {len(res)}")
+  #if max_result_size / len(res) < 0.75:
+    #print(f"Warning, only selecting {max_result_size} out of {len(res)}")
   random.shuffle(res)
   return res[:max_result_size]
 
@@ -326,7 +326,7 @@ def train(config:cpb.AbstractGeneratorConfig):
           pre[mask].view(-1, pre.shape[2]),
           exp[mask].view(-1)-start_idx,
       )
-    return part(predicted["text"], expected["text"], tokenizer.vocab_start_idx) \
+    return part(predicted["text"], expected["text"], tokenizer.vocab_start_idx)
 
   def after_loss_calculation(loss):
       loss.backward()

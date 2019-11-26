@@ -171,7 +171,7 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
   device = get_device(config)
   tokenizer = get_tokenizer_from_config(config)
   model = get_model_from_config(config, tokenizer)
-  model.load_state_dict(torch.load(paths["model_path"]))
+  model.load_state_dict(torch.load(paths["model_path"])["model_state_dict"])
   model.to(device)
   model.eval()
 
@@ -268,11 +268,6 @@ def train(config:cpb.AbstractGeneratorConfig):
   tokenizer = get_tokenizer_from_config(config)
   model = get_model_from_config(config, tokenizer)
 
-  # load checkpoint if found
-  if config.HasField("restore_from_checkpoint"):
-    if hvd.rank() == 0:
-      print("Loading checkpoint", config.restore_from_checkpoint)
-    model.load_state_dict(torch.load(config.restore_from_checkpoint))
 
   #print_model_summary(model)
   model.to(device)
@@ -284,10 +279,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       lr=config.sys.learning_rate,
       weight_decay=0.01,
   )
-  # Update everybody
-  # in the case we loaded from a checkpoint, this is very important
-  hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-  hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+
   # Prep for horovod
   optimizer = hvd.DistributedOptimizer(
       optimizer,
@@ -300,11 +292,22 @@ def train(config:cpb.AbstractGeneratorConfig):
       num_training_steps=config.sys.steps_per_epoch * config.sys.num_epochs,
   )
 
-  if config.HasField("restore_epoch"):
+  start_epoch = 0
+
+  # load checkpoint if found
+  if config.HasField("restore_from_checkpoint"):
     if hvd.rank() == 0:
-      print("Resuming schedule")
-    for _ in range(config.sys.steps_per_epoch*config.restore_epoch):
-      schedule.step()
+      print("Loading checkpoint", config.restore_from_checkpoint)
+    ckpt = torch.load(config.restore_from_checkpoint)
+    model.load_state_dict(ckpt["model_state_dict"])
+    optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+    schedule.load_state_dict(ckpt["schedule_state_dict"])
+    start_epoch = ckpt["epoch"]
+
+  # Update everybody
+  # in the case we loaded from a checkpoint, this is very important
+  hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+  hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
   if config.debug:
     print_model_summary(model)
@@ -344,7 +347,14 @@ def train(config:cpb.AbstractGeneratorConfig):
         and hvd.rank() == 0
     ):
       print("Saving model checkpoint")
-      torch.save(model.state_dict(), f"{paths['model_path']}.{epoch}")
+      torch.save({
+          "model_state_dict": model.state_dict(),
+          "optimizer_state_dict": optimizer.state_dict(),
+          "schedule_state_dict": schedule.state_dict(),
+          "epoch": epoch,
+        },
+        f"{paths['model_path']}.{epoch}"
+      )
 
   def generator_wrapper(epoch):
     training_data = distribute_training_partitions(
@@ -374,13 +384,6 @@ def train(config:cpb.AbstractGeneratorConfig):
     expected = expected[value] - start_idx
     assert predicted.shape[0] == expected.shape[0]
     assert predicted.shape[1] == expected.shape[1]
-    # if hvd.rank() == 0 and value == "text":
-      # from pprint import pprint
-      # print("Predicted", value)
-      # print(predicted[:, 0].tolist())
-      # print("Expected", value)
-      # print(expected[:, 0].tolist())
-    # Correct text prediction rate across batch
     return (predicted[mask] == expected[mask]).float().mean()
 
   def text_accuracy(predicted, expected):
@@ -409,8 +412,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       metrics = [
         ("text_acc", text_accuracy),
       ],
-      start_at_epoch=\
-          config.restore_epoch if config.HasField("restore_epoch") else 0
+      start_at_epoch=start_epoch,
   )
 
   if hvd.rank() == 0:

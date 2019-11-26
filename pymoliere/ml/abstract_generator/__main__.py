@@ -199,6 +199,7 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
         model=model,
         text_length=config.text_length,
         device=device,
+        lowercase=config.lowercase,
     )
     print(metrics)
 

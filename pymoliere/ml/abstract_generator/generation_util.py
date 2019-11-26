@@ -10,6 +10,7 @@ from pymoliere.construct import text_util
 import torch
 from typing import Tuple, List, Iterable, Dict, Any
 from copy import deepcopy
+import numpy as np
 try:
   from nlgeval import NLGEval
 except ImportError:
@@ -22,7 +23,14 @@ def evaluate_model_on_abstract(
     model:AbstractGenerator,
     text_length:int,
     device:torch.device,
+    lowercase:bool,
 )->Dict[str, Any]:
+
+  if lowercase:
+    abstract["text_data"] = [
+        {"text": t["text"].lower(), "type": t["type"]}
+        for t in abstract["text_data"]
+    ]
 
   title_only = deepcopy(abstract)
   title_only["text_data"] = [title_only["text_data"][0]]
@@ -70,6 +78,7 @@ def evaluate_model_on_abstract(
   if hasattr(evaluate_model_on_abstract, "nlg_eval"):
     nlg_eval = evaluate_model_on_abstract.nlg_eval
   else:
+    print("Loading eval data (first time only)")
     nlg_eval = evaluate_model_on_abstract.nlg_eval = NLGEval()
 
   generated_sentence = tokenizer.decode_text(generated_indices)
@@ -110,10 +119,27 @@ def generate_new_text(
   while True:
     predictions = model(context, text)
 
-    new_word = predictions["text"][-1, 0, :].argmax() \
-        + tokenizer.vocab_start_idx
+    # Remember, we're using logsoftmax as output
+    word_probabilities = np.exp(
+        predictions["text"][-1, 0, :].detach().cpu().numpy()
+    )
 
-    yield int(new_word)
+    assert 0 <= word_probabilities.min() <= word_probabilities.max() <= 1
+
+    # Because floating point error may have slightly altered the probability dist
+
+    choices = []
+    probs = []
+    for idx, prob in enumerate(word_probabilities):
+      if prob > 0.001:
+        choices.append(idx)
+        probs.append(prob)
+
+    probs = np.array(probs, dtype=np.float32)
+    probs /= probs.sum()
+
+    new_word = int(np.random.choice(choices, p=probs)) + tokenizer.vocab_start_idx
+    yield new_word
 
     def add_or_shift(tensor, new_element):
       l = tensor.flatten().tolist()
@@ -122,4 +148,4 @@ def generate_new_text(
         l = l[-model.max_text_length+1:]
       return torch.LongTensor(l).unsqueeze(1).to(tensor.device)
 
-    text = add_or_shift(text, int(new_word))
+    text = add_or_shift(text, new_word)

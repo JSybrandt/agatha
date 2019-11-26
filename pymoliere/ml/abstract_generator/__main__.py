@@ -9,9 +9,7 @@ from pymoliere.construct import dask_checkpoint, file_util, text_util, ftp_util
 from pymoliere.ml.model_summary import print_model_summary
 from pymoliere.ml.abstract_generator.misc_util import HashedIndex, OrderedIndex
 from pymoliere.ml.abstract_generator.lamb_optimizer import Lamb
-from pymoliere.ml.abstract_generator.generation_util import (
-    generate_new_text,
-)
+from pymoliere.ml.abstract_generator import generation_util
 from pymoliere.ml.abstract_generator.abstract_generator import (
     INTERESTING_SENTENCE_LABLES,
     AbstractGeneratorTokenizer,
@@ -34,7 +32,8 @@ import random
 import os
 from tqdm import tqdm
 
-MODES = ["train", "evaluate", "prep"]
+# Eval added as an alias for evaluate
+MODES = ["train", "evaluate", "prep", "eval"]
 
 # Taken from transformers module. This function (get_linear_schedule_with_warmup)
 # is under the Apache2 License
@@ -90,17 +89,22 @@ def get_paths(config:cpb.AbstractGeneratorConfig):
   pmc_download_dir = scratch_root_dir.joinpath("pmc_raw")
   pmc_download_dir.mkdir(parents=True, exist_ok=True)
   checkpoint_dir = scratch_root_dir.joinpath("dask_checkpoints")
-  model_root_dir = scratch_root_dir.joinpath("models").joinpath("abstract_generator")
-  if config.HasField("model_path"):
-    model_path = Path(config.model_path)
-  else:
-    model_path = model_root_dir.joinpath("model.pt")
+  model_root_dir = \
+      scratch_root_dir.joinpath("models").joinpath("abstract_generator")
+  model_path = model_root_dir.joinpath("model.pt")
   model_ckpt_dir = model_root_dir.joinpath("dask_checkpoints")
   model_extra_data_path = model_root_dir.joinpath("extra_data.pkl")
   tokenizer_training_data_dir = \
       model_ckpt_dir.joinpath("tokenizer_training_data")
   tokenizer_model_path = model_root_dir.joinpath("tokenizer.model")
   tokenizer_vocab_path = model_root_dir.joinpath("tokenizer.vocab")
+
+  if config.HasField("tokenizer_data_path"):
+    tokenizer_model_path = Path(config.tokenizer_data_path)
+  if config.HasField("extra_data_path"):
+    model_extra_data_path = Path(config.extra_data_path)
+  if config.HasField("model_path"):
+    model_path = Path(config.model_path)
 
   # List of all directories
   dir_paths = [
@@ -171,7 +175,13 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
   device = get_device(config)
   tokenizer = get_tokenizer_from_config(config)
   model = get_model_from_config(config, tokenizer)
-  model.load_state_dict(torch.load(paths["model_path"])["model_state_dict"])
+
+  loaded_data = torch.load(paths["model_path"])
+  # we want to be able to evaluate EITHER the checkpoint or final model
+  if "model_state_dict" in loaded_data:
+    model.load_state_dict(loaded_data["model_state_dict"])
+  else:
+    model.load_state_dict(loaded_data)
   model.to(device)
   model.eval()
 
@@ -181,45 +191,17 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
       size=10 if config.debug else hvd.size(),
   )
 
-  batch_generator = AbstractWindowGenerator(
-      tokenizer=tokenizer,
-      records=testing_data,
-      batch_size=1,
-      text_size=config.text_length,
-      return_training_data=False,
-      only_first_window_per_abstract=True,
-  )
-
   for record in testing_data:
-    pmid = record["pmid"]
-    year = int(record["date"].split("-")[0])
-    title_rec = record["text_data"][0]
-    assert title_rec["type"] == "title"
-    title=title_rec["text"]
-    mesh_headings=record["mesh_headings"]
-
-    title_tokens = \
-        [tokenizer.start_symbol_idx] + tokenizer.encode_text(title)
-
-    context = tokenizer.encode_context_sequence(
-        year=year,
-        mesh_headings=mesh_headings,
-    )
-    text_generator = generate_new_text(
-        model=model,
+    print("Evaluating", record["pmid"])
+    metrics = generation_util.evaluate_model_on_abstract(
+        abstract=record,
         tokenizer=tokenizer,
-        context=torch.LongTensor(context).unsqueeze(1).to(device),
-        text=torch.LongTensor(title_tokens).unsqueeze(1).to(device),
+        model=model,
+        text_length=config.text_length,
+        device=device,
     )
-    texts = []
-    for idx in range(200):
-      te = next(text_generator)
-      texts.append(te)
-    prediction=tokenizer.decode_text(texts)
+    print(metrics)
 
-    print(
-        f"{pmid},{year},'{','.join(mesh_headings)}','{title}','{prediction}'"
-    )
 
 def distribute_training_partitions(
     partition_files:List[Path],
@@ -585,5 +567,5 @@ if __name__ == "__main__":
     prep(config)
   if config.mode == "train":
     train(config)
-  if config.mode == "evaluate":
+  if config.mode in {"evaluate", "eval"}:
     evaluate(config)

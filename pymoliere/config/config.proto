@@ -195,6 +195,7 @@ message AbstractGeneratorConfig {
 
   // If set, load these weights. Only used in "mode=train"
   optional string restore_from_checkpoint = 26;
+  optional int32 restore_epoch = 29;
 
   optional int32 num_warmup_steps = 27 [default=100];
   optional bool lowercase = 28 [default=false];

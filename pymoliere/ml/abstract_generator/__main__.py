@@ -183,11 +183,9 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
 
   batch_generator = AbstractWindowGenerator(
       tokenizer=tokenizer,
-      device=device,
       records=testing_data,
       batch_size=1,
       text_size=config.text_length,
-      return_eval_data=True,
       return_training_data=False,
       only_first_window_per_abstract=True,
   )
@@ -302,6 +300,12 @@ def train(config:cpb.AbstractGeneratorConfig):
       num_training_steps=config.sys.steps_per_epoch * config.sys.num_epochs,
   )
 
+  if config.HasField("restore_epoch"):
+    if hvd.rank() == 0:
+      print("Resuming schedule")
+    for _ in range(config.sys.steps_per_epoch*config.restore_epoch):
+      schedule.step()
+
   if config.debug:
     print_model_summary(model)
 
@@ -404,7 +408,9 @@ def train(config:cpb.AbstractGeneratorConfig):
       num_batches=config.sys.steps_per_epoch,
       metrics = [
         ("text_acc", text_accuracy),
-      ]
+      ],
+      start_at_epoch=\
+          config.restore_epoch if config.HasField("restore_epoch") else 0
   )
 
   if hvd.rank() == 0:

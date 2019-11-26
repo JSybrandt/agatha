@@ -105,6 +105,7 @@ def train_model(
     validation_batch_generator:BatchGenerator=None,
     validation_num_batches:int=None,
     on_phase_end:OnPhaseEnd=None,
+    start_at_epoch:int=0,
 )->None:
   """
   A generic training harness for pytorch models.
@@ -164,7 +165,7 @@ def train_model(
   }
 
   global_training_batch_idx = 0
-  for epoch in range(num_epochs):
+  for epoch in range(start_at_epoch, num_epochs):
     if on_epoch_start is not None:
       on_epoch_start(epoch)
     if not disable_plots:

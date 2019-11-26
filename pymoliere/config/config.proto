@@ -198,6 +198,7 @@ message AbstractGeneratorConfig {
 
   optional int32 num_warmup_steps = 27 [default=100];
   optional bool lowercase = 28 [default=false];
+  optional int32 min_mesh_term_support = 29 [default=5];
 }
 ////////////////////////////////////////////////////////////////////////////////
 

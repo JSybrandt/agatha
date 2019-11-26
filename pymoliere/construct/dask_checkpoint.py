@@ -10,6 +10,7 @@ def checkpoint(
     name:str,
     checkpoint_dir:Path,
     respect_partial_checkpoints:bool=True,
+    overwrite:bool=False,
     **compute_kwargs,
 )-> dbag.Bag:
   """
@@ -17,6 +18,9 @@ def checkpoint(
   partition is given a checkpoint task, and then the bag is recombined. Any
   partition that has been previously checkpointed will be restored.
   """
+
+  if overwrite:
+    respect_partial_checkpoints=False
 
   # Assure ourselves that we have a unique name
   assert name not in _CHECKPOINT_NAMES
@@ -28,9 +32,16 @@ def checkpoint(
   part_dir.mkdir(parents=True, exist_ok=True)
   assert part_dir.is_dir()
 
+  if overwrite:
+    done_path = part_dir.joinpath(file_util.DONE_FILE)
+    if done_path.is_file():
+      print("\t- Clearing existing ckpt")
+      done_path.unlink()
+
   if file_util.is_result_saved(part_dir):
     print("\t- Cached")
   else:
+    print("\t- Computing")
     file_util.save(
         data,
         part_dir,

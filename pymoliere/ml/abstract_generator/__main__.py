@@ -435,12 +435,13 @@ def prep(config:cpb.AbstractGeneratorConfig):
         # show_progress=True,
     # )
   connect_to_dask_cluster(config)
-  def ckpt(val, name):
+  def ckpt(val, name, overwrite=False):
     print("Checkpoint", name)
     return dask_checkpoint.checkpoint(
         val,
         name=name,
         checkpoint_dir=paths["model_ckpt_dir"],
+        overwrite=overwrite,
     )
 
 
@@ -486,13 +487,12 @@ def prep(config:cpb.AbstractGeneratorConfig):
   training_data = ckpt(training_data, "training_data")
 
   print("Collecting all mesh headings")
-  min_support = 5
   all_mesh_headings = (
       training_data
       .map(lambda rec: rec["mesh_headings"])
       .flatten()
       .frequencies()
-      .filter(lambda mesh_freq: mesh_freq[1] >= min_support)
+      .filter(lambda mesh_freq: mesh_freq[1] >= config.min_mesh_term_support)
       .map(lambda mesh_freq: mesh_freq[0])
       .compute()
   )
@@ -566,8 +566,12 @@ def prep(config:cpb.AbstractGeneratorConfig):
     )
     return list(generator.iterate_data_across_abstracts())
 
-  training_data_windows = training_data.map_partitions(abstracts_to_windows)
-  training_data_windows = ckpt(training_data_windows, "training_data_windows")
+  ckpt(
+    training_data.map_partitions(abstracts_to_windows),
+    "training_data_windows",
+    overwrite=True,
+  )
+
 
 
 if __name__ == "__main__":

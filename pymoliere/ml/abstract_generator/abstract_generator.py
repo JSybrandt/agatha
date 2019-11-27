@@ -112,7 +112,12 @@ class AbstractGeneratorTokenizer(object):
     if self.mesh_start_idx <= idx < self.mesh_end_idx:
       return ",".join(self.mesh_index.get_elements(idx - self.mesh_start_idx))
     if self.vocab_start_idx <= idx < self.vocab_end_idx:
-      return self.sp_processor.id_to_piece(idx - self.vocab_start_idx)
+      if idx < self.traditional_vocab_end_idx:
+        return self.sp_processor.id_to_piece(idx - self.vocab_start_idx)
+      elif idx == self.start_symbol_idx:
+        return self.start_symbol
+      elif idx == self.end_symbol_idx:
+        return self.end_symbol
     return "[INVALID]"
 
   def decode_text(self, indices:List[int])->str:

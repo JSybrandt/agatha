@@ -64,39 +64,48 @@ def evaluate_model_on_abstract(
       ),
   )
 
-  generated_indices = []
-  for next_idx in text_generator:
-    generated_indices.append(next_idx)
-    next_token = tokenizer.decode_idx(next_idx)
-    if (
-        next_token == tokenizer.end_symbol
-        or next_token[-1] == "."
-        or len(generated_indices) >= 100
-    ):
-      break
-
-  if hasattr(evaluate_model_on_abstract, "nlg_eval"):
-    nlg_eval = evaluate_model_on_abstract.nlg_eval
-  else:
-    print("Loading eval data (first time only)")
-    nlg_eval = evaluate_model_on_abstract.nlg_eval = NLGEval()
-
-  generated_sentence = tokenizer.decode_text(generated_indices)
   reference_sentences = [
       s["sent_text"]
       for s in text_util.split_sentences([abstract])[1:]
   ]
 
-  metrics = nlg_eval.compute_individual_metrics(
-      reference_sentences,
-      generated_sentence
-  )
+  best_generated_result = None
+  for trial_idx in range(10):
+    generated_indices = []
+    for next_idx in text_generator:
+      generated_indices.append(next_idx)
+      next_token = tokenizer.decode_idx(next_idx)
+      if (
+          len(generated_indices) > 5
+          and next_token == tokenizer.end_symbol
+          or next_token[-1] == "."
+          or len(generated_indices) >= 100
+      ):
+        break
 
-  metrics["pmid"] = abstract["pmid"]
-  metrics["title"] = title_only["text_data"][0]["text"]
-  metrics["references"] = reference_sentences
-  metrics["generated_text"] = generated_sentence
-  return metrics
+    if hasattr(evaluate_model_on_abstract, "nlg_eval"):
+      nlg_eval = evaluate_model_on_abstract.nlg_eval
+    else:
+      print("Loading eval data (first time only)")
+      nlg_eval = evaluate_model_on_abstract.nlg_eval = NLGEval()
+
+    generated_sentence = tokenizer.decode_text(generated_indices)
+
+    metrics = nlg_eval.compute_individual_metrics(
+        reference_sentences,
+        generated_sentence
+    )
+    metrics["pmid"] = abstract["pmid"]
+    metrics["title"] = title_only["text_data"][0]["text"]
+    metrics["references"] = reference_sentences
+    metrics["generated_text"] = generated_sentence
+
+    if (
+        best_generated_result is None
+        or best_generated_result["METEOR"] < metrics["METEOR"]
+    ):
+      best_generated_result = deepcopy(metrics)
+  return best_generated_result
 
 
 def generate_new_text(

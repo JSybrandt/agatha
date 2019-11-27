@@ -202,6 +202,8 @@ message AbstractGeneratorConfig {
 
   optional string tokenizer_data_path = 30;
   optional string extra_data_path = 31;
+
+  optional string eval_result_path = 32;
 }
 ////////////////////////////////////////////////////////////////////////////////
 

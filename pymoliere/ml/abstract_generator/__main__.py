@@ -31,6 +31,7 @@ from typing import Iterable, List, Dict
 import random
 import os
 from tqdm import tqdm
+import json
 
 # Eval added as an alias for evaluate
 MODES = ["train", "evaluate", "prep", "eval"]
@@ -182,8 +183,8 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
     model.load_state_dict(loaded_data["model_state_dict"])
   else:
     model.load_state_dict(loaded_data)
+  model = model.eval()
   model.to(device)
-  model.eval()
 
   testing_data = split_partitions_across_ranks(
       testing_data_dir,
@@ -191,17 +192,26 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
       size=10 if config.debug else hvd.size(),
   )
 
-  for record in testing_data:
-    print("Evaluating", record["pmid"])
-    metrics = generation_util.evaluate_model_on_abstract(
-        abstract=record,
-        tokenizer=tokenizer,
-        model=model,
-        text_length=config.text_length,
-        device=device,
-        lowercase=config.lowercase,
-    )
-    print(metrics)
+  out_file = None
+  if config.HasField("eval_result_path"):
+    out_file = open(config.eval_result_path, 'w')
+
+  with torch.no_grad():
+    for record in testing_data:
+      print("Evaluating", record["pmid"])
+      metrics = generation_util.evaluate_model_on_abstract(
+          abstract=record,
+          tokenizer=tokenizer,
+          model=model,
+          text_length=config.text_length,
+          device=device,
+          lowercase=config.lowercase,
+      )
+      print(metrics)
+      if out_file is not None:
+        out_file.write(f"{json.dumps(metrics)}\n")
+  if out_file is not None:
+    out_file.close()
 
 
 def distribute_training_partitions(

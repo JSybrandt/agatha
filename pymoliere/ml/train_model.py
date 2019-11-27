@@ -176,11 +176,11 @@ def train_model(
 
     for phase in phases:
       if phase == "train":
-        model.train()
+        model = model.train()
         gen = batch_generator
         num = num_batches
       else:
-        model.eval()
+        model = model.eval()
         gen = validation_batch_generator
         num = validation_num_batches
 

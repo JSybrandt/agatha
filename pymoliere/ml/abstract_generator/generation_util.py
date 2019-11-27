@@ -36,6 +36,11 @@ def evaluate_model_on_abstract(
   title_only["text_data"] = [title_only["text_data"][0]]
   assert title_only["text_data"][0]["type"] == "title"
 
+  reference_sentences = [
+      s["sent_text"]
+      for s in text_util.split_sentences([abstract])[1:]
+  ]
+
   batch_generator = AbstractWindowGenerator(
       tokenizer=tokenizer,
       records=[title_only],
@@ -53,21 +58,28 @@ def evaluate_model_on_abstract(
   assert model_input["text"][-1] == tokenizer.end_symbol_idx
   model_input["text"] = model_input["text"][:-1]
 
+  context = torch.LongTensor(model_input["context"]).to(device)
+  title = torch.LongTensor(model_input["text"]).to(device)
+  first_sentence = torch.LongTensor(
+      tokenizer.encode_text(reference_sentences[0])
+  ).unsqueeze(1).to(device)
+
+  perplexity_of_first_sentence = calculate_first_sentence_perplexity(
+      model=model,
+      tokenizer=tokenizer,
+      context=context,
+      initial_text=title,
+      evaluated_text=first_sentence,
+  )
+
+  print("Perp:", perplexity_of_first_sentence)
+
   text_generator = generate_new_text(
       model=model,
       tokenizer=tokenizer,
-      context=(
-        torch.LongTensor(model_input["context"]).to(device)
-      ),
-      text=(
-        torch.LongTensor(model_input["text"]).to(device)
-      ),
+      context=context,
+      text=title,
   )
-
-  reference_sentences = [
-      s["sent_text"]
-      for s in text_util.split_sentences([abstract])[1:]
-  ]
 
   best_generated_result = None
   for trial_idx in range(10):
@@ -95,9 +107,7 @@ def evaluate_model_on_abstract(
         reference_sentences,
         generated_sentence
     )
-    metrics["pmid"] = abstract["pmid"]
-    metrics["title"] = title_only["text_data"][0]["text"]
-    metrics["references"] = reference_sentences
+    metrics = {k: float(v) for k, v in metrics.items()}
     metrics["generated_text"] = generated_sentence
 
     if (
@@ -105,7 +115,46 @@ def evaluate_model_on_abstract(
         or best_generated_result["METEOR"] < metrics["METEOR"]
     ):
       best_generated_result = deepcopy(metrics)
+  best_generated_result["perplexity_of_first_sentence"] \
+      = float(perplexity_of_first_sentence)
+  best_generated_result["pmid"] = abstract["pmid"]
+  best_generated_result["title"] = title_only["text_data"][0]["text"]
+  best_generated_result["mesh_headings"] = title_only["mesh_headings"]
+  best_generated_result["date"] = title_only["date"]
+  best_generated_result["references"] = reference_sentences
   return best_generated_result
+
+def calculate_first_sentence_perplexity(
+    model:AbstractGenerator,
+    tokenizer:AbstractGeneratorTokenizer,
+    context:torch.LongTensor,
+    initial_text:torch.LongTensor,
+    evaluated_text:torch.LongTensor
+)->float:
+  assert len(context.shape) == len(initial_text.shape) \
+      == len(evaluated_text.shape) == 2
+  # Only handling batch size 1 right now
+  assert context.shape[1] == initial_text.shape[1] \
+      == evaluated_text.shape[1] == 1
+
+  # input text is both values merged
+  all_text = torch.cat((initial_text, evaluated_text))
+  # predictions is size (len(all_text), 1, vocab_size)
+  predictions = model(context, all_text)["text"].detach()
+  assert predictions.shape[0] == all_text.shape[0]
+  # Multiplying resulting probs here
+  product = 1
+  # iterate through the evaluated component
+  for prediction_idx in range(len(initial_text), len(all_text)):
+    # this is the given token in the expected section
+    expected_token = \
+        int(all_text[prediction_idx, 0]) - tokenizer.vocab_start_idx
+
+    # We predicted this probability from the n-1'th position
+    # Remember that our model outputs log-probabilities
+    log_prob = float(predictions[prediction_idx-1, 0, expected_token])
+    product *= (1 / np.exp(log_prob))
+  return product ** (1 / len(evaluated_text))
 
 
 def generate_new_text(

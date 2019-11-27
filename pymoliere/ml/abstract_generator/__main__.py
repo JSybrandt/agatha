@@ -191,6 +191,7 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
       rank=hvd.rank(),
       size=10 if config.debug else hvd.size(),
   )
+  random.shuffle(testing_data)
 
   with torch.no_grad():
     for record in testing_data:

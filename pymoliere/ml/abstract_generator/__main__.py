@@ -192,27 +192,24 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
       size=10 if config.debug else hvd.size(),
   )
 
-  out_file = None
-  if config.HasField("eval_result_path"):
-    out_file = open(config.eval_result_path, 'w')
-
   with torch.no_grad():
     for record in testing_data:
-      print("Evaluating", record["pmid"])
-      metrics = generation_util.evaluate_model_on_abstract(
-          abstract=record,
-          tokenizer=tokenizer,
-          model=model,
-          text_length=config.text_length,
-          device=device,
-          lowercase=config.lowercase,
-      )
-      print(metrics)
-      if out_file is not None:
-        out_file.write(f"{json.dumps(metrics)}\n")
-  if out_file is not None:
-    out_file.close()
-
+      try:
+        print("Evaluating", record["pmid"])
+        metrics = generation_util.evaluate_model_on_abstract(
+            abstract=record,
+            tokenizer=tokenizer,
+            model=model,
+            text_length=config.text_length,
+            device=device,
+            lowercase=config.lowercase,
+        )
+        print(metrics)
+        if config.HasField("eval_result_path"):
+          with open(config.eval_result_path, 'a') as out_file:
+            out_file.write(f"{json.dumps(metrics)}\n")
+      except:
+        print("Error evaluating", record)
 
 def distribute_training_partitions(
     partition_files:List[Path],

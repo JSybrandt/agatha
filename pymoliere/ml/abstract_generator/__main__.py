@@ -1,27 +1,19 @@
 import dask
 from dask.distributed import Client
-import horovod.torch as hvd
+import dask.bag as dbag
 from nltk.tokenize import sent_tokenize
 from pathlib import Path
 import pickle
 from pymoliere.config import config_pb2 as cpb, proto_util
 from pymoliere.construct import dask_checkpoint, file_util, text_util, ftp_util
-from pymoliere.ml.model_summary import print_model_summary
 from pymoliere.ml.abstract_generator.misc_util import HashedIndex, OrderedIndex
-from pymoliere.ml.abstract_generator.lamb_optimizer import Lamb
 from pymoliere.ml.abstract_generator import generation_util
 from pymoliere.ml.abstract_generator.abstract_generator import (
-    INTERESTING_SENTENCE_LABLES,
-    AbstractGeneratorTokenizer,
     AbstractGenerator,
 )
+from pymoliere.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
 from pymoliere.ml.abstract_generator.batch_generator import (
     AbstractWindowGenerator
-)
-from pymoliere.ml.train_model import (
-    train_model,
-    split_partitions_across_ranks,
-    split_list_by_rank,
 )
 from pymoliere.util.misc_util import Record, iter_to_batches
 import sentencepiece as spm
@@ -32,28 +24,14 @@ import random
 import os
 from tqdm import tqdm
 import json
+from pytorch_lightning import Trainer
+from pytorch_lightning.logging import TestTubeLogger
+from sqlitedict import SqliteDict
+
 
 # Eval added as an alias for evaluate
 MODES = ["train", "evaluate", "prep", "eval"]
 
-# Taken from transformers module. This function (get_linear_schedule_with_warmup)
-# is under the Apache2 License
-def get_linear_schedule_with_warmup(
-    optimizer,
-    num_warmup_steps,
-    num_training_steps,
-    last_epoch=-1
-):
-  """
-    Create a schedule with a learning rate that decreases linearly after
-    linearly increasing during a warmup period.
-  """
-  def lr_lambda(current_step):
-    if current_step < num_warmup_steps:
-      return float(current_step) / float(max(1, num_warmup_steps))
-    return max(0.0, float(num_training_steps - current_step) \
-        / float(max(1, num_training_steps - num_warmup_steps)))
-  return torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda, last_epoch)
 
 def items_to_hashed_index(collection:Iterable[str], max_index:int)->HashedIndex:
   res = HashedIndex(max_index=max_index)
@@ -123,13 +101,6 @@ def get_paths(config:cpb.AbstractGeneratorConfig):
       if name.split("_")[-1] in ["dir", "path"]
   }
 
-def init_everything_for_hvd():
-  seed = 42
-  hvd.init()
-  torch.manual_seed(seed)
-  torch.cuda.manual_seed(seed)
-  torch.set_num_threads(4)
-  torch.cuda.set_device(hvd.local_rank())
 
 def get_tokenizer_from_config(
     config:cpb.AbstractGeneratorConfig
@@ -148,8 +119,13 @@ def get_model_from_config(
     config:cpb.AbstractGeneratorConfig,
     tokenizer:AbstractGeneratorTokenizer,
 )->AbstractGenerator:
+  paths = get_paths(config)
+  training_data_dir = paths["model_root_dir"].joinpath("training_data")
   return AbstractGenerator(
-      tokenizer=tokenizer,
+      total_embed_size=len(tokenizer),
+      vocab_size=tokenizer.vocab_size,
+      padding_idx=tokenizer.padding_idx,
+      vocab_start_idx=tokenizer.vocab_start_idx,
       embedding_dim=config.embedding_dim,
       max_text_length=config.text_length,
       num_attention_heads=config.num_attention_heads,
@@ -157,6 +133,10 @@ def get_model_from_config(
       num_decoder_layers=config.num_decoder_layers,
       intermediate_dropout=0.1,
       intermediate_feedforward_dim=config.hidden_fc_size,
+      training_data_dir=training_data_dir,
+      batch_size=config.sys.batch_size,
+      warmup_steps=config.num_warmup_steps,
+      learning_rate=config.sys.learning_rate,
   )
 
 def get_device(config:cpb.AbstractGeneratorConfig)->torch.device:
@@ -167,7 +147,6 @@ def get_device(config:cpb.AbstractGeneratorConfig)->torch.device:
 
 
 def evaluate(config:cpb.AbstractGeneratorConfig):
-  init_everything_for_hvd()
   paths = get_paths(config)
 
   testing_data_dir = paths["model_ckpt_dir"].joinpath("testing_data")
@@ -188,8 +167,8 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
 
   testing_data = split_partitions_across_ranks(
       testing_data_dir,
-      rank=hvd.rank(),
-      size=10 if config.debug else hvd.size(),
+      rank=0,
+      size=10,
   )
   random.shuffle(testing_data)
 
@@ -218,12 +197,11 @@ def distribute_training_partitions(
     size:int,
     max_result_size:int,
 )->List[Dict[str, torch.Tensor]]:
-  if hvd.rank() == 0:
-    print(f"Splitting {len(partition_files)} paths across {size} machines")
+  print(f"Splitting {len(partition_files)} paths across {size} machines")
   # everyone needs to setup the index tensor
   indices = torch.randperm(len(partition_files))
   # reset everyone to the tensor owned by rank 0
-  indices = hvd.broadcast(indices, root_rank=0, name="indices").tolist()
+  #indices = hvd.broadcast(indices, root_rank=0, name="indices").tolist()
   # split the indies list up
   indices = split_list_by_rank(indices, rank, size)
   #print(f"I'm responsible for {len(indices)} files:", indices)
@@ -237,178 +215,27 @@ def distribute_training_partitions(
   return res[:max_result_size]
 
 def train(config:cpb.AbstractGeneratorConfig):
-  init_everything_for_hvd()
   paths = get_paths(config)
-
-  training_data_dir = paths["model_ckpt_dir"].joinpath("training_data_windows")
-  assert training_data_dir.is_dir()
-
-  all_training_files = list(training_data_dir.glob("*.pkl"))
-  assert len(all_training_files) > 0
-  all_training_files.sort()
-
-  effective_batch_size = config.sys.batch_size*hvd.size()
-  if hvd.rank() == 0:
-    print("Effective batch size:", effective_batch_size)
-
-
-  if hvd.rank() == 0:
-    print("Preparing model")
-
-  device = get_device(config)
   tokenizer = get_tokenizer_from_config(config)
   model = get_model_from_config(config, tokenizer)
 
-
-  #print_model_summary(model)
-  model.to(device)
-
-  loss_fn = torch.nn.NLLLoss()
-  optimizer = Lamb(
-      model.parameters(),
-      # facebook paper says linear growth with batch size
-      lr=config.sys.learning_rate,
-      weight_decay=0.01,
-  )
-
-  # Prep for horovod
-  optimizer = hvd.DistributedOptimizer(
-      optimizer,
-      named_parameters=model.named_parameters(),
-  )
-
-  schedule = get_linear_schedule_with_warmup(
-      optimizer=optimizer,
-      num_warmup_steps=config.num_warmup_steps,
-      num_training_steps=config.sys.steps_per_epoch * config.sys.num_epochs,
-  )
-
-  start_epoch = 0
-
-  # load checkpoint if found
-  if config.HasField("restore_from_checkpoint"):
-    if hvd.rank() == 0:
-      print("Loading checkpoint", config.restore_from_checkpoint)
-    ckpt = torch.load(config.restore_from_checkpoint)
-    model.load_state_dict(ckpt["model_state_dict"])
-    optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-    schedule.load_state_dict(ckpt["schedule_state_dict"])
-    start_epoch = ckpt["epoch"]
-
-  # Update everybody
-  # in the case we loaded from a checkpoint, this is very important
-  hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-  hvd.broadcast_optimizer_state(optimizer, root_rank=0)
-
-  if config.debug:
-    print_model_summary(model)
-
-  # At this point, we just need to run train.
-  # To do so, we're going to define a bunch of callback functions
-
-  def loss_wrapper(predicted, expected):
-    mask = expected["text"] != tokenizer.padding_idx
-    def part(pre, exp, start_idx):
-      assert len(pre.shape) == 3
-      assert len(exp.shape) == 2
-      assert pre.shape[0] == exp.shape[0]
-      assert pre.shape[1] == exp.shape[1]
-      return loss_fn(
-          pre[mask].view(-1, pre.shape[2]),
-          exp[mask].view(-1)-start_idx,
-      )
-    return part(predicted["text"], expected["text"], tokenizer.vocab_start_idx)
-
-  def after_loss_calculation(loss):
-      loss.backward()
-      optimizer.synchronize()
-      torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-      with optimizer.skip_synchronize():
-        optimizer.step()
-      schedule.step()
-      optimizer.zero_grad()
-
-  def on_epoch_start(epoch):
-    if hvd.rank() == 0:
-      print()
-      print()
-      print("Epoch:", epoch)
-    if (
-        epoch > 0
-        and hvd.rank() == 0
-    ):
-      print("Saving model checkpoint")
-      torch.save({
-          "model_state_dict": model.state_dict(),
-          "optimizer_state_dict": optimizer.state_dict(),
-          "schedule_state_dict": schedule.state_dict(),
-          "epoch": epoch,
-        },
-        f"{paths['model_path']}.{epoch}"
-      )
-
-  def generator_wrapper(epoch):
-    training_data = distribute_training_partitions(
-        all_training_files,
-        rank=hvd.rank(),
-        size=100 if config.debug else hvd.size(),
-        max_result_size=config.sys.steps_per_epoch * config.sys.batch_size
+  logger = TestTubeLogger(
+      save_dir=paths['model_root_dir'],
+      version=1,
     )
-    for batch_data in iter_to_batches(training_data, config.sys.batch_size):
-      vals = {
-          f: (
-            AbstractWindowGenerator
-            .field_to_long_tensor(batch_data, f)
-            .to(device)
-          )
-          for f in batch_data[0]
-      }
-      yield (
-          {"text": vals["text"], "context": vals["context"]},
-          {"text": vals["shifted_text"]},
-      )
-
-
-  def partial_accuracy(predicted, expected, value, start_idx):
-    mask = expected != tokenizer.padding_idx
-    predicted = predicted[value].argmax(dim=2)
-    expected = expected[value] - start_idx
-    assert predicted.shape[0] == expected.shape[0]
-    assert predicted.shape[1] == expected.shape[1]
-    return (predicted[mask] == expected[mask]).float().mean()
-
-  def text_accuracy(predicted, expected):
-    return partial_accuracy(predicted, expected, "text", tokenizer.vocab_start_idx)
-
-  def on_phase_end(phase, metric2average):
-    if phase == "train":
-      text_acc = hvd.allreduce(
-          metric2average["text_acc"],
-          name="text_acc"
-      )
-      if hvd.rank() == 0:
-        print("Epoch end text accuracy,", float(text_acc))
-
-  train_model(
-      model=model,
-      loss_fn=loss_wrapper,
-      num_epochs=config.sys.num_epochs,
-      on_epoch_start=on_epoch_start,
-      batch_generator=generator_wrapper,
-      after_loss_calculation=after_loss_calculation,
-      on_phase_end=on_phase_end,
-      disable_plots=True,
-      disable_batch_report=hvd.rank() != 0,
-      num_batches=config.sys.steps_per_epoch,
-      metrics = [
-        ("text_acc", text_accuracy),
-      ],
-      start_at_epoch=start_epoch,
+  trainer = Trainer(
+      fast_dev_run=config.debug,
+      gradient_clip_val=1,
+      default_save_path=paths['model_root_dir'],
+      weights_summary='full',
+      gpus=-1,
+      nb_gpu_nodes=4,
+      distributed_backend='ddp',
+      accumulate_grad_batches=4,
+      # print_nan_grads=True,
+      # track_grad_norm=2,
   )
-
-  if hvd.rank() == 0:
-    print("Saving model")
-    torch.save(model.state_dict(), paths["model_path"])
+  trainer.fit(model)
 
 
 def prep(config:cpb.AbstractGeneratorConfig):
@@ -442,18 +269,10 @@ def prep(config:cpb.AbstractGeneratorConfig):
       .joinpath("medline_documents")
   )
 
-  def all_text_fields_labeled(record:Record)->bool:
-    for field in record["text_data"]:
-      if field["type"] not in INTERESTING_SENTENCE_LABLES:
-        return False
-    return True
-
   interesting_abstracts = (
       abstracts
       # don't want the ones that are title-only
       .filter(lambda rec: len(rec["text_data"]) > 1)
-      # Allow unlabeled abstracts
-      #.filter(all_text_fields_labeled)
   )
   interesting_abstracts = ckpt(interesting_abstracts, "interesting_abstracts")
 
@@ -477,7 +296,7 @@ def prep(config:cpb.AbstractGeneratorConfig):
   )
   training_data = ckpt(training_data, "training_data")
 
-  print("Collecting all mesh headings")
+  # print("Collecting all mesh headings")
   all_mesh_headings = (
       training_data
       .map(lambda rec: rec["mesh_headings"])
@@ -543,7 +362,7 @@ def prep(config:cpb.AbstractGeneratorConfig):
     pickle.dump(extra_data, f)
   print("\t- Written:", paths["model_extra_data_path"])
 
-  def abstracts_to_windows(records):
+  def write_windows_from_abstract(records, part_idx, database_dir):
     tokenizer = AbstractGeneratorTokenizer(
       tokenizer_model_path = paths["tokenizer_model_path"],
       extra_data_path = paths["model_extra_data_path"],
@@ -555,13 +374,37 @@ def prep(config:cpb.AbstractGeneratorConfig):
       text_size=config.text_length,
       lowercase=config.lowercase,
     )
-    return list(generator.iterate_data_across_abstracts())
+    db_path = database_dir.joinpath(f"part-{part_idx}.sqlite")
+    try:
+      with SqliteDict(
+          db_path,
+          journal_mode="OFF",
+          flag="n", # create new DB
+      ) as db:
+        print("Writing", db_path)
+        for idx, val in enumerate(generator.iterate_data_across_abstracts()):
+          db[str(idx)] = val
+        db.commit()
+    except:
+      print("Something went wrong with", db_path)
+    return [1]
 
-  ckpt(
-    training_data.map_partitions(abstracts_to_windows),
-    "training_data_windows",
-    overwrite=True,
-  )
+
+  # Write everything as a sqlitedb
+  print("Generating windows and writing results to databases.")
+  database_dir = paths["model_root_dir"].joinpath("training_data")
+  database_dir.mkdir(parents=True, exist_ok=True)
+  write_tasks = []
+  for part_idx, part in enumerate(training_data.to_delayed()):
+    write_tasks.append(
+        dask.delayed(
+          write_windows_from_abstract
+        )(
+          part, part_idx, database_dir
+        )
+    )
+  dbag.from_delayed(write_tasks).compute()
+
 
 
 

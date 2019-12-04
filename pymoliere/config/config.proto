@@ -204,6 +204,9 @@ message AbstractGeneratorConfig {
   optional string extra_data_path = 31;
 
   optional string eval_result_path = 32;
+
+  //Needed for pytorch distributed
+  optional int32 local_rank = 33;
 }
 ////////////////////////////////////////////////////////////////////////////////
 

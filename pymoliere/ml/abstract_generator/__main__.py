@@ -234,6 +234,8 @@ def train(config:cpb.AbstractGeneratorConfig):
       accumulate_grad_batches=4,
       # print_nan_grads=True,
       # track_grad_norm=2,
+      amp_level='O3',
+      use_amp=True
   )
   trainer.fit(model)
 

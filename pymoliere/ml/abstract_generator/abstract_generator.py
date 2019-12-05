@@ -248,4 +248,8 @@ class AbstractGenerator(pl.LightningModule):
 
   def init_ddp_connection(self, proc_rank, world_size):
     print(f"Initing {proc_rank}/{world_size}")
-    torch.distributed.init_process_group('gloo', rank=proc_rank, world_size=world_size)
+    torch.distributed.init_process_group(
+        'gloo',
+        rank=proc_rank,
+        world_size=world_size
+    )

@@ -27,6 +27,7 @@ import json
 from pytorch_lightning import Trainer
 from pytorch_lightning.logging import TestTubeLogger
 from sqlitedict import SqliteDict
+import logging
 
 
 # Eval added as an alias for evaluate
@@ -219,23 +220,24 @@ def train(config:cpb.AbstractGeneratorConfig):
   tokenizer = get_tokenizer_from_config(config)
   model = get_model_from_config(config, tokenizer)
 
-  # logger = TestTubeLogger(
-      # save_dir=paths['model_root_dir'],
-      # version=1,
-    # )
+  logger = TestTubeLogger(
+      save_dir=paths['model_root_dir'],
+      version=config.checkpoint_version,
+  )
   trainer = Trainer(
+      logger=logger,
       fast_dev_run=config.debug,
       gradient_clip_val=1,
       default_save_path=paths['model_root_dir'],
-      weights_summary='full',
-      gpus=2,
-      nb_gpu_nodes=4,
+      weights_summary='top',
+      gpus=-1,
+      nb_gpu_nodes=config.num_nodes if config.HasField("num_nodes") else 1,
       distributed_backend='ddp',
-      accumulate_grad_batches=8,
+      accumulate_grad_batches=config.accumulate_batches,
       # print_nan_grads=True,
       # track_grad_norm=2,
-      # amp_level='O3',
-      # use_amp=True
+      amp_level='O2',
+      use_amp=True
   )
   trainer.fit(model)
 
@@ -411,6 +413,7 @@ def prep(config:cpb.AbstractGeneratorConfig):
 
 
 if __name__ == "__main__":
+  #logging.getLogger().setLevel(logging.INFO)
   config = cpb.AbstractGeneratorConfig()
   # Creates a parser with arguments corresponding to all of the provided fields.
   # Copy any command-line specified args to the config

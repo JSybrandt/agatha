@@ -206,7 +206,9 @@ message AbstractGeneratorConfig {
   optional string eval_result_path = 32;
 
   //Needed for pytorch distributed
-  optional int32 local_rank = 33;
+  optional int32 num_nodes = 33;
+  optional int32 accumulate_batches = 34 [default=1];
+  optional int32 checkpoint_version = 35 [default=1];
 }
 ////////////////////////////////////////////////////////////////////////////////
 

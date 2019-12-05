@@ -7,7 +7,7 @@ from typing import Optional, List, Any, Dict
 import math
 from random import shuffle
 import pytorch_lightning as pl
-from pymoliere.ml.abstract_generator.pickle_dataset import KVStoreDictDataset
+from pymoliere.ml.abstract_generator.pickle_dataset import KVStoreDictDataset, LoadWholeKVStore
 from pymoliere.ml.abstract_generator.lamb_optimizer import Lamb
 import os
 
@@ -29,7 +29,7 @@ class AbstractGenerator(pl.LightningModule):
       batch_size:int,
       warmup_steps:int,
       learning_rate:float,
-      dataset_workers:int=1,
+      dataset_workers:int=4,
   ):
     """
     Learns to generate following text given sliding windows across abstracts.
@@ -189,13 +189,14 @@ class AbstractGenerator(pl.LightningModule):
   @pl.data_loader
   def train_dataloader(self):
     dataset=KVStoreDictDataset(self.training_data_dir)
+    #dataset=LoadWholeKVStore(self.training_data_dir)
     sampler = torch.utils.data.distributed.DistributedSampler(dataset)
     return torch.utils.data.DataLoader(
         dataset=dataset,
         sampler=sampler,
         batch_size=self.batch_size,
         collate_fn=AbstractGenerator.collate,
-        num_workers=self.dataset_workers,
+        #num_workers=self.dataset_workers,
     )
 
   def configure_optimizers(self):

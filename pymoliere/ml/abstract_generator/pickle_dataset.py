@@ -25,3 +25,19 @@ class KVStoreDictDataset(torch.utils.data.Dataset):
         if db_idx not in self.connections:
           self.connections[db_idx] = SqliteDict(self.db_paths[db_idx], flag='r')
         return self.connections[db_idx][str(local_idx)]
+
+class LoadWholeKVStore(torch.utils.data.Dataset):
+  def __init__(self, db_dir):
+    super(LoadWholeKVStore, self).__init__()
+    assert db_dir.is_dir(), "Must supply a dir"
+    self.db_paths = sorted(list(db_dir.glob("*.sqlite")))
+    assert len(self.db_paths) > 0, "Dir must contain at least one sqlite file"
+    with SqliteDict(self.db_paths[0], flag='r') as conn:
+      self.data = list(conn.values())
+
+  def __len__(self):
+    return len(self.data)
+
+  def __getitem__(self, idx):
+    return self.data[idx]
+

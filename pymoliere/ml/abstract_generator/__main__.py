@@ -228,14 +228,14 @@ def train(config:cpb.AbstractGeneratorConfig):
       gradient_clip_val=1,
       default_save_path=paths['model_root_dir'],
       weights_summary='full',
-      gpus=-1,
+      gpus=2,
       nb_gpu_nodes=4,
       distributed_backend='ddp',
-      #accumulate_grad_batches=4,
+      accumulate_grad_batches=8,
       # print_nan_grads=True,
       # track_grad_norm=2,
-      amp_level='O3',
-      use_amp=True
+      # amp_level='O3',
+      # use_amp=True
   )
   trainer.fit(model)
 

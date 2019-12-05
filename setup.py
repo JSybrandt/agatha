@@ -109,6 +109,7 @@ setup(
       "pymongo",
       "pymysql",
       "pytest",
+      "pytorch-lightning",
       "scispacy",
       "sentencepiece",
       "sklearn",

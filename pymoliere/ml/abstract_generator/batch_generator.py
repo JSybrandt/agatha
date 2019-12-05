@@ -4,9 +4,7 @@ import torch
 from copy import copy
 from typing import List
 import random
-from pymoliere.ml.abstract_generator.abstract_generator import (
-    AbstractGeneratorTokenizer
-)
+from pymoliere.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
 
 class AbstractWindowGenerator(object):
   def __init__(

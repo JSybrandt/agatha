@@ -1,7 +1,7 @@
 from pymoliere.ml.abstract_generator.abstract_generator import (
-    AbstractGeneratorTokenizer,
     AbstractGenerator,
 )
+from pymoliere.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
 from pymoliere.ml.abstract_generator.batch_generator import (
     AbstractWindowGenerator,
 )

@@ -6,166 +6,18 @@ from pathlib import Path
 from typing import Optional, List, Any, Dict
 import math
 from random import shuffle
-
-INTERESTING_SENTENCE_LABLES = {
-    "title": 0,
-    "abstract:background": 1,
-    "abstract:conclusions": 2,
-    "abstract:methods": 3,
-    "abstract:objective": 4,
-    "abstract:results": 5,
-}
-
-INDEX_TO_SENTENCE_LABEL = [
-    "title",
-    "abstract:background",
-    "abstract:conclusions",
-    "abstract:methods",
-    "abstract:objective",
-    "abstract:results",
-]
-
-def get_current_year():
-  return datetime.now().year
-
-class AbstractGeneratorTokenizer(object):
-  def __init__(
-      self,
-      tokenizer_model_path:Path,
-      extra_data_path:Path,
-  ):
-    assert tokenizer_model_path.is_file()
-    assert extra_data_path.is_file()
-    self.sp_processor = spm.SentencePieceProcessor()
-    if not self.sp_processor.load(str(tokenizer_model_path)):
-      raise ValueError("Invalid model path", tokenizer_model_path)
-    with open(extra_data_path, "rb") as f:
-      extra_data = pickle.load(f)
-    self.mesh_index = extra_data["mesh_index"]
-    self.oldest_year = extra_data["oldest_year"]
-
-    self.padding_idx = 0
-    self.unknown_idx = 1
-    self.sep_idx = 2
-    self.mask_idx = 3
-    self.special_markers = ["[PAD]", "[UNK]", "[SEP]", "[MASK]"]
-    self.special_size = 4
-    self.special_start_idx = 0
-    self.special_end_idx = self.special_start_idx + self.special_size
-
-    # Dates
-    self.year_size = get_current_year() - self.oldest_year
-    self.year_start_idx = self.special_end_idx
-    self.year_end_idx = self.year_start_idx + self.year_size
-    # Mesh terms
-    self.mesh_size = len(self.mesh_index)
-    self.mesh_start_idx = self.year_end_idx
-    self.mesh_end_idx = self.mesh_start_idx + self.mesh_size
-    # Voccab
-    self.vocab_start_idx = self.mesh_end_idx
-    self.traditional_vocab_size = len(self.sp_processor)
-    self.traditional_vocab_end_idx = \
-        self.vocab_start_idx + self.traditional_vocab_size
-    self.special_vocab_size = 2
-    self.vocab_size = self.traditional_vocab_size + self.special_vocab_size
-    self.vocab_end_idx = self.vocab_start_idx + self.vocab_size
-    # fill in the two extra symbols
-    self.start_symbol_idx = self.vocab_end_idx-2
-    self.end_symbol_idx = self.vocab_end_idx-1
-    self.start_symbol = "[START]"
-    self.end_symbol = "[END]"
-
-    self.total_index_size = self.vocab_end_idx
+import pytorch_lightning as pl
+from pymoliere.ml.abstract_generator.pickle_dataset import KVStoreDictDataset, LoadWholeKVStore
+from pymoliere.ml.abstract_generator.lamb_optimizer import Lamb
+import os
 
 
-  def __len__(self)->int:
-    return self.total_index_size
-
-  def encode_mesh(self, mesh_code:str)->int:
-    if mesh_code is None:
-      return self.padding_idx
-    if self.mesh_index.has_element(mesh_code):
-      return self.mesh_index.get_index(mesh_code) + self.mesh_start_idx
-    else:
-      return self.unknown_idx
-
-  def encode_year(self, year:Optional[int])->int:
-    if year is None:
-      return self.padding_idx
-    if year < self.oldest_year or year > get_current_year():
-      return self.unknown_idx
-    return year - self.oldest_year + self.year_start_idx
-
-  def encode_text(self, text:str)->List[int]:
-    if text is None:
-      return []
-    return [
-        token + self.vocab_start_idx
-        for token in self.sp_processor.encode_as_ids(text)
-    ]
-
-  def decode_idx(self, idx:int)->str:
-    if 0 <= idx < self.special_end_idx:
-      return self.special_markers[idx]
-    if self.year_start_idx <= idx < self.year_end_idx:
-      return str(idx - self.year_start_idx + self.oldest_year)
-    if self.mesh_start_idx <= idx < self.mesh_end_idx:
-      return ",".join(self.mesh_index.get_elements(idx - self.mesh_start_idx))
-    if self.vocab_start_idx <= idx < self.vocab_end_idx:
-      if idx < self.traditional_vocab_end_idx:
-        return self.sp_processor.id_to_piece(idx - self.vocab_start_idx)
-      elif idx == self.start_symbol_idx:
-        return self.start_symbol
-      elif idx == self.end_symbol_idx:
-        return self.end_symbol
-    return "[INVALID]"
-
-  def decode_text(self, indices:List[int])->str:
-    # list of strings
-    substrs = []
-    # working list of tokens
-    working_list = []
-    for idx in indices:
-      if idx in {self.start_symbol_idx, self.end_symbol_idx}:
-        substrs.append(self.sp_processor.decode_ids(working_list))
-        working_list = []
-        if idx == self.start_symbol_idx:
-          substrs.append(self.start_symbol)
-        if idx == self.end_symbol_idx:
-          substrs.append(self.end_symbol)
-      elif self.vocab_start_idx <= idx < self.traditional_vocab_end_idx:
-        working_list.append(idx-self.vocab_start_idx)
-      else:
-        raise ValueError("Invalid idx in text")
-    substrs.append(self.sp_processor.decode_ids(working_list))
-    return "".join(substrs)
-
-  def encode_context_sequence(
-      self,
-      year:int,
-      mesh_headings:List[str],
-  )->List[int]:
-    year = self.encode_year(year)
-    mesh_headings = [
-        self.encode_mesh(m)
-        for m in mesh_headings
-    ]
-    return [year] + mesh_headings + [self.sep_idx]
-
-  def decode_context(
-      self,
-      indices:List[str],
-  )->Dict[str, Any]:
-    assert indices[-1] == self.sep_idx
-    res = {}
-    res["year"] = self.decode_idx(indices[0])
-    res["mesh_headings"] = [self.decode_idx(i) for i in indices[1:-1]]
-    return res
-
-
-class AbstractGenerator(torch.nn.Module):
+class AbstractGenerator(pl.LightningModule):
   def __init__(self,
-      tokenizer:AbstractGeneratorTokenizer,
+      total_embed_size:int,
+      vocab_size:int,
+      padding_idx:int,
+      vocab_start_idx:int,
       embedding_dim:int,
       max_text_length:int,
       num_attention_heads:int,
@@ -173,18 +25,31 @@ class AbstractGenerator(torch.nn.Module):
       num_decoder_layers:int,
       intermediate_dropout:float,
       intermediate_feedforward_dim:int,
+      training_data_dir:Path,
+      batch_size:int,
+      warmup_steps:int,
+      learning_rate:float,
+      dataset_workers:int=4,
   ):
     """
     Learns to generate following text given sliding windows across abstracts.
     """
     super(AbstractGenerator, self).__init__()
+
+    self.dataset_workers= dataset_workers
+    self.batch_size = batch_size
+    self.training_data_dir = training_data_dir
+    self.warmup_steps = warmup_steps
+    self.learning_rate = learning_rate
     self.max_text_length = max_text_length+1
-    self.tokenizer = tokenizer
+    self.vocab_size = vocab_size
+    self.padding_idx = padding_idx
+    self.vocab_start_idx = vocab_start_idx
 
     self.embeddings = torch.nn.Embedding(
-        len(tokenizer),
+        total_embed_size,
         embedding_dim,
-        padding_idx=tokenizer.padding_idx,
+        padding_idx=padding_idx,
     )
 
     # Positional encoding is (Max Sequence Length, 1, Embedding Dim)
@@ -209,16 +74,16 @@ class AbstractGenerator(torch.nn.Module):
     # Of size (text, text)
     self.register_buffer(
         "text_attention_mask",
-        self.transformer.generate_square_subsequent_mask(self.max_text_length).t_(),
+        self.transformer.generate_square_subsequent_mask(self.max_text_length),
     )
 
     self.predicted_text = torch.nn.Linear(
         embedding_dim,
-        tokenizer.vocab_size,
+        vocab_size,
     )
 
     self.softmax = torch.nn.LogSoftmax(dim=2)
-
+    self.loss_fn = torch.nn.NLLLoss()
 
   def generate_positional_encoding(
       self,
@@ -271,9 +136,9 @@ class AbstractGenerator(torch.nn.Module):
 
     encoded = self.transformer(
         src=context_emb,
-        src_key_padding_mask=(context==self.tokenizer.padding_idx).t_(),
+        src_key_padding_mask=(context==self.padding_idx).t_(),
         tgt=txt_typ_pos,
-        tgt_key_padding_mask=(text==self.tokenizer.padding_idx).t_(),
+        tgt_key_padding_mask=(text==self.padding_idx).t_(),
         tgt_mask=self.text_attention_mask[:text_length,:text_length],
     )
 
@@ -283,3 +148,108 @@ class AbstractGenerator(torch.nn.Module):
     return {
         "text": self.softmax(predicted_text),
     }
+
+  # Added for pytorch-lightning
+  def training_step(self, batch, batch_nb):
+    model_in, expected = batch
+    predicted = self.forward(**model_in)
+
+    mask = (expected['text'] != self.padding_idx)
+    # matrix of probability vectors over vocab
+    masked_predicted_text = (
+        predicted['text'][mask]
+        .view(-1, predicted['text'].shape[2])
+    )
+    # vector of indices from 0 to vocab size
+    masked_expected_text = (
+        expected['text'][mask]
+        .view(-1)
+        -self.vocab_start_idx
+    )
+    loss = self.loss_fn(masked_predicted_text, masked_expected_text)
+    accuracy = (
+        (masked_predicted_text.argmax(dim=1) == masked_expected_text)
+        .float()
+        .mean()
+    )
+    # Return dict of metrics
+    return {
+        'loss': loss,
+        'progress_bar': {
+          'loss': loss,
+          'text_accuracy': accuracy,
+        },
+        'log': {
+          'loss': loss,
+          'text_accuracy': accuracy,
+        }
+    }
+
+
+  @pl.data_loader
+  def train_dataloader(self):
+    dataset=KVStoreDictDataset(self.training_data_dir)
+    #dataset=LoadWholeKVStore(self.training_data_dir)
+    sampler = torch.utils.data.distributed.DistributedSampler(dataset)
+    return torch.utils.data.DataLoader(
+        dataset=dataset,
+        sampler=sampler,
+        batch_size=self.batch_size,
+        collate_fn=AbstractGenerator.collate,
+        #num_workers=self.dataset_workers,
+    )
+
+  def configure_optimizers(self):
+    optimizer = Lamb(
+        self.parameters(),
+        # facebook paper says linear growth with batch size
+        lr=self.learning_rate,
+        weight_decay=0.01,
+    )
+    return optimizer
+
+  def optimizer_step(
+      self,
+      epoch_idx,
+      batch_idx,
+      optimizer,
+      optimizer_idx,
+      second_order_closure=None
+  ):
+    # warm up lr
+    if  self.trainer.global_step < self.warmup_steps:
+      lr_scale = min(
+          1.,
+          float(self.trainer.global_step + 1)/float(self.warmup_steps)
+      )
+      for pg in optimizer.param_groups:
+        pg['lr'] = lr_scale * self.learning_rate
+    optimizer.step()
+    optimizer.zero_grad()
+
+
+  def collate(batch:List[Dict[str,List[int]]]):
+    # Group the elements together into tensors
+    padded_tensors = {
+        field_name: torch.nn.utils.rnn.pad_sequence(
+            [torch.LongTensor(b[field_name]) for b in batch]
+        )
+        for field_name in batch[0].keys()
+    }
+    return (
+        # Model Input
+        {
+          "text": padded_tensors["text"],
+          "context": padded_tensors["context"]
+        },
+        # Target
+        {"text": padded_tensors["shifted_text"]},
+    )
+
+  def init_ddp_connection(self, proc_rank, world_size):
+    print(f"Initing {proc_rank}/{world_size}")
+    torch.distributed.init_process_group(
+        'gloo',
+        rank=proc_rank,
+        world_size=world_size
+    )

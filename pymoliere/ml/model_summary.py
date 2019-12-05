@@ -1,6 +1,5 @@
 import torch
 
-
 def print_model_summary(model:torch.nn.Module)->None:
   total_parameters = sum([p.nelement() for p in model.parameters()])
   total_size = sum([p.nelement()*p.element_size() for p in model.parameters()])
@@ -18,4 +17,3 @@ def print_model_summary(model:torch.nn.Module)->None:
     """.strip())
   print("# Params:", total_parameters)
   print("Size:", total_size*1e-9, "GB")
-

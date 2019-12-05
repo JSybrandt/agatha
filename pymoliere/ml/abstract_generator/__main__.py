@@ -6,6 +6,7 @@ from pathlib import Path
 import pickle
 from pymoliere.config import config_pb2 as cpb, proto_util
 from pymoliere.construct import dask_checkpoint, file_util, text_util, ftp_util
+from pymoliere.ml.model_summary import print_model_summary
 from pymoliere.ml.abstract_generator.misc_util import HashedIndex, OrderedIndex
 from pymoliere.ml.abstract_generator import generation_util
 from pymoliere.ml.abstract_generator.abstract_generator import (
@@ -27,7 +28,6 @@ import json
 from pytorch_lightning import Trainer
 from pytorch_lightning.logging import TestTubeLogger
 from sqlitedict import SqliteDict
-import logging
 
 
 # Eval added as an alias for evaluate
@@ -219,6 +219,9 @@ def train(config:cpb.AbstractGeneratorConfig):
   paths = get_paths(config)
   tokenizer = get_tokenizer_from_config(config)
   model = get_model_from_config(config, tokenizer)
+
+  if config.debug:
+    print_model_summary(model)
 
   logger = TestTubeLogger(
       save_dir=paths['model_root_dir'],
@@ -413,7 +416,6 @@ def prep(config:cpb.AbstractGeneratorConfig):
 
 
 if __name__ == "__main__":
-  #logging.getLogger().setLevel(logging.INFO)
   config = cpb.AbstractGeneratorConfig()
   # Creates a parser with arguments corresponding to all of the provided fields.
   # Copy any command-line specified args to the config

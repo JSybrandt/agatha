@@ -209,6 +209,8 @@ message AbstractGeneratorConfig {
   optional int32 num_nodes = 33;
   optional int32 accumulate_batches = 34 [default=1];
   optional int32 checkpoint_version = 35 [default=1];
+  optional float training_fraction = 36 [default=1.0];
+  optional float gradient_clip_val = 38 [default=1.0];
 }
 ////////////////////////////////////////////////////////////////////////////////
 

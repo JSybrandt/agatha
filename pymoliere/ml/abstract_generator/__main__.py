@@ -230,7 +230,7 @@ def train(config:cpb.AbstractGeneratorConfig):
   trainer = Trainer(
       logger=logger,
       fast_dev_run=config.debug,
-      gradient_clip_val=1,
+      gradient_clip_val=config.gradient_clip_val,
       default_save_path=paths['model_root_dir'],
       weights_summary='top',
       gpus=-1,
@@ -239,8 +239,9 @@ def train(config:cpb.AbstractGeneratorConfig):
       accumulate_grad_batches=config.accumulate_batches,
       # print_nan_grads=True,
       # track_grad_norm=2,
-      amp_level='O2',
-      use_amp=True
+      amp_level='O3',
+      use_amp=True,
+      train_percent_check=config.training_fraction,
   )
   trainer.fit(model)
 

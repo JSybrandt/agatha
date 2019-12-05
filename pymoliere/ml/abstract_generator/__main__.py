@@ -219,10 +219,10 @@ def train(config:cpb.AbstractGeneratorConfig):
   tokenizer = get_tokenizer_from_config(config)
   model = get_model_from_config(config, tokenizer)
 
-  logger = TestTubeLogger(
-      save_dir=paths['model_root_dir'],
-      version=1,
-    )
+  # logger = TestTubeLogger(
+      # save_dir=paths['model_root_dir'],
+      # version=1,
+    # )
   trainer = Trainer(
       fast_dev_run=config.debug,
       gradient_clip_val=1,
@@ -231,7 +231,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       gpus=-1,
       nb_gpu_nodes=4,
       distributed_backend='ddp',
-      accumulate_grad_batches=4,
+      #accumulate_grad_batches=4,
       # print_nan_grads=True,
       # track_grad_norm=2,
       amp_level='O3',

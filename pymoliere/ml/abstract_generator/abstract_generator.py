@@ -29,7 +29,7 @@ class AbstractGenerator(pl.LightningModule):
       batch_size:int,
       warmup_steps:int,
       learning_rate:float,
-      dataset_workers:int=20,
+      dataset_workers:int=1,
   ):
     """
     Learns to generate following text given sliding windows across abstracts.
@@ -205,7 +205,6 @@ class AbstractGenerator(pl.LightningModule):
         lr=self.learning_rate,
         weight_decay=0.01,
     )
-    # TODO: Add LR schedule
     return optimizer
 
   def optimizer_step(

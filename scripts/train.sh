@@ -17,7 +17,13 @@ NUM_NODES=$(wc -l < $NODEFILE)
 echo Starting on $NUM_NODES nodes
 
 parallel \
-  --nonall \
   --sshloginfile "$NODEFILE" \
   --ungroup \
-  python3 -m pymoliere.ml.abstract_generator /zfs/safrolab/users/jsybran/pymoliere/configs/abstract_generator.conf --num_nodes $NUM_NODES
+  -j 1 \
+  """
+    echo Starting {} on \$HOSTNAME
+    python3 \
+      -m pymoliere.ml.abstract_generator \
+      /zfs/safrolab/users/jsybran/pymoliere/configs/abstract_generator.conf \
+      --num_nodes $NUM_NODES
+  """ ::: $(seq $NUM_NODES)

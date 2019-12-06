@@ -3,6 +3,7 @@ from pymoliere.config import (
     proto_util,
 )
 from pymoliere.construct import (
+    biggraph_util,
     dask_checkpoint,
     dask_process_global as dpg,
     embedding_util,
@@ -341,23 +342,34 @@ if __name__ == "__main__":
   )
   ckpt("nearest_neighbors_edges")
 
-  print("Writing edges to database dump")
-  (
-      dbag.concat([
-        sentence_edges_terms,
-        sentence_edges_entities,
-        sentence_edges_mesh,
-        sentence_edges_ngrams,
-        sentence_edges_adj,
-        nearest_neighbors_edges,
-      ])
-      .map_partitions(graph_util.nxgraphs_to_tsv_edge_list)
-      .to_textfiles(f"{mongo_graph_dir}/*.tsv")
-  )
+  all_subgraph_partitions = dbag.concat([
+      sentence_edges_terms,
+      sentence_edges_entities,
+      sentence_edges_mesh,
+      sentence_edges_ngrams,
+      sentence_edges_adj,
+      nearest_neighbors_edges,
+  ])
+  if config.export_for_model:
+    print("Writing edges to database dump")
+    (
+        all_subgraph_partitions
+        .map_partitions(graph_util.nxgraphs_to_tsv_edge_list)
+        .to_textfiles(f"{mongo_graph_dir}/*.tsv")
+    )
 
-  print("Writing sentences to database dump")
-  (
-      sentences_with_bow
-      .map(json.dumps)
-      .to_textfiles(f"{mongo_sentences_dir}/*.json")
-  )
+    print("Writing sentences to database dump")
+    (
+        sentences_with_bow
+        .map(json.dumps)
+        .to_textfiles(f"{mongo_sentences_dir}/*.json")
+    )
+
+  if config.HasField("export_with_big_graph_config"):
+    print("Processing graph for Pytorch BigGraph")
+    config = biggraph_util.get_biggraph_config(
+        Path(config.export_with_big_graph_config)
+    )
+
+
+

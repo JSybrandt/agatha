@@ -143,7 +143,7 @@ message ConstructConfig {
   optional bool export_for_mongo = 12 [default=false];
   // If set, use the information provided in a pytorch_big_graph config to
   // process the moliere graph for embedding
-  optional string export_with_big_graph_config;
+  optional string export_with_big_graph_config = 13;
 }
 
 // Config used to query the network.

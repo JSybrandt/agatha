@@ -367,9 +367,10 @@ if __name__ == "__main__":
 
   if config.HasField("export_with_big_graph_config"):
     print("Processing graph for Pytorch BigGraph")
-    config = biggraph_util.get_biggraph_config(
+    pbg_config = biggraph_util.get_biggraph_config(
         Path(config.export_with_big_graph_config)
     )
+    export_with_big_graph_config(pbg_config, edges)
 
 
 

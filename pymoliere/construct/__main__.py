@@ -350,7 +350,7 @@ if __name__ == "__main__":
       sentence_edges_adj,
       nearest_neighbors_edges,
   ])
-  if config.export_for_model:
+  if config.export_for_mongo:
     print("Writing edges to database dump")
     (
         all_subgraph_partitions
@@ -370,7 +370,7 @@ if __name__ == "__main__":
     pbg_config = biggraph_util.get_biggraph_config(
         Path(config.export_with_big_graph_config)
     )
-    export_with_big_graph_config(pbg_config, edges)
+    biggraph_util.export_graph_for_biggraph(pbg_config, all_subgraph_partitions)
 
 
 

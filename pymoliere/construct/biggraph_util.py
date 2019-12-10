@@ -9,6 +9,8 @@ import json
 import h5py
 import pandas as pd
 from filelock import FileLock
+from sqlitedict import SqliteDict
+from functools import lru_cache
 
 
 def get_biggraph_config(config_path:Path)->Dict[Any, Any]:
@@ -39,6 +41,8 @@ def export_graph_for_biggraph(
 
   Returns a structured dict of paths
   """
+  ####################################33
+  # Helper data
 
   # This is the set of all variables in database_util that end in "TYPE"
   all_valid_entities = set(
@@ -50,80 +54,28 @@ def export_graph_for_biggraph(
         )
       )
   )
+
   for ent_name in all_valid_entities:
     assert len(ent_name) == 1, \
         "Database util has an unexpected value ending in _TYPE"
   assert 'entities' in biggraph_config, 'Biggraph config must list entities'
 
   # Need to count up all the desired partitons
-  total_partitions = 0
   entity2partition_count = {}
   for entity, data in biggraph_config["entities"].items():
     assert entity in all_valid_entities, \
         "Big graph config defines an entity not found in database_util"
     parts = int(data["num_partitions"])
     entity2partition_count[entity] = parts
-    total_partitions += parts
-  print(f"\t- Found {total_partitions} total partitions")
 
   assert "entity_path" in biggraph_config, \
       "Big graph config must have entity path defined"
 
-  entity_path_dir = Path(biggraph_config["entity_path"])
-  entity_path_dir.mkdir(parents=True, exist_ok=True)
+  entity_dir = Path(biggraph_config["entity_path"])
+  entity_dir.mkdir(parents=True, exist_ok=True)
 
-  def name_to_entity(node_name:str)->str:
-    assert node_name[1] == ":", "Invalid node name" + node_name
-    assert node_name[0] in all_valid_entities, "Invalid node name:" + node_name
-    return node_name[0]
-
-  # We assign a node to a partition by hashing its string, and mapping that
-  # number to the partition count
-  def name_to_partition(node_name:str)->int:
-    name_hash = misc_util.hash_str_to_int32(node_name)
-    return  name_hash % entity2partition_count[name_to_entity(node_name)]
-
-  def name_to_part_key(node_name:str)->str:
-    ent = name_to_entity(node_name)
-    part = name_to_partition(node_name)
-    return f"{ent}_{part}"
-
-  def nx_graphs_to_partitioned_names(
-      nx_graphs:Iterable[nx.Graph]
-  )->Iterable[Set[str]]:
-    part_to_names = defaultdict(set)
-    for graph in nx_graphs:
-      for node in graph:
-        part_to_names[name_to_part_key(node)].add(node)
-    # return out the sets of nodes
-    return list(part_to_names.values())
-
-  def save_entity_partition(node_names:Set[str])->Dict[str, Path]:
-    "Returns the partition number, because we have to return something"
-    # calculate the partition given an arbitrary node
-    arbitrary_node = next(iter(node_names))
-    part_key = name_to_part_key(arbitrary_node)
-    count_path = entity_path_dir.joinpath(f"entity_count_{part_key}.txt")
-    name_path = entity_path_dir.joinpath(f"entity_names_{part_key}.json")
-    with open(count_path, 'w') as count_file:
-      count_file.write(str(len(node_names)))
-    with open(name_path, 'w') as name_file:
-      json.dump(list(node_names), name_file)
-    return {"name_path": name_path, "count_path": count_path}
-
-  print("\t- Partitioning nodes and writing entity files.")
-  entity_paths = (
-      graph_bag
-      # Converts the networkx node into multiple sets, one per partition
-      .map_partitions(nx_graphs_to_partitioned_names)
-      # Merges sets by those that share a partition number
-      .groupby(lambda names: name_to_part_key(next(iter(names))))
-      # Unifies sets within a partition. Drops the partition number
-      .map(lambda list_of_names: set(chain(*list_of_names[1])))
-      # Store results
-      .map(save_entity_partition)
-      .compute()
-  )
+  entity_db_dir = entity_dir.joinpath("tmp_files")
+  entity_db_dir.mkdir(parents=True, exist_ok=True)
 
   # At this point, there is a type / part file for everything
   # Now, we need to handle edges
@@ -140,11 +92,48 @@ def export_graph_for_biggraph(
       for relation_idx, relation_data in enumerate(biggraph_config["relations"])
   }
 
-  def load_names_to_idx(part_key:str)->Dict[str, int]:
-    name_path = entity_path_dir.joinpath(f"entity_names_{part_key}.json")
-    assert name_path.is_file()
-    with open(name_path, 'r') as name_file:
-      return {name: idx for idx, name in enumerate(json.load(name_file))}
+  assert "edge_paths" in biggraph_config, "Config must supply edge paths"
+  assert len(biggraph_config["edge_paths"]) == 1, \
+      "We only support a single edge path currently"
+  edge_dir = Path(biggraph_config["edge_paths"][0])
+  edge_dir.mkdir(exist_ok=True, parents=True)
+
+  tmp_edge_dir = edge_dir.joinpath("tmp_files")
+  tmp_edge_dir.mkdir(exist_ok=True, parents=True)
+
+  ##################################################
+  # Helper functions
+
+  def name_to_entity(node_name:str)->str:
+    assert node_name[1] == ":"
+    assert node_name[0] in all_valid_entities
+    return node_name[0]
+
+  # We assign a node to a partition by hashing its string, and mapping that
+  # number to the partition count
+  def name_to_partition(node_name:str)->int:
+    name_hash = misc_util.hash_str_to_int32(node_name)
+    return  name_hash % entity2partition_count[name_to_entity(node_name)]
+
+  def name_to_part_key(node_name:str)->str:
+    ent = name_to_entity(node_name)
+    part = name_to_partition(node_name)
+    return f"{ent}_{part}"
+
+  def get_local_indices(graph:nx.Graph)->Dict[str, int]:
+    part_key2nodes = defaultdict(set)
+    for node in graph:
+      part_key2nodes[name_to_part_key(node)].add(node)
+    result = {}
+    for part_key, nodes in part_key2nodes.items():
+      node_part_db_path = entity_db_dir.joinpath(f"{part_key}.sqlitedict")
+      with SqliteDict(node_part_db_path, flag="r") as db:
+        for node in nodes:
+          try:
+            result[node] = db[node]
+          except:
+            raise Exception(f"Failed to find {node} ({name_to_part_key(node)}) in {node_part_db_path}")
+    return result
 
   def get_relation_key(lhs:str, rhs:str)->str:
     return name_to_entity(lhs) + name_to_entity(rhs)
@@ -157,70 +146,124 @@ def export_graph_for_biggraph(
     lhs_part, rhs_part = bucket_key.split("_")
     return part_idx in {lhs_part, rhs_part}
 
-  def nx_graphs_to_edges(
+  ##################################################
+  # Step 1, partition nodes
+
+  def nx_graph_to_partitioned_dbs(
+      nx_graphs:Iterable[nx.Graph]
+  )->Iterable[int]:
+    part_key2names = defaultdict(set)
+    # All of my local nodes
+    for graph in nx_graphs:
+      for node in graph:
+        part_key2names[name_to_part_key(node)].add(node)
+    # Write the necessary partitions
+    num_added_nodes = 0
+    for part_key, names in part_key2names.items():
+      lock_path = entity_db_dir.joinpath(f".{part_key}.lock")
+      node_part_db_path = entity_db_dir.joinpath(f"{part_key}.sqlitedict")
+      with FileLock(lock_path):
+        with SqliteDict(node_part_db_path, journal_mode="off") as db:
+          for name in names:
+            if name not in db:
+              db[name] = None
+              num_added_nodes += 1
+          db.commit()
+    return [num_added_nodes]
+
+  print("\t- Partitioning nodes")
+  total_partitioned_nodes = sum(
+      graph_bag
+      # Converts the networkx node into multiple sets, one per partition
+      .map_partitions(nx_graph_to_partitioned_dbs)
+      .compute()
+  )
+  print(f"\t\t- Split {total_partitioned_nodes} nodes")
+
+  ##################################################
+  # Step 2, create count and json files
+
+  def db_path_to_count_and_json(partition_db_path:Path)->Dict[str, Path]:
+    # Get part_key from name
+    part_key = partition_db_path.name.split(".")[0]
+    lock_path = entity_db_dir.joinpath(f".{part_key}.lock")
+    node_part_db_path = entity_db_dir.joinpath(f"{part_key}.sqlitedict")
+    count_path = entity_dir.joinpath(f"entity_count_{part_key}.txt")
+    name_path = entity_dir.joinpath(f"entity_names_{part_key}.json")
+
+    # We want to both record all the node names, and remember their local indices
+    node_names = []
+    with FileLock(lock_path):
+      with SqliteDict(node_part_db_path) as db:
+        for name in db:
+          db[name] = len(node_names)
+          node_names.append(name)
+        db.commit()
+
+    with open(count_path, 'w') as count_file:
+      count_file.write(str(len(node_names)))
+    with open(name_path, 'w') as name_file:
+      json.dump(list(node_names), name_file)
+    return {"name_path": name_path, "count_path": count_path}
+
+  partition_db_paths = list(entity_db_dir.glob("*.sqlitedict"))
+  print("\t- Writing json and count files for torch big graph")
+  (
+      dbag.from_sequence(partition_db_paths)
+      .map(db_path_to_count_and_json)
+      .compute()
+  )
+
+  ##################################################
+  # Step 3, bucket edges
+
+  def nx_graph_to_bucketed_edges(
       graphs:Iterable[nx.Graph]
-  )->Iterable[Tuple[str, List[Tuple[int, int, int]]]]:
-    """
-    Iterates the graphs and collects each edge based on its bucket.
-    Then, it loads the respective entity information necessary to deduce the
-    correct local indices for each node.
-    Finally, it writes out the partial edge buckets, ready to be grouped-by
-    """
-    unique_part_keys = set()
+  )->Iterable[int]:
     bucket_key2edges = defaultdict(list)
     for graph in graphs:
-      for a, b in graph.edges:
-        unique_part_keys.add(name_to_part_key(a))
-        unique_part_keys.add(name_to_part_key(b))
-        comps = [(a, b)]
-        if name_to_entity(a) != name_to_entity(b):
-          comps.append((b, a))
+      node2local = get_local_indices(graph)
+      for name_a, name_b in graph.edges:
+        comps = [(name_a, name_b)]
+        if name_to_entity(name_a) != name_to_entity(name_b):
+          comps.append((name_b, name_a))
+        # For both x->y and y->x comparisons
         for lhs, rhs in comps:
           relation_key = get_relation_key(lhs, rhs)
           if relation_key in relation2idx:
             bucket_key = get_bucket_key(lhs, rhs)
             ridx = relation2idx[relation_key]
-            bucket_key2edges[bucket_key].append([ridx, lhs, rhs])
-    # Get the set of partitions associated with this data
-    for part_key in unique_part_keys:
-      def should_replace(name):
-        return type(name) == str and name_to_part_key(name) == part_key
-      name2idx = load_names_to_idx(part_key)
-      for edges in bucket_key2edges.values():
-        for edge in edges:
-          # lhs
-          if should_replace(edge[1]):
-            edge[1] = name2idx[edge[1]]
-          # rhs
-          if should_replace(edge[2]):
-            edge[2] = name2idx[edge[2]]
-    return list(bucket_key2edges.items())
+            bucket_key2edges[bucket_key].append([
+              relation2idx[relation_key],
+              node2local[lhs],
+              node2local[rhs],
+            ])
+    total_written_edges = 0
+    for bucket_key, edge_list in bucket_key2edges.items():
+      tmp_edge_path = tmp_edge_dir.joinpath(f"{bucket_key}.txt")
+      lock_path = tmp_edge_dir.joinpath(f".{bucket_key}.lock")
+      with FileLock(lock_path):
+        with open(tmp_edge_path, 'a') as edge_file:
+          for rel, lhs, rhs in edge_list:
+            edge_file.write(f"{rel}\t{lhs}\t{rhs}\n")
+            total_written_edges += 1
+    return [total_written_edges]
 
-  assert "edge_paths" in biggraph_config, "Config must supply edge paths"
-  assert len(biggraph_config["edge_paths"]) == 1, \
-      "We only support a single edge path currently"
-  edge_dir = Path(biggraph_config["edge_paths"][0])
-  edge_dir.mkdir(exist_ok=True, parents=True)
+  print("\t- Bucketing edges")
+  total_written_edges = sum(
+      graph_bag
+      # Index and bucket edges
+      .map_partitions(nx_graph_to_bucketed_edges)
+      .compute()
+  )
 
-  tmp_edge_dir = edge_dir.joinpath("tmp_files")
-  tmp_edge_dir.mkdir(exist_ok=True, parents=True)
 
-
-  def write_to_tmp_edge_files(bucket_edges)->Path:
-    bucket_key, edge_list = bucket_edges
-    tmp_edge_path = tmp_edge_dir.joinpath(f"{bucket_key}")
-    lock_path = tmp_edge_dir.joinpath(f".{bucket_key}.lock")
-    with FileLock(lock_path):
-      with open(tmp_edge_path, 'a') as edge_file:
-        for rel, lhs, rhs in edge_list:
-          edge_file.write(f"{rel}\t{lhs}\t{rhs}\n")
-    return tmp_edge_path
-
-  def tmp_file_to_bucket(tmp_edges_path:Path)->Path:
+  def tmp_file_to_bucket(tmp_edges_path:Path)->int:
     """
     Store the resulting edge list h5 file!
     """
-    bucket_key = tmp_edges_path.name
+    # Get bucket key from "{bucket_key}.txt"
+    bucket_key = tmp_edges_path.name.split(".")[0]
     edge_path = edge_dir.joinpath(f"edges_{bucket_key}.h5")
     rel_ds = []
     lhs_ds = []
@@ -236,17 +279,12 @@ def export_graph_for_biggraph(
       edge_file.create_dataset("lhs", data=lhs_ds)
       edge_file.create_dataset("rhs", data=rhs_ds)
       edge_file.attrs["format_version"] = 1
-    return str(edge_path)
+    return 1
 
-  print("\t- Bucketing edges, converting to local indices.")
-  bucket_paths = (
-      graph_bag
-      # Index and bucket edges
-      .map_partitions(nx_graphs_to_edges)
-      # performs groupby using storage
-      .map(write_to_tmp_edge_files)
-      .distinct()
+  print("\t- Writing h5")
+  total_buckets = sum(
+      dbag.from_sequence(list(tmp_edge_dir.glob("*.txt")))
       .map(tmp_file_to_bucket)
       .compute()
   )
-  return {"entity_paths": entity_paths, "bucket_paths": bucket_paths}
+  print(f"\t\t- Wrote {total_buckets} buckets")

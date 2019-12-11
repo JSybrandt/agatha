@@ -7,6 +7,7 @@ from typing import List, Dict, Any
 import dask.bag as dbag
 import gzip
 from pymoliere.util.misc_util import Record
+import re
 
 
 
@@ -71,8 +72,13 @@ def pubmed_xml_to_record(
               sub_type = abstract_text_elem.attrib["NlmCategory"].lower()
             else:
               sub_type = "raw"
+            # Want to address weird whitespace characters
+            text_data = "".join(abstract_text_elem.itertext())
+            # replace all spaces with the typical space
+            # This handles weird stuff, like newlines, tabs, and \u205f
+            text_data = re.sub(r'\s', ' ', text_data)
             record["text_data"].append({
-              "text": "".join(abstract_text_elem.itertext()),
+              "text": text_data,
               "type": f"abstract:{sub_type}"
             })
 

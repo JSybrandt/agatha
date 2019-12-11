@@ -5,14 +5,18 @@ from typing import Dict, Any, Tuple, Iterable, Set, List
 from pymoliere.util import database_util, misc_util
 import networkx  as nx
 from collections import defaultdict
-from itertools import chain
+from itertools import chain, permutations, product
 import json
 import h5py
 import pandas as pd
 from filelock import FileLock
 from sqlitedict import SqliteDict
 from functools import lru_cache
-
+from copy import copy
+from pymoliere.util.misc_util import iter_to_batches
+import pickle
+import random
+import string
 
 def get_biggraph_config(config_path:Path)->Dict[Any, Any]:
   """
@@ -30,221 +34,261 @@ def get_biggraph_config(config_path:Path)->Dict[Any, Any]:
       "Config must define get_torchbiggraph_config"
   return locals()['get_torchbiggraph_config']()
 
+def get_valid_entity_symbols()->Set[str]:
+  symbols = set(map(
+    lambda name: getattr(database_util, name),
+    filter(lambda name: name.endswith("_TYPE"), dir(database_util))
+  ))
+  # Check to make sure nothing weird happened in the database_util
+  for ent_name in symbols:
+    assert len(ent_name) == 1, \
+        "Database util has an unexpected value ending in _TYPE"
+  return symbols
+
+def get_partition_count(biggraph_config:Dict[Any, Any])->int:
+  valid_symbols = get_valid_entity_symbols()
+  partition_count = None
+  for entity, data in biggraph_config["entities"].items():
+    assert entity in valid_symbols, "Config contains invalid symbol"
+    this_part_count = int(data["num_partitions"])
+    if partition_count is None:
+      partition_count = this_part_count
+    else:
+      assert partition_count == this_part_count, \
+          "Due to technical limitations, all ents must have same num_parts"
+  assert partition_count is not None, "Must have at least one entity"
+  return partition_count
+
+def get_used_entity_symbols(biggraph_config:Dict[Any, Any])->Set[str]:
+  valid_symbols = get_valid_entity_symbols()
+  res = set()
+  for entity in biggraph_config["entities"]:
+    assert entity in valid_symbols, "Config contains invalid symbol"
+    res.add(entity)
+  return res
+
+def index_relationships(biggraph_config:Dict[Any, Any])->Dict[str, int]:
+  valid_symbols = get_valid_entity_symbols()
+  for relation in biggraph_config["relations"]:
+    assert relation["lhs"] in valid_symbols, \
+        "Config has a relationship defined on a non-existing entity."
+    assert relation["rhs"] in valid_symbols, \
+        "Config has a relationship defined on a non-existing entity."
+  return {
+      f"{rel['lhs']}{rel['rhs']}": idx
+      for idx, rel in enumerate(biggraph_config["relations"])
+  }
+
 def export_graph_for_biggraph(
     biggraph_config:Dict[Any, Any],
     graph_bag:dbag.Bag
 )->Dict[Any, Any]:
-  """
-  Uses information supplied in the biggraph_config dictionary in order to
-  inform how to best split the input graphs.
-  This follows from https://arxiv.org/pdf/1903.12287.pdf and
-  https://readthedocs.org/projects/torchbiggraph/downloads/pdf/latest/
-
-  Returns a structured dict of paths
-  """
-  ####################################33
-  # Helper data
-
-  # This is the set of all variables in database_util that end in "TYPE"
-  all_valid_entities = set(
-      map(
-        lambda name: getattr(database_util, name),
-        filter(
-          lambda name: name.endswith("_TYPE"),
-          dir(database_util)
-        )
-      )
-  )
-
-  for ent_name in all_valid_entities:
-    assert len(ent_name) == 1, \
-        "Database util has an unexpected value ending in _TYPE"
-  assert 'entities' in biggraph_config, 'Biggraph config must list entities'
-
-  # Need to count up all the desired partitons
-  entity2partition_count = {}
-  for entity, data in biggraph_config["entities"].items():
-    assert entity in all_valid_entities, \
-        "Big graph config defines an entity not found in database_util"
-    parts = int(data["num_partitions"])
-    entity2partition_count[entity] = parts
-
+  # Basic checks
+  assert 'entities' in biggraph_config, \
+      'Biggraph config must list entities'
   assert "entity_path" in biggraph_config, \
       "Big graph config must have entity path defined"
-
-  entity_dir = Path(biggraph_config["entity_path"])
-  entity_dir.mkdir(parents=True, exist_ok=True)
-
-  entity_db_dir = entity_dir.joinpath("tmp_files")
-  entity_db_dir.mkdir(parents=True, exist_ok=True)
-
-  # At this point, there is a type / part file for everything
-  # Now, we need to handle edges
   assert "relations" in biggraph_config, \
       "BigGraph config must have relations defined"
-  for relation in biggraph_config["relations"]:
-    assert relation["lhs"] in all_valid_entities, \
-        "Config has a relationship defined on a non-existing entity."
-    assert relation["rhs"] in all_valid_entities, \
-        "Config has a relationship defined on a non-existing entity."
-  # Relations are stored as two-character strings
-  relation2idx = {
-      f"{relation_data['lhs']}{relation_data['rhs']}": relation_idx
-      for relation_idx, relation_data in enumerate(biggraph_config["relations"])
-  }
-
   assert "edge_paths" in biggraph_config, "Config must supply edge paths"
   assert len(biggraph_config["edge_paths"]) == 1, \
       "We only support a single edge path currently"
+
+  # Helper info that lets us coordinate
+  partition_count = get_partition_count(biggraph_config)
+  relation2idx = index_relationships(biggraph_config)
+  entity_symbols = get_used_entity_symbols(biggraph_config)
+
+  # This is where we store the entity files (counts and json lists)
+  entity_dir = Path(biggraph_config["entity_path"])
+  # This is where we store the edge h5 buckets
   edge_dir = Path(biggraph_config["edge_paths"][0])
+  # This is were we store the intermediate inverted index
+  name2local_path = entity_dir.joinpath("name2local.pkl")
+  # We're going to need some space to coordinate edges
+  edge_tmp_dir = edge_dir.joinpath("tmp")
+  # We need to record where we put the tmp edge files
+  tmp_edges_done_path = edge_tmp_dir.joinpath("__done__.pkl")
+
+  # Make sure those dirs exist
+  entity_dir.mkdir(parents=True, exist_ok=True)
   edge_dir.mkdir(exist_ok=True, parents=True)
+  edge_tmp_dir.mkdir(exist_ok=True, parents=True)
 
-  tmp_edge_dir = edge_dir.joinpath("tmp_files")
-  tmp_edge_dir.mkdir(exist_ok=True, parents=True)
+  # For each bucket, we want to have a dir
+  bk_key2tmp_edge_dir = {}
+  for l_part, r_part in product(range(partition_count), range(partition_count)):
+    bucket_key = f"{l_part}_{r_part}"
+    tmp_bucket_dir = edge_tmp_dir.joinpath(bucket_key)
+    tmp_bucket_dir.mkdir(parents=True, exist_ok=True)
+    bk_key2tmp_edge_dir[bucket_key] = tmp_bucket_dir
 
-  ##################################################
   # Helper functions
 
-  def name_to_entity(node_name:str)->str:
+  def save(data, path):
+    with open(path, 'wb') as f:
+      pickle.dump(data, f)
+
+  def load(path):
+    with open(path, 'rb') as f:
+      return pickle.load(f)
+
+  def node_to_entity(node_name:str)->str:
     assert node_name[1] == ":"
-    assert node_name[0] in all_valid_entities
+    assert node_name[0] in entity_symbols
     return node_name[0]
 
-  # We assign a node to a partition by hashing its string, and mapping that
-  # number to the partition count
-  def name_to_partition(node_name:str)->int:
-    name_hash = misc_util.hash_str_to_int32(node_name)
-    return  name_hash % entity2partition_count[name_to_entity(node_name)]
+  def node_to_partition(node_name:str)->int:
+    return misc_util.hash_str_to_int32(node_name) % partition_count
 
-  def name_to_part_key(node_name:str)->str:
-    ent = name_to_entity(node_name)
-    part = name_to_partition(node_name)
-    return f"{ent}_{part}"
+  def node_to_part_key(node_name:str)->str:
+    return f"{node_to_entity(node_name)}_{node_to_partition(node_name)}"
 
-  def get_relation_key(lhs:str, rhs:str)->str:
-    return name_to_entity(lhs) + name_to_entity(rhs)
+  def edge_to_relation_key(edge)->str:
+    lhs, rhs = edge
+    return node_to_entity(lhs) + node_to_entity(rhs)
 
-  def get_bucket_key(lhs:str, rhs:str)->str:
-    return f"{name_to_partition(lhs)}_{name_to_partition(rhs)}"
+  def edge_to_bucket_key(edge):
+    lhs, rhs = edge
+    return f"{node_to_partition(lhs)}_{node_to_partition(rhs)}"
 
-  def is_part_key_related_to_bucket_key(part_key:str, bucket_key:str)->bool:
-    _, part_idx = part_key.split("_")
-    lhs_part, rhs_part = bucket_key.split("_")
-    return part_idx in {lhs_part, rhs_part}
-
-  ##################################################
-  # Step 1, partition nodes
-
-  def nx_graph_to_partitioned_node_names(nx_graphs:Iterable[nx.Graph]):
-    part_key2names = defaultdict(set)
-    # All of my local nodes
-    for graph in nx_graphs:
-      for node in graph:
-        part_key2names[name_to_part_key(node)].add(node)
-    return list(part_key2names.values())
-
-  def node_set_to_part_key(node_names:Set[str])->str:
-    return name_to_part_key(next(iter(node_names)))
-
-  partitioned_node_names = (
-      graph_bag
-      .map_partitions(nx_graph_to_partitioned_node_names)
-      .foldby(node_set_to_part_key, set.union)
-  )
-  partitioned_node_names = partitioned_node_names.persist()
-
-  ##################################################
-  # Step 2, create count and json files
-
-  def write_json_and_count_files(partitioned_node_names)->Dict[str, int]:
-    # Get part_key from name
-    node_name_to_local_idx = {}
-    for part_key, node_names in partitioned_node_names:
-      node_names = list(node_names)
-      for local_idx, node_name in enumerate(node_names):
-        node_name_to_local_idx[node_name] = local_idx
-      count_path = entity_dir.joinpath(f"entity_count_{part_key}.txt")
-      name_path = entity_dir.joinpath(f"entity_names_{part_key}.json")
-      with open(count_path, 'w') as count_file:
-        count_file.write(str(len(node_names)))
-      with open(name_path, 'w') as name_file:
-        json.dump(list(node_names), name_file)
-    return node_name_to_local_idx
-
-  node2local_idx = dask.delayed(write_json_and_count_files)(partitioned_node_names)
-
-  ##################################################
-  # Step 3, bucket edges
-
-  def nx_graph_to_bucketed_edges(
-      graphs:Iterable[nx.Graph],
-      node2local:Dict[str, int],
-  )->Iterable[int]:
-    bucket_key2edges = defaultdict(list)
+  def graphs_to_nodes(graphs):
+    res = set()
     for graph in graphs:
-      for name_a, name_b in graph.edges:
-        comps = [(name_a, name_b)]
-        if name_to_entity(name_a) != name_to_entity(name_b):
-          comps.append((name_b, name_a))
-        # For both x->y and y->x comparisons
-        for lhs, rhs in comps:
-          relation_key = get_relation_key(lhs, rhs)
-          if relation_key in relation2idx:
-            bucket_key = get_bucket_key(lhs, rhs)
-            ridx = relation2idx[relation_key]
-            bucket_key2edges[bucket_key].append([
-              relation2idx[relation_key],
-              node2local[lhs],
-              node2local[rhs],
-            ])
-    total_written_edges = 0
-    for bucket_key, edge_list in bucket_key2edges.items():
-      tmp_edge_path = tmp_edge_dir.joinpath(f"{bucket_key}.txt")
-      lock_path = tmp_edge_dir.joinpath(f".{bucket_key}.lock")
-      with FileLock(lock_path):
-        with open(tmp_edge_path, 'a') as edge_file:
-          for rel, lhs, rhs in edge_list:
-            edge_file.write(f"{rel}\t{lhs}\t{rhs}\n")
-            total_written_edges += 1
-    return [total_written_edges]
+      for node in graph:
+        res.add(node)
+    return res
 
-  print("\t- Bucketing edges")
-  total_written_edges = sum(
-      graph_bag
-      # Index and bucket edges
-      .map_partitions(nx_graph_to_bucketed_edges, node2local_idx)
-      .compute()
-  )
-  del node2local_idx
+  def write_json_and_count_files(fold_by_result):
+    part_key, nodes = fold_by_result
+    nodes = sorted(nodes)
+    count_path = entity_dir.joinpath(f"entity_count_{part_key}.txt")
+    name_path = entity_dir.joinpath(f"entity_names_{part_key}.json")
+    with open(count_path, 'w') as count_file:
+      count_file.write(str(len(nodes)))
+    with open(name_path, 'w') as name_file:
+      json.dump(nodes, name_file)
+    return name_path
 
+  def get_name2local():
+    # Loads the inverse index, and keeps it around
+    if hasattr(get_name2local, 'name2local'):
+      name2local = get_name2local.name2local
+    else:
+      with open(name2local_path, 'rb') as pickle_file:
+        name2local = get_name2local.name2local = pickle.load(pickle_file)
+    return name2local
 
-  def tmp_file_to_bucket(tmp_edges_path:Path)->int:
-    """
-    Store the resulting edge list h5 file!
-    """
-    # Get bucket key from "{bucket_key}.txt"
-    bucket_key = tmp_edges_path.name.split(".")[0]
+  def write_name2local(total_fold_by_results):
+    name2local = {}
+    for _, nodes in total_fold_by_results:
+      for idx, node in enumerate(sorted(nodes)):
+        name2local[node] = idx
+    save(name2local, name2local_path)
+
+  def graphs_to_final_edges(graphs):
+    # Loads each graph and looks up the int info eventually written to h5
+    name2local = get_name2local()
+    res = []
+    for graph in graphs:
+      for a, b in graph.edges():
+        # Iterating the edges in the graph only gives us one side
+        for edge in [(a, b), (b, a)]:
+          rel_key = edge_to_relation_key(edge)
+          if rel_key in relation2idx:
+            try:
+              bucket_key = edge_to_bucket_key(edge)
+              rel = relation2idx[rel_key]
+              lhs = name2local[edge[0]]
+              rhs = name2local[edge[1]]
+              res.append((bucket_key, rel, lhs, rhs))
+            except:
+              print("ERROR WITH", edge)
+    return res
+
+  def write_tmp_edge_file(fold_by_result):
+    bucket_key, edges = fold_by_result
+    # select a file name that is 10 random characters
+    tmp_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
+    tmp_edge_path = bk_key2tmp_edge_dir[bucket_key].joinpath(f"{tmp_name}.pkl")
+    save(edges, tmp_edge_path)
+    return tmp_edge_path
+
+  def tmp_edges_to_h5(bucket_key, partial_paths):
+    rel = []
+    lhs = []
+    rhs = []
+    for path in partial_paths:
+      for _, rel_idx, lhs_idx, rhs_idx in load(path):
+        rel.append(rel_idx)
+        lhs.append(lhs_idx)
+        rhs.append(rhs_idx)
+    # write
     edge_path = edge_dir.joinpath(f"edges_{bucket_key}.h5")
-    rel_ds = []
-    lhs_ds = []
-    rhs_ds = []
-    with open(tmp_edges_path) as tmp_file:
-      for line in tmp_file:
-        rel, lhs, rhs = list(map(int, line.strip().split("\t")))
-        rel_ds.append(rel)
-        lhs_ds.append(lhs)
-        rhs_ds.append(rhs)
     with h5py.File(edge_path, 'w') as edge_file:
-      edge_file.create_dataset("rel", data=rel_ds)
-      edge_file.create_dataset("lhs", data=lhs_ds)
-      edge_file.create_dataset("rhs", data=rhs_ds)
+      edge_file.create_dataset("rel", data=rel)
+      edge_file.create_dataset("lhs", data=lhs)
+      edge_file.create_dataset("rhs", data=rhs)
       edge_file.attrs["format_version"] = 1
-    return 1
+    return edge_path
 
-  print("\t- Writing h5")
-  total_buckets = sum(
-      dbag.from_sequence(list(tmp_edge_dir.glob("*.txt")))
-      .map(tmp_file_to_bucket)
+  def merge_sets_binop(total, new):
+    if type(new) is set:
+      total = total.union(new)
+    else:
+      total.add(new)
+    return total
+
+  def inverted_idx_from_fold_result(fold_res, query):
+    for key, data in fold_res:
+      if key == query:
+        return {name: idx for idx, name in enumerate(data)}
+    raise Exception("Invalid Key!")
+
+  # Time to compute!
+
+  # All at once, we need to group the nodes by part key
+
+  if not name2local_path.is_file():
+    print(f"\t\t- Partitioning names")
+    names_grouped_by_part = (
+        graph_bag
+        .map_partitions(graphs_to_nodes)
+        .foldby(
+          key=node_to_part_key,
+          initial=set,
+          binop=merge_sets_binop,
+          combine=set.union,
+          split_every=256,
+        )
+    )
+    dask.compute([
+      names_grouped_by_part.map_partitions(write_name2local),
+      names_grouped_by_part.map(write_json_and_count_files)
+    ])
+
+
+  if not tmp_edges_done_path.is_file():
+    print(f"\t\t- Writing temp edge files")
+    tmp_edge_files = (
+      graph_bag
+      .map_partitions(graphs_to_final_edges)
+      # group by produces a record per key per part
+      .groupby(lambda edge: edge[0])
+      .map(write_tmp_edge_file)
       .compute()
-  )
-  print(f"\t\t- Wrote {total_buckets} buckets")
+    )
+    save(tmp_edge_files, tmp_edges_done_path)
+  else:
+    tmp_edge_files = load(tmp_edges_done_path)
+
+  bucket2tmp_paths = defaultdict(list)
+  for path in tmp_edge_files:
+    bucket2tmp_paths[path.parent.name].append(path)
+
+  print("\t\t- Writing final h5 files")
+  dask.compute([
+    dask.delayed(tmp_edges_to_h5)(bucket_key, paths)
+    for bucket_key, paths
+    in bucket2tmp_paths.items()
+  ])

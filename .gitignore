@@ -138,3 +138,5 @@ configs/
 
 # Compiled proto files
 *_pb2.py
+
+explore/

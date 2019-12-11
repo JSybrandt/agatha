@@ -202,8 +202,8 @@ def generate_new_text(
     def add_or_shift(tensor, new_element):
       l = tensor.flatten().tolist()
       l.append(new_element)
-      if len(l) >= model.max_text_length:
-        l = l[-model.max_text_length+1:]
+      if len(l) >= model.hparams.max_text_length:
+        l = l[-model.hparams.max_text_length+1:]
       return torch.LongTensor(l).unsqueeze(1).to(tensor.device)
 
     text = add_or_shift(text, new_word)

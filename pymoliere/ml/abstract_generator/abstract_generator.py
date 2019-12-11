@@ -10,80 +10,58 @@ import pytorch_lightning as pl
 from pymoliere.ml.abstract_generator.pickle_dataset import KVStoreDictDataset, LoadWholeKVStore
 from pymoliere.ml.abstract_generator.lamb_optimizer import Lamb
 import os
+from argparse import Namespace
 
 
 class AbstractGenerator(pl.LightningModule):
   def __init__(self,
-      total_embed_size:int,
-      vocab_size:int,
-      padding_idx:int,
-      vocab_start_idx:int,
-      embedding_dim:int,
-      max_text_length:int,
-      num_attention_heads:int,
-      num_encoder_layers:int,
-      num_decoder_layers:int,
-      intermediate_dropout:float,
-      intermediate_feedforward_dim:int,
-      training_data_dir:Path,
-      batch_size:int,
-      warmup_steps:int,
-      learning_rate:float,
-      dataset_workers:int=4,
+      hparams:Namespace,
   ):
     """
     Learns to generate following text given sliding windows across abstracts.
     """
     super(AbstractGenerator, self).__init__()
-
-    self.dataset_workers= dataset_workers
-    self.batch_size = batch_size
-    self.training_data_dir = training_data_dir
-    self.warmup_steps = warmup_steps
-    self.learning_rate = learning_rate
-    self.max_text_length = max_text_length+1
-    self.vocab_size = vocab_size
-    self.padding_idx = padding_idx
-    self.vocab_start_idx = vocab_start_idx
+    self.hparams = hparams
 
     self.embeddings = torch.nn.Embedding(
-        total_embed_size,
-        embedding_dim,
-        padding_idx=padding_idx,
+        self.hparams.total_embed_size,
+        self.hparams.embedding_dim,
+        padding_idx=self.hparams.padding_idx,
     )
 
     # Positional encoding is (Max Sequence Length, 1, Embedding Dim)
     self.register_buffer(
         "positional_encoding",
         self.generate_positional_encoding(
-          max_text_length=self.max_text_length,
-          embedding_dim=embedding_dim,
+          max_text_length=self.hparams.max_text_length,
+          embedding_dim=self.hparams.embedding_dim,
         )
     )
 
     self.transformer = torch.nn.Transformer(
-        d_model=embedding_dim,
-        nhead=num_attention_heads,
-        num_encoder_layers=num_encoder_layers,
-        num_decoder_layers=num_decoder_layers,
-        dim_feedforward=intermediate_feedforward_dim,
-        dropout=intermediate_dropout,
+        d_model=self.hparams.embedding_dim,
+        nhead=self.hparams.num_attention_heads,
+        num_encoder_layers=self.hparams.num_encoder_layers,
+        num_decoder_layers=self.hparams.num_decoder_layers,
+        dim_feedforward=self.hparams.intermediate_feedforward_dim,
+        dropout=self.hparams.intermediate_dropout,
     )
 
     # This mask has -inf for all values that follow the target input
     # Of size (text, text)
     self.register_buffer(
         "text_attention_mask",
-        self.transformer.generate_square_subsequent_mask(self.max_text_length),
+        self.transformer.generate_square_subsequent_mask(self.hparams.max_text_length),
     )
 
     self.predicted_text = torch.nn.Linear(
-        embedding_dim,
-        vocab_size,
+        self.hparams.embedding_dim,
+        self.hparams.vocab_size,
     )
 
     self.softmax = torch.nn.LogSoftmax(dim=2)
     self.loss_fn = torch.nn.NLLLoss()
+
 
   def generate_positional_encoding(
       self,
@@ -125,7 +103,7 @@ class AbstractGenerator(pl.LightningModule):
     # Batch size is consistent
     assert context.shape[1] == text.shape[1]
     # T is consistent, and less than the expected max
-    assert text.shape[0] <= self.max_text_length
+    assert text.shape[0] <= self.hparams.max_text_length
 
     # Adds an additional E-sized embedding vector for each long
     context_emb = self.embeddings(context)
@@ -136,9 +114,9 @@ class AbstractGenerator(pl.LightningModule):
 
     encoded = self.transformer(
         src=context_emb,
-        src_key_padding_mask=(context==self.padding_idx).t_(),
+        src_key_padding_mask=(context==self.hparams.padding_idx).t_(),
         tgt=txt_typ_pos,
-        tgt_key_padding_mask=(text==self.padding_idx).t_(),
+        tgt_key_padding_mask=(text==self.hparams.padding_idx).t_(),
         tgt_mask=self.text_attention_mask[:text_length,:text_length],
     )
 
@@ -149,12 +127,8 @@ class AbstractGenerator(pl.LightningModule):
         "text": self.softmax(predicted_text),
     }
 
-  # Added for pytorch-lightning
-  def training_step(self, batch, batch_nb):
-    model_in, expected = batch
-    predicted = self.forward(**model_in)
-
-    mask = (expected['text'] != self.padding_idx)
+  def _get_masked_text_vectors(self, expected, predicted):
+    mask = (expected['text'] != self.hparams.padding_idx)
     # matrix of probability vectors over vocab
     masked_predicted_text = (
         predicted['text'][mask]
@@ -164,8 +138,16 @@ class AbstractGenerator(pl.LightningModule):
     masked_expected_text = (
         expected['text'][mask]
         .view(-1)
-        -self.vocab_start_idx
+        -self.hparams.vocab_start_idx
     )
+    return masked_expected_text, masked_predicted_text
+
+  # Added for pytorch-lightning
+  def training_step(self, batch, batch_nb):
+    model_in, expected = batch
+    predicted = self.forward(**model_in)
+    masked_expected_text, masked_predicted_text = \
+        self._get_masked_text_vectors(expected, predicted)
     loss = self.loss_fn(masked_predicted_text, masked_expected_text)
     accuracy = (
         (masked_predicted_text.argmax(dim=1) == masked_expected_text)
@@ -185,25 +167,40 @@ class AbstractGenerator(pl.LightningModule):
         }
     }
 
+  def validation_step(self, batch, batch_nb):
+    model_in, expected = batch
+    predicted = self.forward(**model_in)
+    masked_expected_text, masked_predicted_text = \
+        self._get_masked_text_vectors(expected, predicted)
+    loss = self.loss_fn(masked_predicted_text, masked_expected_text)
+    return {
+        'val_loss': loss,
+    }
 
-  @pl.data_loader
-  def train_dataloader(self):
-    dataset=KVStoreDictDataset(self.training_data_dir)
-    #dataset=LoadWholeKVStore(self.training_data_dir)
-    sampler = torch.utils.data.distributed.DistributedSampler(dataset)
+
+  def _get_dataloader(self, dataset):
     return torch.utils.data.DataLoader(
         dataset=dataset,
-        sampler=sampler,
-        batch_size=self.batch_size,
+        sampler=torch.utils.data.distributed.DistributedSampler(dataset),
+        batch_size=self.hparams.batch_size,
         collate_fn=AbstractGenerator.collate,
-        #num_workers=self.dataset_workers,
     )
+  @pl.data_loader
+  def train_dataloader(self):
+    return self._get_dataloader(
+        KVStoreDictDataset(self.hparams.training_data_dir)
+    )
+
+  # @pl.data_loader
+  # def val_dataloader(self):
+    # return self._get_dataloader(self.validation_dataset)
+
 
   def configure_optimizers(self):
     optimizer = Lamb(
         self.parameters(),
         # facebook paper says linear growth with batch size
-        lr=self.learning_rate,
+        lr=self.hparams.learning_rate,
         weight_decay=0.01,
     )
     return optimizer
@@ -217,13 +214,13 @@ class AbstractGenerator(pl.LightningModule):
       second_order_closure=None
   ):
     # warm up lr
-    if  self.trainer.global_step < self.warmup_steps:
+    if  self.trainer.global_step < self.hparams.warmup_steps:
       lr_scale = min(
           1.,
-          float(self.trainer.global_step + 1)/float(self.warmup_steps)
+          float(self.trainer.global_step + 1)/float(self.hparams.warmup_steps)
       )
       for pg in optimizer.param_groups:
-        pg['lr'] = lr_scale * self.learning_rate
+        pg['lr'] = lr_scale * self.hparams.learning_rate
     optimizer.step()
     optimizer.zero_grad()
 

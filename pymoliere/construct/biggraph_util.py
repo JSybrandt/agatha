@@ -1,3 +1,4 @@
+import dask
 import dask.bag as dbag
 from pathlib import Path
 from typing import Dict, Any, Tuple, Iterable, Set, List
@@ -120,21 +121,6 @@ def export_graph_for_biggraph(
     part = name_to_partition(node_name)
     return f"{ent}_{part}"
 
-  def get_local_indices(graph:nx.Graph)->Dict[str, int]:
-    part_key2nodes = defaultdict(set)
-    for node in graph:
-      part_key2nodes[name_to_part_key(node)].add(node)
-    result = {}
-    for part_key, nodes in part_key2nodes.items():
-      node_part_db_path = entity_db_dir.joinpath(f"{part_key}.sqlitedict")
-      with SqliteDict(node_part_db_path, flag="r") as db:
-        for node in nodes:
-          try:
-            result[node] = db[node]
-          except:
-            raise Exception(f"Failed to find {node} ({name_to_part_key(node)}) in {node_part_db_path}")
-    return result
-
   def get_relation_key(lhs:str, rhs:str)->str:
     return name_to_entity(lhs) + name_to_entity(rhs)
 
@@ -149,80 +135,53 @@ def export_graph_for_biggraph(
   ##################################################
   # Step 1, partition nodes
 
-  def nx_graph_to_partitioned_dbs(
-      nx_graphs:Iterable[nx.Graph]
-  )->Iterable[int]:
+  def nx_graph_to_partitioned_node_names(nx_graphs:Iterable[nx.Graph]):
     part_key2names = defaultdict(set)
     # All of my local nodes
     for graph in nx_graphs:
       for node in graph:
         part_key2names[name_to_part_key(node)].add(node)
-    # Write the necessary partitions
-    num_added_nodes = 0
-    for part_key, names in part_key2names.items():
-      lock_path = entity_db_dir.joinpath(f".{part_key}.lock")
-      node_part_db_path = entity_db_dir.joinpath(f"{part_key}.sqlitedict")
-      with FileLock(lock_path):
-        with SqliteDict(node_part_db_path, journal_mode="off") as db:
-          for name in names:
-            if name not in db:
-              db[name] = None
-              num_added_nodes += 1
-          db.commit()
-    return [num_added_nodes]
+    return list(part_key2names.values())
 
-  print("\t- Partitioning nodes")
-  total_partitioned_nodes = sum(
+  def node_set_to_part_key(node_names:Set[str])->str:
+    return name_to_part_key(next(iter(node_names)))
+
+  partitioned_node_names = (
       graph_bag
-      # Converts the networkx node into multiple sets, one per partition
-      .map_partitions(nx_graph_to_partitioned_dbs)
-      .compute()
+      .map_partitions(nx_graph_to_partitioned_node_names)
+      .foldby(node_set_to_part_key, set.union)
   )
-  print(f"\t\t- Split {total_partitioned_nodes} nodes")
+  partitioned_node_names = partitioned_node_names.persist()
 
   ##################################################
   # Step 2, create count and json files
 
-  def db_path_to_count_and_json(partition_db_path:Path)->Dict[str, Path]:
+  def write_json_and_count_files(partitioned_node_names)->Dict[str, int]:
     # Get part_key from name
-    part_key = partition_db_path.name.split(".")[0]
-    lock_path = entity_db_dir.joinpath(f".{part_key}.lock")
-    node_part_db_path = entity_db_dir.joinpath(f"{part_key}.sqlitedict")
-    count_path = entity_dir.joinpath(f"entity_count_{part_key}.txt")
-    name_path = entity_dir.joinpath(f"entity_names_{part_key}.json")
+    node_name_to_local_idx = {}
+    for part_key, node_names in partitioned_node_names:
+      node_names = list(node_names)
+      for local_idx, node_name in enumerate(node_names):
+        node_name_to_local_idx[node_name] = local_idx
+      count_path = entity_dir.joinpath(f"entity_count_{part_key}.txt")
+      name_path = entity_dir.joinpath(f"entity_names_{part_key}.json")
+      with open(count_path, 'w') as count_file:
+        count_file.write(str(len(node_names)))
+      with open(name_path, 'w') as name_file:
+        json.dump(list(node_names), name_file)
+    return node_name_to_local_idx
 
-    # We want to both record all the node names, and remember their local indices
-    node_names = []
-    with FileLock(lock_path):
-      with SqliteDict(node_part_db_path) as db:
-        for name in db:
-          db[name] = len(node_names)
-          node_names.append(name)
-        db.commit()
-
-    with open(count_path, 'w') as count_file:
-      count_file.write(str(len(node_names)))
-    with open(name_path, 'w') as name_file:
-      json.dump(list(node_names), name_file)
-    return {"name_path": name_path, "count_path": count_path}
-
-  partition_db_paths = list(entity_db_dir.glob("*.sqlitedict"))
-  print("\t- Writing json and count files for torch big graph")
-  (
-      dbag.from_sequence(partition_db_paths)
-      .map(db_path_to_count_and_json)
-      .compute()
-  )
+  node2local_idx = dask.delayed(write_json_and_count_files)(partitioned_node_names)
 
   ##################################################
   # Step 3, bucket edges
 
   def nx_graph_to_bucketed_edges(
-      graphs:Iterable[nx.Graph]
+      graphs:Iterable[nx.Graph],
+      node2local:Dict[str, int],
   )->Iterable[int]:
     bucket_key2edges = defaultdict(list)
     for graph in graphs:
-      node2local = get_local_indices(graph)
       for name_a, name_b in graph.edges:
         comps = [(name_a, name_b)]
         if name_to_entity(name_a) != name_to_entity(name_b):
@@ -253,9 +212,10 @@ def export_graph_for_biggraph(
   total_written_edges = sum(
       graph_bag
       # Index and bucket edges
-      .map_partitions(nx_graph_to_bucketed_edges)
+      .map_partitions(nx_graph_to_bucketed_edges, node2local_idx)
       .compute()
   )
+  del node2local_idx
 
 
   def tmp_file_to_bucket(tmp_edges_path:Path)->int:

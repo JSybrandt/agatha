@@ -24,6 +24,7 @@ def evaluate_model_on_abstract(
     text_length:int,
     device:torch.device,
     lowercase:bool,
+    seed_response_text:str="",
 )->Dict[str, Any]:
 
   if lowercase:
@@ -35,6 +36,8 @@ def evaluate_model_on_abstract(
   title_only = deepcopy(abstract)
   title_only["text_data"] = [title_only["text_data"][0]]
   assert title_only["text_data"][0]["type"] == "title"
+
+  title_only["text_data"][0]["text"] += seed_response_text
 
   reference_sentences = [
       s["sent_text"]
@@ -88,10 +91,10 @@ def evaluate_model_on_abstract(
       generated_indices.append(next_idx)
       next_token = tokenizer.decode_idx(next_idx)
       if (
-          len(generated_indices) > 5
-          and next_token == tokenizer.end_symbol
-          or next_token[-1] == "."
-          or len(generated_indices) >= 100
+          ## len(generated_indices) > 5 and
+          next_token == tokenizer.end_symbol
+          ## or next_token[-1] == "."
+          ## or len(generated_indices) >= 100
       ):
         break
 

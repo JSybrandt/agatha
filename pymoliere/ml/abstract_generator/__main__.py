@@ -242,6 +242,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       nb_gpu_nodes=config.num_nodes if config.HasField("num_nodes") else 1,
       distributed_backend='ddp',
       accumulate_grad_batches=config.accumulate_batches,
+      early_stop_callback=None,
       # print_nan_grads=True,
       # track_grad_norm=2,
       # amp_level='O1', use_amp=True,

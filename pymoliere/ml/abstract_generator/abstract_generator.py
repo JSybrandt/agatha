@@ -167,15 +167,15 @@ class AbstractGenerator(pl.LightningModule):
         }
     }
 
-  def validation_step(self, batch, batch_nb):
-    model_in, expected = batch
-    predicted = self.forward(**model_in)
-    masked_expected_text, masked_predicted_text = \
-        self._get_masked_text_vectors(expected, predicted)
-    loss = self.loss_fn(masked_predicted_text, masked_expected_text)
-    return {
-        'val_loss': loss,
-    }
+  # def validation_step(self, batch, batch_nb):
+    # model_in, expected = batch
+    # predicted = self.forward(**model_in)
+    # masked_expected_text, masked_predicted_text = \
+        # self._get_masked_text_vectors(expected, predicted)
+    # loss = self.loss_fn(masked_predicted_text, masked_expected_text)
+    # return {
+        # 'val_loss': loss,
+    # }
 
 
   def _get_dataloader(self, dataset):

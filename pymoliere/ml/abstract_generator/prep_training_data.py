@@ -5,7 +5,7 @@ from pathlib import Path
 import pickle
 from pymoliere.config import config_pb2 as cpb
 from pymoliere.construct import dask_checkpoint, file_util, text_util, ftp_util
-from pymoliere.ml.abstract_generator.misc_util import HashedIndex, OrderedIndex
+from pymoliere.ml.abstract_generator.misc_util import HashedIndex, OrderedIndex, items_to_ordered_index
 from pymoliere.ml.abstract_generator.path_util import get_paths
 from pymoliere.util.misc_util import Record
 import random
@@ -14,17 +14,6 @@ from sqlitedict import SqliteDict
 import string
 from typing import Iterable, List, Dict
 
-def items_to_hashed_index(collection:Iterable[str], max_index:int)->HashedIndex:
-  res = HashedIndex(max_index=max_index)
-  for elem in collection:
-    res.add(elem)
-  return res
-
-def items_to_ordered_index(collection:Iterable[str])->OrderedIndex:
-  res = OrderedIndex()
-  for elem in collection:
-    res.add(elem)
-  return res
 
 def group_and_filter_parsed_sentences(
     sentences:Iterable[Record]
@@ -78,7 +67,7 @@ def to_training_database(bag:dbag.Bag, database_dir:Path):
       r_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
       db_path = database_dir.joinpath(r_name + ".sqlite")
       with SqliteDict(db_path, journal_mode="OFF", flag="n") as db:
-        for idx, rec in records:
+        for idx, rec in enumerate(records):
           db[str(idx)] = rec
         db.commit()
       return db_path
@@ -132,10 +121,8 @@ def prep(config:cpb.AbstractGeneratorConfig):
 
   # write each partition of the training dataset to its own sqlitedict db
   # This allows for fast random access during distributed training
-  to_training_database(
-      training_data,
-      paths["model_root_dir"].joinpath("training_data")
-  )
+  print("Loading training database")
+  to_training_database(training_data, paths["training_db_dir"])
 
   # print("Collecting all mesh headings")
   all_mesh_headings = (

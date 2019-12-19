@@ -15,9 +15,6 @@ from pymoliere.ml.abstract_generator.abstract_generator import (
 )
 from pymoliere.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
 from pymoliere.ml.abstract_generator.prep_training_data import prep
-from pymoliere.ml.abstract_generator.batch_generator import (
-    AbstractWindowGenerator
-)
 from pymoliere.util.misc_util import Record, iter_to_batches
 import sentencepiece as spm
 import sys
@@ -54,27 +51,27 @@ def get_tokenizer_from_config(
 
 def get_model_from_config(
     config:cpb.AbstractGeneratorConfig,
-    tokenizer:AbstractGeneratorTokenizer,
 )->AbstractGenerator:
   paths = get_paths(config)
+  tokenizer_model_path = paths["tokenizer_model_path"]
+  extra_data_path = paths["model_extra_data_path"]
 
   if config.HasField("restore_from_checkpoint"):
     return AbstractGenerator.load_from_checkpoint(config.restore_from_checkpoint)
   else:
-    training_data_dir = paths["model_root_dir"].joinpath("training_data")
     return AbstractGenerator(Namespace(
-        total_embed_size=len(tokenizer),
-        vocab_size=tokenizer.vocab_size,
-        padding_idx=tokenizer.padding_idx,
-        vocab_start_idx=tokenizer.vocab_start_idx,
+        tokenizer_kwargs=dict(
+          tokenizer_model_path=tokenizer_model_path,
+          extra_data_path=extra_data_path,
+        ),
         embedding_dim=config.embedding_dim,
-        max_text_length=config.text_length+1,
+        max_text_length=config.text_length,
         num_attention_heads=config.num_attention_heads,
         num_encoder_layers=config.num_encoder_layers,
         num_decoder_layers=config.num_decoder_layers,
         intermediate_dropout=0.1,
         intermediate_feedforward_dim=config.hidden_fc_size,
-        training_data_dir=training_data_dir,
+        training_data_dir=paths["training_db_dir"],
         batch_size=config.sys.batch_size,
         warmup_steps=config.num_warmup_steps,
         learning_rate=config.sys.learning_rate,
@@ -99,7 +96,7 @@ def evaluate(config:cpb.AbstractGeneratorConfig):
 
   device = get_device(config)
   tokenizer = get_tokenizer_from_config(config)
-  model = get_model_from_config(config, tokenizer).cuda()
+  model = get_model_from_config(config).cuda()
   model.freeze()
   model.eval()
 
@@ -146,7 +143,7 @@ def distribute_training_partitions(
 def train(config:cpb.AbstractGeneratorConfig):
   paths = get_paths(config)
   tokenizer = get_tokenizer_from_config(config)
-  model = get_model_from_config(config, tokenizer)
+  model = get_model_from_config(config)
 
   if config.debug:
     print_model_summary(model)
@@ -176,9 +173,6 @@ def train(config:cpb.AbstractGeneratorConfig):
       distributed_backend='ddp',
       accumulate_grad_batches=config.accumulate_batches,
       early_stop_callback=None,
-      # print_nan_grads=True,
-      # track_grad_norm=2,
-      # amp_level='O1', use_amp=True,
       train_percent_check=config.training_fraction,
       checkpoint_callback=checkpoint_callback,
   )

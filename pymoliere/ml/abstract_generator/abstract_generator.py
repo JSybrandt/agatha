@@ -7,27 +7,27 @@ from typing import Optional, List, Any, Dict
 import math
 from random import shuffle
 import pytorch_lightning as pl
-from pymoliere.ml.abstract_generator.pickle_dataset import KVStoreDictDataset, LoadWholeKVStore
+from pymoliere.ml.abstract_generator import datasets
 from pymoliere.ml.abstract_generator.lamb_optimizer import Lamb
 import os
 from argparse import Namespace
+from pymoliere.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
 
 
 class AbstractGenerator(pl.LightningModule):
-  def __init__(self,
-      hparams:Namespace,
-  ):
-    """
-    Learns to generate following text given sliding windows across abstracts.
-    """
+  def __init__(self, hparams:Namespace):
     super(AbstractGenerator, self).__init__()
     self.hparams = hparams
-
-    self.text_embedding = torch.nn.Embedding(
-        self.hparams.total_embed_size,
-        self.hparams.embedding_dim,
-        padding_idx=self.hparams.padding_idx,
+    self.init_tokenizer()
+    def get_emb(num):
+      return torch.nn.Embedding(
+          num,
+          self.hparams.embedding_dim,
+          padding_idx=self.tokenizer.padding_idx
     )
+    self.text_embedding = get_emb(self.tokenizer.len_text())
+    self.mesh_embedding = get_emb(self.tokenizer.len_mesh())
+    self.year_embedding = get_emb(self.tokenizer.len_year())
 
     # Positional encoding is (Max Sequence Length, 1, Embedding Dim)
     self.register_buffer(
@@ -54,26 +54,73 @@ class AbstractGenerator(pl.LightningModule):
         self.transformer.generate_square_subsequent_mask(self.hparams.max_text_length),
     )
 
-    self.predicted_text = torch.nn.Linear(
-        self.hparams.embedding_dim,
-        self.hparams.vocab_size,
-    )
-    self.predicted_pos = torch.nn.Linear(
-        self.hparams.embedding_dim,
-        self.hparams.vocab_size,
-    )
-    self.predicted_dep = torch.nn.Linear(
-        self.hparams.embedding_dim,
-        self.hparams.vocab_size,
-    )
-    self.predicted_ent = torch.nn.Linear(
-        self.hparams.embedding_dim,
-        self.hparams.vocab_size,
-    )
+    def get_pred(num):
+      return torch.nn.Linear(self.hparams.embedding_dim, num)
+    self.predict_text = get_pred(self.tokenizer.len_text())
+    self.predict_pos = get_pred(self.tokenizer.len_pos())
+    self.predict_dep = get_pred(self.tokenizer.len_dep())
+    self.predict_ent = get_pred(self.tokenizer.len_entity_label())
 
     self.softmax = torch.nn.LogSoftmax(dim=2)
     self.loss_fn = torch.nn.NLLLoss()
 
+  # These three functions are needed to not pickle the tokenizer
+  def __getstate__(self):
+    # We need to exclude the tokenizer
+    state = self.__dict__.copy()
+    del state["tokenizer"]
+    return state
+
+  def __setstate(self, state):
+    self.__dict__.update(state)
+    self.init_tokenizer()
+
+  def init_tokenizer(self):
+    if not hasattr(self, "tokenizer"):
+      self.tokenizer = AbstractGeneratorTokenizer(
+          **self.hparams.tokenizer_kwargs
+      )
+
+
+  def forward(
+      self,
+      text:torch.LongTensor,
+      year:torch.LongTensor,
+      mesh:torch.LongTensor,
+  ):
+    all_tensors = [text, year, mesh]
+    for t in all_tensors:
+      assert len(t.shape) == 2, "Input tensor must be 2d"
+      assert t.shape[1] ==all_tensors[0].shape[1], "Unequal batch size"
+      assert t.shape[0] <= self.hparams.max_text_length, "Max seq len exceeded"
+    assert year.shape[0] == 1, f"Year must be a seq of 1 elem, instead {year.shape[0]}"
+
+    text_emb = self.text_embedding(text)
+    year_emb = self.year_embedding(year)
+    mesh_emb = self.mesh_embedding(mesh)
+
+    text_len = text.shape[0]
+    positional_text_emb = text_emb + self.positional_encoding[:text_len, :, :]
+    text_padding_mask = (text==self.tokenizer.padding_idx).t_()
+
+    context_emb = torch.cat((year_emb, mesh_emb))
+    context_padding_mask = \
+        (torch.cat((year, mesh)) == self.tokenizer.padding_idx).t_()
+
+    encoded_text = self.transformer(
+        src=context_emb,
+        src_key_padding_mask=context_padding_mask,
+        tgt=positional_text_emb,
+        tgt_key_padding_mask=text_padding_mask,
+        tgt_mask=self.text_attention_mask[:text_len,:text_len],
+    )
+
+    return {
+        "text": self.softmax(self.predict_text(encoded_text)),
+        "pos": self.softmax(self.predict_pos(encoded_text)),
+        "dep": self.softmax(self.predict_dep(encoded_text)),
+        "ent": self.softmax(self.predict_ent(encoded_text)),
+    }
 
   def generate_positional_encoding(
       self,
@@ -102,43 +149,6 @@ class AbstractGenerator(pl.LightningModule):
     assert result.shape == (max_text_length, 1, embedding_dim)
     return result
 
-  def forward(
-      self,
-      context:torch.LongTensor,
-      text:torch.LongTensor,
-  ):
-    # C is the sequence length of context
-    # T is the sequence length of text
-    # B is the batch size
-    assert len(context.shape) == 2
-    assert len(text.shape) == 2
-    # Batch size is consistent
-    assert context.shape[1] == text.shape[1]
-    # T is consistent, and less than the expected max
-    assert text.shape[0] <= self.hparams.max_text_length
-
-    # Adds an additional E-sized embedding vector for each long
-    context_emb = self.embeddings(context)
-    text_emb = self.embeddings(text)
-    # Need to merge text and position
-    text_length = text.shape[0]
-    txt_typ_pos = text_emb + self.positional_encoding[text_length, :, :]
-
-    encoded = self.transformer(
-        src=context_emb,
-        src_key_padding_mask=(context==self.hparams.padding_idx).t_(),
-        tgt=txt_typ_pos,
-        tgt_key_padding_mask=(text==self.hparams.padding_idx).t_(),
-        tgt_mask=self.text_attention_mask[:text_length,:text_length],
-    )
-
-    predicted_text = self.predicted_text(encoded)
-
-    # produce softmax results across "vocab"
-    return {
-        "text": self.softmax(predicted_text),
-    }
-
   def _get_masked_text_vectors(self, expected, predicted):
     mask = (expected['text'] != self.hparams.padding_idx)
     # matrix of probability vectors over vocab
@@ -156,56 +166,61 @@ class AbstractGenerator(pl.LightningModule):
 
   # Added for pytorch-lightning
   def training_step(self, batch, batch_nb):
-    model_in, expected = batch
-    predicted = self.forward(**model_in)
-    masked_expected_text, masked_predicted_text = \
-        self._get_masked_text_vectors(expected, predicted)
-    loss = self.loss_fn(masked_predicted_text, masked_expected_text)
-    accuracy = (
-        (masked_predicted_text.argmax(dim=1) == masked_expected_text)
-        .float()
-        .mean()
-    )
+    self.init_tokenizer()
+    model_in, shifted_text_features = batch
+    predicted_text_features = self.forward(**model_in)
+    for key in shifted_text_features:
+      assert key in predicted_text_features
+    assert "text" in shifted_text_features
+    mask = shifted_text_features["text"] != self.tokenizer.padding_idx
+    mask_count = mask.sum()
+    partial_losses = {}
+    partial_accuracies = {}
+    for key in shifted_text_features:
+      actual = predicted_text_features[key][mask].view(mask_count, -1)
+      expected = shifted_text_features[key][mask].view(mask_count)
+      partial_losses[key] = self.loss_fn(actual, expected)
+      partial_accuracies[key] = (
+          (actual.argmax(dim=1) == expected)
+          .float().mean()
+      ).detach()
+
+    loss = sum(partial_losses.values())
+    metrics = {}
+    for key in partial_losses:
+      metrics[f"{key}_loss"] = partial_losses[key]
+      metrics[f"{key}_acc"] = partial_accuracies[key]
+    metrics["loss"] = loss
+
     # Return dict of metrics
     return {
         'loss': loss,
-        'progress_bar': {
-          'loss': loss,
-          'text_accuracy': accuracy,
-        },
-        'log': {
-          'loss': loss,
-          'text_accuracy': accuracy,
-        }
+        'progress_bar': metrics,
+        'log': metrics,
     }
 
-  # def validation_step(self, batch, batch_nb):
-    # model_in, expected = batch
-    # predicted = self.forward(**model_in)
-    # masked_expected_text, masked_predicted_text = \
-        # self._get_masked_text_vectors(expected, predicted)
-    # loss = self.loss_fn(masked_predicted_text, masked_expected_text)
-    # return {
-        # 'val_loss': loss,
-    # }
-
-
-  def _get_dataloader(self, dataset):
-    return torch.utils.data.DataLoader(
-        dataset=dataset,
-        sampler=torch.utils.data.distributed.DistributedSampler(dataset),
-        batch_size=self.hparams.batch_size,
-        collate_fn=AbstractGenerator.collate,
-    )
   @pl.data_loader
   def train_dataloader(self):
-    return self._get_dataloader(
-        KVStoreDictDataset(self.hparams.training_data_dir)
+    self.init_tokenizer()
+    abstracts = datasets.KVStoreDictDataset(self.hparams.training_data_dir)
+    encoder = datasets.EncodedAbstracts(
+        abstract_ds=abstracts,
+        tokenizer=self.tokenizer,
+        max_text_length=self.hparams.max_text_length+1, # add one because we shift
+        max_mesh_length=self.hparams.max_text_length-1, # remove one because year
     )
-
-  # @pl.data_loader
-  # def val_dataloader(self):
-    # return self._get_dataloader(self.validation_dataset)
+    sampler=torch.utils.data.distributed.DistributedSampler(encoder)
+    def collate(batch):
+      return datasets.shift_text_features_for_training(
+          datasets.collate_encoded_abstracts(batch)
+      )
+    loader = torch.utils.data.DataLoader(
+        dataset=encoder,
+        sampler=sampler,
+        batch_size=self.hparams.batch_size,
+        collate_fn=collate,
+    )
+    return loader
 
 
   def configure_optimizers(self):
@@ -235,25 +250,6 @@ class AbstractGenerator(pl.LightningModule):
         pg['lr'] = lr_scale * self.hparams.learning_rate
     optimizer.step()
     optimizer.zero_grad()
-
-
-  def collate(batch:List[Dict[str,List[int]]]):
-    # Group the elements together into tensors
-    padded_tensors = {
-        field_name: torch.nn.utils.rnn.pad_sequence(
-            [torch.LongTensor(b[field_name]) for b in batch]
-        )
-        for field_name in batch[0].keys()
-    }
-    return (
-        # Model Input
-        {
-          "text": padded_tensors["text"],
-          "context": padded_tensors["context"]
-        },
-        # Target
-        {"text": padded_tensors["shifted_text"]},
-    )
 
   def init_ddp_connection(self, proc_rank, world_size):
     torch.distributed.init_process_group(

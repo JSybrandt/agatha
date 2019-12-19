@@ -8,11 +8,13 @@ from pymoliere.config import config_pb2 as cpb, proto_util
 from pymoliere.construct import dask_checkpoint, file_util, text_util, ftp_util
 from pymoliere.ml.model_summary import print_model_summary
 from pymoliere.ml.abstract_generator.misc_util import HashedIndex, OrderedIndex
+from pymoliere.ml.abstract_generator.path_util import get_paths
 from pymoliere.ml.abstract_generator import generation_util
 from pymoliere.ml.abstract_generator.abstract_generator import (
     AbstractGenerator,
 )
 from pymoliere.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
+from pymoliere.ml.abstract_generator.prep_training_data import prep
 from pymoliere.ml.abstract_generator.batch_generator import (
     AbstractWindowGenerator
 )
@@ -35,75 +37,6 @@ from argparse import Namespace
 
 # Eval added as an alias for evaluate
 MODES = ["train", "evaluate", "prep", "eval"]
-
-
-def items_to_hashed_index(collection:Iterable[str], max_index:int)->HashedIndex:
-  res = HashedIndex(max_index=max_index)
-  for elem in collection:
-    res.add(elem)
-  return res
-
-def items_to_ordered_index(collection:Iterable[str])->OrderedIndex:
-  res = OrderedIndex()
-  for elem in collection:
-    res.add(elem)
-  return res
-
-def connect_to_dask_cluster(config:cpb.AbstractGeneratorConfig)->None:
-  # Potential cluster
-  if config.cluster.run_locally or config.cluster.address == "localhost":
-    print("Running dask on local machine!")
-  else:
-    cluster_address = f"{config.cluster.address}:{config.cluster.port}"
-    print("Configuring Dask, attaching to cluster")
-    print(f"\t- {cluster_address}")
-    dask_client = Client(address=cluster_address)
-    if config.cluster.restart:
-      print("\t- Restarting cluster...")
-      dask_client.restart()
-
-def get_paths(config:cpb.AbstractGeneratorConfig):
-  """
-  Returns all the relevant paths based on data from the config.
-  """
-  # Location we can find the existing data
-  assert config.cluster.HasField("shared_scratch")
-  scratch_root_dir = Path(config.cluster.shared_scratch)
-  pmc_download_dir = scratch_root_dir.joinpath("pmc_raw")
-  pmc_download_dir.mkdir(parents=True, exist_ok=True)
-  checkpoint_dir = scratch_root_dir.joinpath("dask_checkpoints")
-  model_root_dir = \
-      scratch_root_dir.joinpath("models").joinpath("abstract_generator")
-  model_path = model_root_dir.joinpath("model.pt")
-  model_ckpt_dir = model_root_dir.joinpath("dask_checkpoints")
-  model_extra_data_path = model_root_dir.joinpath("extra_data.pkl")
-  tokenizer_training_data_dir = \
-      model_ckpt_dir.joinpath("tokenizer_training_data")
-  tokenizer_model_path = model_root_dir.joinpath("tokenizer.model")
-  tokenizer_vocab_path = model_root_dir.joinpath("tokenizer.vocab")
-
-  if config.HasField("tokenizer_data_path"):
-    tokenizer_model_path = Path(config.tokenizer_data_path)
-  if config.HasField("extra_data_path"):
-    model_extra_data_path = Path(config.extra_data_path)
-  if config.HasField("model_path"):
-    model_path = Path(config.model_path)
-
-  # List of all directories
-  dir_paths = [
-      path for name, path in locals().items()
-      if name.split("_")[-1]=="dir"
-  ]
-  # Make sure all dirs are present
-  for dir_path in dir_paths:
-    dir_path.mkdir(parents=True, exist_ok=True)
-
-  # Return all paths, provided they end in "_dir" or "_path"
-  return {
-      name: path
-      for name, path in locals().items()
-      if name.split("_")[-1] in ["dir", "path"]
-  }
 
 
 def get_tokenizer_from_config(
@@ -253,172 +186,6 @@ def train(config:cpb.AbstractGeneratorConfig):
   trainer.fit(model)
 
 
-def prep(config:cpb.AbstractGeneratorConfig):
-  # all important paths
-  paths = get_paths(config)
-  # print("Downloading PMC")
-  # with ftp_util.ftp_connect(
-      # address="ftp.ncbi.nlm.nih.gov",
-      # workdir="/pub/pmc/oa_bulk/",
-  # ) as conn:
-    # xml_paths = ftp_util.ftp_retreive_all(
-        # conn=conn,
-        # pattern="^.*\.xml\.tar\.gz$",
-        # directory=paths["pmc_download_dir"],
-        # show_progress=True,
-    # )
-  connect_to_dask_cluster(config)
-  def ckpt(val, name, overwrite=False):
-    print("Checkpoint", name)
-    return dask_checkpoint.checkpoint(
-        val,
-        name=name,
-        checkpoint_dir=paths["model_ckpt_dir"],
-        overwrite=overwrite,
-    )
-
-
-  # Get the full set of abstracts
-  abstracts = file_util.load(
-      paths["checkpoint_dir"]
-      .joinpath("medline_documents")
-  )
-
-  interesting_abstracts = (
-      abstracts
-      # don't want the ones that are title-only
-      .filter(lambda rec: len(rec["text_data"]) > 1)
-  )
-  interesting_abstracts = ckpt(interesting_abstracts, "interesting_abstracts")
-
-  is_test_data = (
-      interesting_abstracts
-      .map(lambda rec: (random.random() <= config.sys.test_ratio, rec))
-  )
-  is_test_data = ckpt(is_test_data, "is_test_data")
-
-  testing_data = (
-      is_test_data
-      .filter(lambda b_r: b_r[0])
-      .map(lambda b_r: b_r[1])
-  )
-  testing_data = ckpt(testing_data, "testing_data")
-
-  training_data = (
-      is_test_data
-      .filter(lambda b_r: not b_r[0])
-      .map(lambda b_r: b_r[1])
-  )
-  training_data = ckpt(training_data, "training_data")
-
-  # print("Collecting all mesh headings")
-  all_mesh_headings = (
-      training_data
-      .map(lambda rec: rec["mesh_headings"])
-      .flatten()
-      .frequencies()
-      .filter(lambda mesh_freq: mesh_freq[1] >= config.min_mesh_term_support)
-      .map(lambda mesh_freq: mesh_freq[0])
-      .compute()
-  )
-  print(f"Indexing all {len(all_mesh_headings)} mesh headings")
-  mesh_index = items_to_ordered_index(all_mesh_headings)
-
-  ###
-
-  print("Getting oldest year")
-  oldest_year = (
-      training_data
-      .filter(lambda rec: rec["date"] is not None)
-      .map(lambda rec: int(rec["date"].split("-")[0]))
-      .filter(lambda year: year > 1000)  # some invalid years are crazy
-      .min()
-      .compute()
-  )
-  print("\t-", oldest_year)
-
-  ###
-
-  print("Collecting training data for tokenizer")
-  training_data_files = (
-      training_data
-      # Only collect 30% of abstracts
-      .random_sample(0.3)
-      .map_partitions(text_util.split_sentences)
-      # Only need the text. We are doing a case-insensitive model.
-      .map(lambda rec: rec["sent_text"])
-      .map(lambda text: text.lower() if config.lowercase else text)
-      # Only take 10% of sentences, ultimately,'re subsetting again
-      .random_sample(0.1)
-      # Reduce the total number of files
-      .repartition(20)
-      # Store results in textfiles
-      .to_textfiles(f"{paths['tokenizer_training_data_dir']}/*.txt")
-  )
-  print("Training tokenizer")
-  # need to place files in tokenizer_model_path
-  spm.SentencePieceTrainer.train(
-      f"--input={','.join(training_data_files)} "
-      f"--model_prefix={paths['tokenizer_model_path'].parent}/tokenizer "
-      f"--vocab_size={config.vocab_size} "
-      f"--character_coverage=1.0 "
-      f"--model_type=unigram "
-      f"--input_sentence_size={config.max_tokenizer_sentences} "
-      f"--shuffle_input_sentence=true "
-  )
-  assert paths["tokenizer_model_path"].is_file()
-  assert paths["tokenizer_vocab_path"].is_file()
-
-  extra_data = {
-      "mesh_index": mesh_index,
-      "oldest_year": oldest_year,
-  }
-  with open(paths["model_extra_data_path"], 'wb') as f:
-    pickle.dump(extra_data, f)
-  print("\t- Written:", paths["model_extra_data_path"])
-
-  def write_windows_from_abstract(records, part_idx, database_dir):
-    tokenizer = AbstractGeneratorTokenizer(
-      tokenizer_model_path = paths["tokenizer_model_path"],
-      extra_data_path = paths["model_extra_data_path"],
-    )
-    generator = AbstractWindowGenerator(
-      tokenizer=tokenizer,
-      records=list(records),
-      batch_size=config.sys.batch_size,
-      text_size=config.text_length,
-      lowercase=config.lowercase,
-    )
-    db_path = database_dir.joinpath(f"part-{part_idx}.sqlite")
-    try:
-      with SqliteDict(
-          db_path,
-          journal_mode="OFF",
-          flag="n", # create new DB
-      ) as db:
-        print("Writing", db_path)
-        for idx, val in enumerate(generator.iterate_data_across_abstracts()):
-          db[str(idx)] = val
-        db.commit()
-    except:
-      print("Something went wrong with", db_path)
-    return [1]
-
-
-  # Write everything as a sqlitedb
-  print("Generating windows and writing results to databases.")
-  database_dir = paths["model_root_dir"].joinpath("training_data")
-  database_dir.mkdir(parents=True, exist_ok=True)
-  write_tasks = []
-  for part_idx, part in enumerate(training_data.to_delayed()):
-    write_tasks.append(
-        dask.delayed(
-          write_windows_from_abstract
-        )(
-          part, part_idx, database_dir
-        )
-    )
-  dbag.from_delayed(write_tasks).compute()
 
 
 if __name__ == "__main__":

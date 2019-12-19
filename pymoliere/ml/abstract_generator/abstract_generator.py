@@ -23,7 +23,7 @@ class AbstractGenerator(pl.LightningModule):
     super(AbstractGenerator, self).__init__()
     self.hparams = hparams
 
-    self.embeddings = torch.nn.Embedding(
+    self.text_embedding = torch.nn.Embedding(
         self.hparams.total_embed_size,
         self.hparams.embedding_dim,
         padding_idx=self.hparams.padding_idx,
@@ -55,6 +55,18 @@ class AbstractGenerator(pl.LightningModule):
     )
 
     self.predicted_text = torch.nn.Linear(
+        self.hparams.embedding_dim,
+        self.hparams.vocab_size,
+    )
+    self.predicted_pos = torch.nn.Linear(
+        self.hparams.embedding_dim,
+        self.hparams.vocab_size,
+    )
+    self.predicted_dep = torch.nn.Linear(
+        self.hparams.embedding_dim,
+        self.hparams.vocab_size,
+    )
+    self.predicted_ent = torch.nn.Linear(
         self.hparams.embedding_dim,
         self.hparams.vocab_size,
     )

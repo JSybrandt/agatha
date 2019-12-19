@@ -3,9 +3,33 @@ import sentencepiece as spm
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Any, Dict
+from pymoliere.ml.abstract_generator.sentencepiece_pb2 import SentencePieceText
 
 def get_current_year():
   return datetime.now().year
+
+# http://universaldependencies.org/docs/en/pos/all.html
+ALL_POS_TAGS = [
+    "ADJ", "ADP", "ADV", "AUX", "CONJ", "DET", "INTJ", "NOUN", "NUM", "PART",
+    "PRON", "PROPN", "PUNCT", "SCONJ", "SYM", "VERB", "X",
+]
+
+# https://universaldependencies.org/u/dep/all.html
+ALL_DEP_TAGS = [
+    "acl", "advcl", "advmod", "amod", "appos", "aux", "case", "cc", "ccomp",
+    "clf", "compound", "conj", "cop", "csubj", "dep", "det", "discourse",
+    "dislocated", "expl", "fixed", "flat", "goeswith", "iobj", "list", "mark",
+    "nmod", "nsubj", "nummod", "obj", "obl", "orphan", "parataxis", "punct",
+    "reparandum", "root", "vocative", "xcomp",
+]
+
+# Spacy documentation
+ALL_ENTITY_CLASSES = [
+    "AMINO_ACID", "ANATOMICAL_SYSTEM", "CANCER", "CELL", "CELLULAR_COMPONENT",
+    "DEVELOPING_ANATOMICAL_STRUCTURE", "GENE_OR_GENE_PRODUCT",
+    "IMMATERIAL_ANATOMICAL_ENTITY", "MULTI-TISSUE_STRUCTURE", "ORGAN",
+    "ORGANISM", "ORGANISM_SUBDIVISION", "SIMPLE_CHEMICAL", "TISSUE",
+]
 
 class AbstractGeneratorTokenizer(object):
   def __init__(

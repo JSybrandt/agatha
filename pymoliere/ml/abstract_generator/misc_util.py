@@ -1,5 +1,5 @@
 from pymoliere.util.misc_util import hash_str_to_int
-from typing import Any, Set
+from typing import Any, Set, Iterable
 
 class HashedIndex(object):
   """
@@ -84,3 +84,15 @@ class OrderedIndex(object):
 
   def has_index(self, idx:int)->bool:
     return idx in self.idx2elem
+
+def items_to_hashed_index(collection:Iterable[Any], max_index:int)->HashedIndex:
+  res = HashedIndex(max_index=max_index)
+  for elem in collection:
+    res.add(elem)
+  return res
+
+def items_to_ordered_index(collection:Iterable[Any])->OrderedIndex:
+  res = OrderedIndex()
+  for elem in collection:
+    res.add(elem)
+  return res

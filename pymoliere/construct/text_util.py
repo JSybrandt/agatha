@@ -89,7 +89,7 @@ def get_scispacy_initalizer(
     scispacy_version:Path
 )->Tuple[str, dpg.Initializer]:
   def _init():
-    return spacy.load(scispacy_version, disable=["parser"])
+    return spacy.load(scispacy_version)
   return "text_util:nlp", _init
 
 def get_stopwordlist_initializer(
@@ -342,6 +342,7 @@ def analyze_sentences(
         "tok_end": ent.end,
         "cha_start": ent.start_char,
         "cha_end": ent.end_char,
+        "label": ent.label_,
       }
       for ent in doc.ents
       if ent.end - ent.start > 1  # don't want 1-gram ents
@@ -353,7 +354,7 @@ def analyze_sentences(
           "lemma": tok.lemma_,
           "pos": tok.pos_,
           "tag": tok.tag_,
-          #"dep": tok.dep_,
+          "dep": tok.dep_,
           "stop": \
               tok.lemma_ in stopwords or tok.text.strip().lower() in stopwords
         }

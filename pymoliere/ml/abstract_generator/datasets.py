@@ -5,7 +5,7 @@ from sqlitedict  import SqliteDict
 from torch.utils.data import Dataset
 from pymoliere.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
 import random
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Any, Set
 
 def shift_text_features_for_training(
     batch:Dict[str, torch.LongTensor]
@@ -28,10 +28,18 @@ def shift_text_features_for_training(
   model_in["text"] = model_in["text"][:-1]
   return (model_in, expected)
 
+
 def collate_encoded_abstracts(
-    batch:List[Dict[str,List[int]]]
+    batch:List[Dict[str,List[int]]],
+    key_subset:Set[str]=None,
 )->Dict[str, torch.LongTensor]:
-  needed_keys = ['text', 'pos', 'dep', 'ent', 'year', 'mesh']
+  needed_keys = {'text', 'pos', 'dep', 'ent', 'year', 'mesh'}
+
+  if key_subset is not None:
+    # Assert the subset is actually a subset
+    assert key_subset.intersection(needed_keys) == key_subset
+    needed_keys = key_subset
+
   for needed_key in needed_keys:
     for b in batch:
       assert needed_key in b, f"Encoded abstract missing {needed_key}"
@@ -46,22 +54,43 @@ class EncodedAbstracts(Dataset):
   def __init__(
       self,
       abstract_ds:Dataset,
-      tokenizer:AbstractGeneratorTokenizer,
+      tokenizer_kwargs:Dict[str, Any],
       max_text_length:int,
       max_mesh_length:int,
-      title_only=False
+      title_only=False,
+      return_abstract=False,
   ):
     super(EncodedAbstracts, self).__init__()
     self.abstract_ds = abstract_ds
     self.title_only = title_only
+    self.return_abstract = return_abstract
     self.max_text_length = max_text_length
     self.max_mesh_length = max_mesh_length
-    self.tokenizer = tokenizer
+    self.tokenizer_kwargs = tokenizer_kwargs
+
+  # These three functions are needed to not pickle the tokenizer
+  def __getstate__(self):
+    # We need to exclude the tokenizer
+    state = self.__dict__.copy()
+    if "tokenizer" in state:
+      del state["tokenizer"]
+    return state
+
+  def __setstate(self, state):
+    self.__dict__.update(state)
+    self.init_tokenizer()
+
+  def init_tokenizer(self):
+    if not hasattr(self, "tokenizer"):
+      self.tokenizer = AbstractGeneratorTokenizer(
+          **self.tokenizer_kwargs
+      )
 
   def __len__(self):
     return len(self.abstract_ds)
 
   def __getitem__(self, data_idx):
+    self.init_tokenizer()
     abstract = self.abstract_ds[data_idx]
     # Asserts
     for needed_key in ['year', 'mesh_headings', 'sentences']:
@@ -73,7 +102,12 @@ class EncodedAbstracts(Dataset):
     sents = abstract["sentences"]
     if self.title_only:
       # If we're only outputting titles, just subset to that
-      sents = list(filter(lambda s: s["type"]=="title", sents))
+      title_sents = list(filter(lambda s: s["type"]=="title", sents))
+      if len(title_sents) == 0:
+        # promote first sentence to be title
+        title_sents = [sents[0]]
+        title_sents[0]["type"] == "title"
+      sents = title_sents
       selected_sent_idx = 0
     else:
       selected_sent_idx = random.randint(0, len(sents)-1)
@@ -93,6 +127,7 @@ class EncodedAbstracts(Dataset):
           result[key] += tmp_tokens[key]
       if len(result["text"]) >= self.max_text_length:
         break
+
     # truncate what we got to max text length
     for key in result:
       result[key] = result[key][:self.max_text_length]
@@ -103,7 +138,10 @@ class EncodedAbstracts(Dataset):
         self.tokenizer.encode_mesh(m)
         for m in abstract["mesh_headings"][:self.max_mesh_length]
     ]
-    return result
+    if self.return_abstract:
+      return (result, abstract)
+    else:
+      return result
 
 
 class KVStoreDictDataset(Dataset):

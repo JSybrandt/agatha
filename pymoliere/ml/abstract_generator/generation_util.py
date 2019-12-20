@@ -2,131 +2,113 @@ from pymoliere.ml.abstract_generator.abstract_generator import (
     AbstractGenerator,
 )
 from pymoliere.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
-from pymoliere.ml.abstract_generator.batch_generator import (
-    AbstractWindowGenerator,
-)
-from pymoliere.util.misc_util import Record, iter_to_batches
+from pymoliere.util.misc_util import Record
 from pymoliere.construct import text_util
 import torch
 from typing import Tuple, List, Iterable, Dict, Any
 from copy import deepcopy
 import numpy as np
+import pickle
+from pymoliere.config import config_pb2 as cpb
+from pymoliere.ml.abstract_generator.path_util import get_paths
+from pymoliere.ml.abstract_generator import datasets
+import json
 try:
   from nlgeval import NLGEval
 except ImportError:
  # This is a heavy dependency, and we don't want to worry all users with it.
  pass
 
-def evaluate_model_on_abstract(
-    abstract:Record,
-    tokenizer:AbstractGeneratorTokenizer,
-    model:AbstractGenerator,
-    text_length:int,
-    device:torch.device,
-    lowercase:bool,
-    seed_response_text:str="",
-)->Dict[str, Any]:
 
-  if lowercase:
-    abstract["text_data"] = [
-        {"text": t["text"].lower(), "type": t["type"]}
-        for t in abstract["text_data"]
-    ]
+def evaluate(
+    config:cpb.AbstractGeneratorConfig,
+    num_trials:int=1,
+    gen_whole_abstract:bool=False,
+    skip_metrics:bool=False,
+):
+  assert config.HasField("restore_from_checkpoint"), \
+      "Must supply restore_from_checkpoint config"
+  paths = get_paths(config)
 
-  title_only = deepcopy(abstract)
-  title_only["text_data"] = [title_only["text_data"][0]]
-  assert title_only["text_data"][0]["type"] == "title"
+  testing_data_dir = paths["model_ckpt_dir"].joinpath("testing_data")
+  assert testing_data_dir.is_dir()
 
-  title_only["text_data"][0]["text"] += seed_response_text
+  model = AbstractGenerator.load_from_checkpoint(config.restore_from_checkpoint)
+  model.init_tokenizer()
+  model.freeze()
+  model.eval()
 
-  reference_sentences = [
-      s["sent_text"]
-      for s in text_util.split_sentences([abstract])[1:]
-  ]
+  for test_pkl in testing_data_dir.glob("*.pkl"):
+    with open(test_pkl, "rb") as pkl_file:
+      abstracts = pickle.load(pkl_file)
+      encoder = datasets.EncodedAbstracts(
+          abstract_ds=abstracts,
+          tokenizer_kwargs=model.hparams.tokenizer_kwargs,
+          max_text_length=model.hparams.max_text_length,
+          max_mesh_length=model.hparams.max_text_length-1,
+          title_only=True,
+          return_abstract=True,
+      )
+      loader = torch.utils.data.DataLoader(
+          dataset=encoder,
+          batch_size=1,
+          collate_fn=collate_for_generation,
+          shuffle=True,
+          #num_workers=model.hparams.dataset_workers,
+      )
 
-  batch_generator = AbstractWindowGenerator(
-      tokenizer=tokenizer,
-      records=[title_only],
-      batch_size=1,
-      text_size=text_length,
-      return_training_data=False,
-      only_first_window_per_abstract=True,
+      for model_in, (abstract,) in loader:
+        reference_sentences = [
+            sent["text"]
+            for sent in abstract["sentences"]
+            if sent["type"] != "title"
+        ]
+        if len(reference_sentences) == 0:
+          continue
+        title = " ".join(
+            [s["text"] for s in abstract["sentences"] if s["type"] == "title"]
+        )
+        for trial_idx in range(num_trials):
+          new_sentence = generate_new_text(
+              model,
+              model_in,
+              gen_whole_abstract,
+              min_size=3,
+          )
+          if skip_metrics:
+            print("PMID:", abstract["pmid"])
+            print("TITLE:", title)
+            print("GEN:", new_sentence)
+            print("---")
+          else:
+            metrics = get_nlg_eval().compute_individual_metrics(
+                reference_sentences,
+                new_sentence,
+            )
+            metrics = {k: float(v) for k, v in metrics.items()}
+            metrics["generated_text"] = new_sentence
+            metrics["pmid"] = abstract["pmid"]
+            metrics["title"] = title
+            print(json.dumps(metrics))
+
+def collate_for_generation(batch):
+  assert isinstance(batch[0], tuple), "Generation requires return_abstract"
+  tokens = [b[0] for b in batch]
+  abstracts = [b[1] for b in batch]
+  model_in = datasets.collate_encoded_abstracts(
+      tokens,
+      key_subset={"text", "year", "mesh"}
   )
-  model_input = next(batch_generator.iterate_batches())
+  return model_in, abstracts
 
-  # Remove the end token from the title, which should enable the model to keep
-  # going
-  assert "text" in model_input
-  assert "context" in model_input
-  assert model_input["text"][-1] == tokenizer.end_symbol_idx
-  model_input["text"] = model_input["text"][:-1]
+def get_nlg_eval():
+  if not hasattr(get_nlg_eval, "nlg_eval"):
+    print("Loading eval data (first time only)")
+    get_nlg_eval.nlg_eval = NLGEval()
+  return get_nlg_eval.nlg_eval
 
-  context = torch.LongTensor(model_input["context"]).to(device)
-  title = torch.LongTensor(model_input["text"]).to(device)
-  first_sentence = torch.LongTensor(
-      tokenizer.encode_text(reference_sentences[0])
-  ).unsqueeze(1).to(device)
 
-  perplexity_of_first_sentence = calculate_first_sentence_perplexity(
-      model=model,
-      tokenizer=tokenizer,
-      context=context,
-      initial_text=title,
-      evaluated_text=first_sentence,
-  )
-
-  print("Perp:", perplexity_of_first_sentence)
-
-  text_generator = generate_new_text(
-      model=model,
-      tokenizer=tokenizer,
-      context=context,
-      text=title,
-  )
-
-  best_generated_result = None
-  for trial_idx in range(10):
-    generated_indices = []
-    for next_idx in text_generator:
-      generated_indices.append(next_idx)
-      next_token = tokenizer.decode_idx(next_idx)
-      if (
-          ## len(generated_indices) > 5 and
-          next_token == tokenizer.end_symbol
-          ## or next_token[-1] == "."
-          ## or len(generated_indices) >= 100
-      ):
-        break
-
-    if hasattr(evaluate_model_on_abstract, "nlg_eval"):
-      nlg_eval = evaluate_model_on_abstract.nlg_eval
-    else:
-      print("Loading eval data (first time only)")
-      nlg_eval = evaluate_model_on_abstract.nlg_eval = NLGEval()
-
-    generated_sentence = tokenizer.decode_text(generated_indices)
-
-    metrics = nlg_eval.compute_individual_metrics(
-        reference_sentences,
-        generated_sentence
-    )
-    metrics = {k: float(v) for k, v in metrics.items()}
-    metrics["generated_text"] = generated_sentence
-
-    if (
-        best_generated_result is None
-        or best_generated_result["METEOR"] < metrics["METEOR"]
-    ):
-      best_generated_result = deepcopy(metrics)
-  best_generated_result["perplexity_of_first_sentence"] \
-      = float(perplexity_of_first_sentence)
-  best_generated_result["pmid"] = abstract["pmid"]
-  best_generated_result["title"] = title_only["text_data"][0]["text"]
-  best_generated_result["mesh_headings"] = title_only["mesh_headings"]
-  best_generated_result["date"] = title_only["date"]
-  best_generated_result["references"] = reference_sentences
-  return best_generated_result
-
+"""
 def calculate_first_sentence_perplexity(
     model:AbstractGenerator,
     tokenizer:AbstractGeneratorTokenizer,
@@ -158,36 +140,23 @@ def calculate_first_sentence_perplexity(
     log_prob = float(predictions[prediction_idx-1, 0, expected_token])
     product *= (1 / np.exp(log_prob))
   return product ** (1 / len(evaluated_text))
+"""
 
 
-def generate_new_text(
+def generate_new_text_tokens(
   model:AbstractGenerator,
-  tokenizer:AbstractGeneratorTokenizer,
-  context:torch.LongTensor,
-  text:torch.LongTensor=None,
+  model_in:Dict[str, torch.Tensor]
 )->Iterable[Tuple[str, str]]:
-  # Can give both or neither
-  if text is None:
-    text = (
-        torch.LongTensor([tokenizer.start_symbol_idx])
-        .unsqueeze(1)
-        .to(context.device)
-    )
-
-  # Only supporting batch size 1 for now
-  assert context.shape[1] == text.shape[1] == 1
+  assert "text" in model_in
+  assert model_in["text"].shape[1] == 1, "Only support batch size 1 currently."
 
   while True:
-    predictions = model(context, text)
+    predictions = model(**model_in)
 
     # Remember, we're using logsoftmax as output
     word_probabilities = np.exp(
         predictions["text"][-1, 0, :].detach().cpu().numpy()
     )
-
-    assert 0 <= word_probabilities.min() <= word_probabilities.max() <= 1
-
-    # Because floating point error may have slightly altered the probability dist
 
     choices = []
     probs = []
@@ -199,14 +168,40 @@ def generate_new_text(
     probs = np.array(probs, dtype=np.float32)
     probs /= probs.sum()
 
-    new_word = int(np.random.choice(choices, p=probs)) + tokenizer.vocab_start_idx
+    new_word = int(np.random.choice(choices, p=probs))
     yield new_word
 
-    def add_or_shift(tensor, new_element):
+    def add_and_shift(tensor, new_element):
       l = tensor.flatten().tolist()
       l.append(new_element)
       if len(l) >= model.hparams.max_text_length:
         l = l[-model.hparams.max_text_length+1:]
       return torch.LongTensor(l).unsqueeze(1).to(tensor.device)
 
-    text = add_or_shift(text, new_word)
+    model_in["text"] = add_and_shift(model_in["text"], new_word)
+
+def generate_new_text(
+    model:AbstractGenerator,
+    model_in:Dict[str, torch.Tensor],
+    gen_whole_abstract:bool,
+    min_size:int=None,
+    max_size:int=None,
+)->str:
+  model.init_tokenizer()
+  res = []
+  # will run forever if allowed to
+  for new_token in generate_new_text_tokens(model, model_in):
+    res.append(new_token)
+    partial_text = model.tokenizer.decode_text([new_token])
+    if min_size is not None and len(res) < min_size:
+      continue
+    if max_size is not None and len(res) >= max_size:
+      break
+    if partial_text.endswith(".") and not gen_whole_abstract:
+      break
+    if new_token == model.tokenizer.end_idx:
+      break
+  # Don't actually want to see the end token
+  if res[-1] == model.tokenizer.end_idx:
+    res = res[:-1]
+  return model.tokenizer.decode_text(res)

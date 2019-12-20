@@ -68,7 +68,8 @@ class AbstractGenerator(pl.LightningModule):
   def __getstate__(self):
     # We need to exclude the tokenizer
     state = self.__dict__.copy()
-    del state["tokenizer"]
+    if "tokenizer" in state:
+      del state["tokenizer"]
     return state
 
   def __setstate(self, state):
@@ -199,26 +200,27 @@ class AbstractGenerator(pl.LightningModule):
         'log': metrics,
     }
 
+  def _collate(self, batch):
+    return datasets.shift_text_features_for_training(
+        datasets.collate_encoded_abstracts(batch)
+    )
   @pl.data_loader
   def train_dataloader(self):
     self.init_tokenizer()
     abstracts = datasets.KVStoreDictDataset(self.hparams.training_data_dir)
     encoder = datasets.EncodedAbstracts(
         abstract_ds=abstracts,
-        tokenizer=self.tokenizer,
+        tokenizer_kwargs=self.hparams.tokenizer_kwargs,
         max_text_length=self.hparams.max_text_length+1, # add one because we shift
         max_mesh_length=self.hparams.max_text_length-1, # remove one because year
     )
     sampler=torch.utils.data.distributed.DistributedSampler(encoder)
-    def collate(batch):
-      return datasets.shift_text_features_for_training(
-          datasets.collate_encoded_abstracts(batch)
-      )
     loader = torch.utils.data.DataLoader(
         dataset=encoder,
         sampler=sampler,
         batch_size=self.hparams.batch_size,
-        collate_fn=collate,
+        collate_fn=self._collate,
+        #num_workers=self.hparams.dataset_workers,
     )
     return loader
 

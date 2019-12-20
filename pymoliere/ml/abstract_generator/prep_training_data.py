@@ -5,7 +5,7 @@ from pathlib import Path
 import pickle
 from pymoliere.config import config_pb2 as cpb
 from pymoliere.construct import dask_checkpoint, file_util, text_util, ftp_util
-from pymoliere.ml.abstract_generator.misc_util import HashedIndex, OrderedIndex, items_to_ordered_index
+from pymoliere.ml.abstract_generator.misc_util import OrderedIndex, items_to_ordered_index
 from pymoliere.ml.abstract_generator.path_util import get_paths
 from pymoliere.util.misc_util import Record
 import random
@@ -14,67 +14,6 @@ from sqlitedict import SqliteDict
 import string
 from typing import Iterable, List, Dict
 
-
-def group_and_filter_parsed_sentences(
-    sentences:Iterable[Record]
-)->Iterable[Record]:
-  # use pmid:version to index
-  abstracts = {}
-  for sentence in sentences:
-    # The abstract must contain at least three sentences. This discards
-    # many 1-sentence title-only abstracts
-    if sentence["sent_total"] >= 3:
-      key = f"{sentence['pmid']}:{sentence['version']}"
-      if key not in abstracts:
-        abstracts[key] = {
-            "pmid": sentence["pmid"],
-            "year": int(sentence["date"].split("-")[0]),  # YYYY-MM-DD
-            "mesh_headings": sentence["mesh_headings"][:],
-            "sentences": [None] * sentence["sent_total"],
-        }
-      abstracts[key]["sentences"][sentence["sent_idx"]] = {
-          "text": sentence["sent_text"],
-          "type": sentence["sent_type"],
-          "tags": [
-            (t["cha_start"], t["cha_end"], t["pos"], t["dep"])
-            for t in sentence["tokens"]
-          ],
-          "ents": [
-            (e["cha_start"], e["cha_end"], e["label"])
-            for e in sentence["entities"]
-          ],
-      }
-  return list(abstracts.values())
-
-def connect_to_dask_cluster(config:cpb.AbstractGeneratorConfig)->None:
-  # Potential cluster
-  if config.cluster.run_locally or config.cluster.address == "localhost":
-    print("Running dask on local machine!")
-  else:
-    cluster_address = f"{config.cluster.address}:{config.cluster.port}"
-    print("Configuring Dask, attaching to cluster")
-    print(f"\t- {cluster_address}")
-    dask_client = Client(address=cluster_address)
-    if config.cluster.restart:
-      print("\t- Restarting cluster...")
-      dask_client.restart()
-
-def to_training_database(bag:dbag.Bag, database_dir:Path):
-  assert database_dir.is_dir()
-  done_file = database_dir.joinpath("__done__")
-  if not done_file.is_file():
-    def part_to_db(records):
-      r_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
-      db_path = database_dir.joinpath(r_name + ".sqlite")
-      with SqliteDict(db_path, journal_mode="OFF", flag="n") as db:
-        for idx, rec in enumerate(records):
-          db[str(idx)] = rec
-        db.commit()
-      return db_path
-    db_paths = bag.map_partitions(part_to_db).compute()
-    with open(done_file, 'w') as f:
-      for p in db_paths:
-        f.write(f"{p}\n")
 
 def prep(config:cpb.AbstractGeneratorConfig):
   # all important paths
@@ -188,3 +127,64 @@ def prep(config:cpb.AbstractGeneratorConfig):
     pickle.dump(extra_data, f)
   print("\t- Written:", paths["model_extra_data_path"])
 
+
+def group_and_filter_parsed_sentences(
+    sentences:Iterable[Record]
+)->Iterable[Record]:
+  # use pmid:version to index
+  abstracts = {}
+  for sentence in sentences:
+    # The abstract must contain at least three sentences. This discards
+    # many 1-sentence title-only abstracts
+    if sentence["sent_total"] >= 3:
+      key = f"{sentence['pmid']}:{sentence['version']}"
+      if key not in abstracts:
+        abstracts[key] = {
+            "pmid": sentence["pmid"],
+            "year": int(sentence["date"].split("-")[0]),  # YYYY-MM-DD
+            "mesh_headings": sentence["mesh_headings"][:],
+            "sentences": [None] * sentence["sent_total"],
+        }
+      abstracts[key]["sentences"][sentence["sent_idx"]] = {
+          "text": sentence["sent_text"],
+          "type": sentence["sent_type"],
+          "tags": [
+            (t["cha_start"], t["cha_end"], t["pos"], t["dep"])
+            for t in sentence["tokens"]
+          ],
+          "ents": [
+            (e["cha_start"], e["cha_end"], e["label"])
+            for e in sentence["entities"]
+          ],
+      }
+  return list(abstracts.values())
+
+def connect_to_dask_cluster(config:cpb.AbstractGeneratorConfig)->None:
+  # Potential cluster
+  if config.cluster.run_locally or config.cluster.address == "localhost":
+    print("Running dask on local machine!")
+  else:
+    cluster_address = f"{config.cluster.address}:{config.cluster.port}"
+    print("Configuring Dask, attaching to cluster")
+    print(f"\t- {cluster_address}")
+    dask_client = Client(address=cluster_address)
+    if config.cluster.restart:
+      print("\t- Restarting cluster...")
+      dask_client.restart()
+
+def to_training_database(bag:dbag.Bag, database_dir:Path):
+  assert database_dir.is_dir()
+  done_file = database_dir.joinpath("__done__")
+  if not done_file.is_file():
+    def part_to_db(records):
+      r_name = "".join([random.choice(string.ascii_letters) for _ in range(10)])
+      db_path = database_dir.joinpath(r_name + ".sqlite")
+      with SqliteDict(db_path, journal_mode="OFF", flag="n") as db:
+        for idx, rec in enumerate(records):
+          db[str(idx)] = rec
+        db.commit()
+      return db_path
+    db_paths = bag.map_partitions(part_to_db).compute()
+    with open(done_file, 'w') as f:
+      for p in db_paths:
+        f.write(f"{p}\n")

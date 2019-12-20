@@ -37,10 +37,16 @@ ALL_ENTITY_CLASSES = [
 ]
 
 class AbstractGeneratorTokenizer(object):
-  def __init__(self, tokenizer_model_path:Path, extra_data_path:Path):
+  def __init__(
+      self,
+      tokenizer_model_path:Path,
+      extra_data_path:Path,
+      lowercase:bool,
+  ):
     assert tokenizer_model_path.is_file()
     assert extra_data_path.is_file()
 
+    self.lowercase = lowercase
     self.subword_tokenizer = spm.SentencePieceProcessor()
     self.subword_tokenizer.load(str(tokenizer_model_path))
 
@@ -138,9 +144,19 @@ class AbstractGeneratorTokenizer(object):
 
   def _parse_text_to_wordpieces(self, text:str)->SentencePieceText:
     result = SentencePieceText()
+    if self.lowercase:
+      text = text.lower()
     proto_text = self.subword_tokenizer.encode_as_serialized_proto(text)
     result.ParseFromString(proto_text)
     return result
+
+  def simple_encode_text(self, text)->List[int]:
+    return [
+        piece.id + self.text_special_offset
+        for piece in
+        self._parse_text_to_wordpieces(text).pieces
+    ]
+
 
   def encode_sentence(
       self,

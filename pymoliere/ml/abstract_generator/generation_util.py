@@ -82,7 +82,7 @@ def name_thy_self(config:cpb.AbstractGeneratorConfig)->str:
 def evaluate(
     config:cpb.AbstractGeneratorConfig,
     num_trials:int=1,
-    gen_whole_abstraca:bool=False,
+    gen_whole_abstract:bool=False,
     skip_metrics:bool=False,
 ):
   assert config.HasField("restore_from_checkpoint"), \

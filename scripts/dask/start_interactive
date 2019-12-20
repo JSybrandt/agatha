@@ -3,20 +3,44 @@
 THREADS=${1:-16}
 MEM=${2:-60GB}
 
-MODULE_NAME="pymoliere"
+DASK_WORKER_LOCAL=/tmp/__dask__
+DASK_WORKER_SHARED=/scratch4/$USER/__dask__
+DASK_PORT=8786
 
-CONDA_START=~/anaconda3/etc/profile.d/conda.sh
-MODULE_GROUP=~/module_groups/$MODULE_NAME
+mkdir -p $DASK_WORKER_SHARED
 
-echo $MODULE_NAME > ~/.default_module
+# Starting scheduler
+dask-scheduler \
+  --port $DASK_PORT \
+  --local-directory $DASK_WORKER_LOCAL \
+  --scheduler-file $DASK_WORKER_SHARED/scheduler.json \
+  --interface ib0 \
+  &
 
+NODEFILE=$PBS_NODEFILE
+if [[ ! -f "$NODEFILE" ]]; then
+  NODEFILE=/home/jsybran/.nodefile
+fi
+if [[ ! -f "$NODEFILE" ]]; then
+  echo "Must supply a nodefile"
+  exit 1
+fi
 
-source $CONDA_START
-source $MODULE_GROUP
+NUM_NODES=$(wc -l < $NODEFILE)
+echo Starting on $NUM_NODES nodes
 
-echo Starting cluster with $THREADS threads and $MEM memory per node.
-
-dask-ssh \
-  --hostfile $PBS_NODEFILE
-  #--nthreads $THREADS \
-  #--memory-limit $MEM
+parallel \
+  --sshloginfile "$NODEFILE" \
+  --ungroup \
+  -j 1 \
+  """
+    echo Starting {} on \$HOSTNAME
+    dask-worker \
+      $HOSTNAME:$DASK_PORT \
+      --nprocs 1 \
+      --nthreads $THREADS \
+      --memory-limit $MEM \
+      --local-directory $DASK_WORKER_LOCAL \
+      --scheduler-file $DASK_WORKER_SHARED/scheduler.json \
+      --interface ib0
+  """ ::: $(seq $NUM_NODES)

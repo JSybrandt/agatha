@@ -13,17 +13,76 @@ from pymoliere.config import config_pb2 as cpb
 from pymoliere.ml.abstract_generator.path_util import get_paths
 from pymoliere.ml.abstract_generator import datasets
 import json
+import re
 try:
   from nlgeval import NLGEval
 except ImportError:
  # This is a heavy dependency, and we don't want to worry all users with it.
  pass
 
+def name_thy_self(config:cpb.AbstractGeneratorConfig)->str:
+  assert config.HasField("restore_from_checkpoint"), \
+      "Must supply restore_from_checkpoint config"
+  paths = get_paths(config)
+  model = AbstractGenerator.load_from_checkpoint(config.restore_from_checkpoint)
+  model.init_tokenizer()
+  model.freeze()
+  model.eval()
+
+  text = """
+    Medical Hypothesis Generation via. Conditional Abstract Generation. In
+    this work, we present a variant of GPT-2 that incorporates medical domain
+    knowledge. This system, which we have named py
+  """
+  text = re.sub(r"\s+", " ", text)
+  text = text.strip()
+
+  abstract = dict(
+      pmid=0000,
+      year=2019,
+      mesh_headings=[],
+      sentences=[dict(
+        type="title",
+        text=text,
+        tags=[],
+        ents=[],
+      ), dict(
+        type="abstract:raw",
+        text="Discard this.",
+        tags=[],
+        ents=[],
+      )]
+  )
+
+  encoder = datasets.EncodedAbstracts(
+      abstract_ds=[abstract],
+      tokenizer_kwargs=model.hparams.tokenizer_kwargs,
+      max_text_length=model.hparams.max_text_length,
+      max_mesh_length=model.hparams.max_text_length-1,
+      title_only=True,
+      return_abstract=True,
+  )
+
+  loader = torch.utils.data.DataLoader(
+      dataset=encoder,
+      batch_size=1,
+      collate_fn=collate_for_generation,
+  )
+
+  for model_in, abstract in loader:
+    new_sentence = generate_new_text(
+        model,
+        model_in,
+        min_size=3,
+        max_size=10,
+    )
+    print(new_sentence)
+
 
 def evaluate(
     config:cpb.AbstractGeneratorConfig,
     num_trials:int=1,
-    gen_whole_abstract:bool=False,
+    gen_whole_abstraca:bool=False,
     skip_metrics:bool=False,
 ):
   assert config.HasField("restore_from_checkpoint"), \
@@ -183,7 +242,7 @@ def generate_new_text_tokens(
 def generate_new_text(
     model:AbstractGenerator,
     model_in:Dict[str, torch.Tensor],
-    gen_whole_abstract:bool,
+    gen_whole_abstract:bool=False,
     min_size:int=None,
     max_size:int=None,
 )->str:

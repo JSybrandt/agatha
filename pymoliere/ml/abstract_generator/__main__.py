@@ -6,7 +6,7 @@ from pathlib import Path
 import pickle
 from pymoliere.config import config_pb2 as cpb, proto_util
 from pymoliere.ml.abstract_generator.abstract_generator import AbstractGenerator
-from pymoliere.ml.abstract_generator.generation_util import evaluate
+from pymoliere.ml.abstract_generator.generation_util import evaluate, name_thy_self
 from pymoliere.ml.abstract_generator.misc_util import OrderedIndex
 from pymoliere.ml.abstract_generator.path_util import get_paths
 from pymoliere.ml.abstract_generator.prep_training_data import prep
@@ -24,7 +24,7 @@ from typing import Iterable, List, Dict
 
 
 # Eval added as an alias for evaluate
-MODES = ["train", "evaluate", "prep", "eval"]
+MODES = ["train", "evaluate", "prep", "eval", "name"]
 
 
 def get_model_from_config(
@@ -62,7 +62,6 @@ def get_device(config:cpb.AbstractGeneratorConfig)->torch.device:
     return torch.device("cuda")
   else:
     return torch.device("cpu")
-
 
 def train(config:cpb.AbstractGeneratorConfig):
   paths = get_paths(config)
@@ -113,3 +112,5 @@ if __name__ == "__main__":
     train(config)
   if config.mode in {"evaluate", "eval"}:
     evaluate(config)
+  if config.mode == "name":
+    name_thy_self(config)

@@ -47,7 +47,7 @@ class MultiLogger():
     if self.log_to_gsheets:
       self._log_gsheets(vals)
 
-  def _log_console(vals: Dict[str, Any])->None:
+  def _log_console(self, vals: Dict[str, Any])->None:
     assert self.column_order is not None, "Must init column_order first"
     assert self.log_to_console, "_log_console called when not log_to_console"
     fmtrow = "\t".join([
@@ -56,7 +56,7 @@ class MultiLogger():
     ])
     print(f"{self.row_idx}|{fmtrow}")
 
-  def _log_gsheets(vals:Dict[str, Any])->None:
+  def _log_gsheets(self, vals:Dict[str, Any])->None:
     assert self.column_order is not None, "Must init column_order first"
     assert self.log_to_gsheets, "_log_gsheets called when not log_to_gsheets"
     values = [vals[col] if col in vals else None for col in self.column_order]

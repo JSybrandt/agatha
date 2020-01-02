@@ -26,6 +26,7 @@ import dask
 import dask.bag as dbag
 import shutil
 import json
+from datetime import datetime
 
 
 if __name__ == "__main__":
@@ -175,6 +176,14 @@ if __name__ == "__main__":
     # Only take the english ones
     lambda r: r["language"]=="eng"
   )
+
+  if config.HasField("cut_date"):
+    # This will fail if the cut-date is not a valid string
+    datetime.strptime(config.cut_date, "%Y-%m-%d")
+    medline_documents = medline_documents.filter(
+        lambda r: r["date"] < config.cut_date
+    )
+
   if config.debug.enable:
     print("\t- Downsampling documents by "
           f"{config.debug.document_sample_rate}")

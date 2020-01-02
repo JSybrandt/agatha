@@ -144,6 +144,9 @@ message ConstructConfig {
   // If set, use the information provided in a pytorch_big_graph config to
   // process the moliere graph for embedding
   optional string export_with_big_graph_config = 13;
+  // Date string in form of YYYY-MM-DD. e.g. 2015-01-01
+  // This is the first date NOT included.
+  optional string cut_date = 14;
 }
 
 // Config used to query the network.

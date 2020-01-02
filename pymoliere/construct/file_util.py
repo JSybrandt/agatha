@@ -58,8 +58,8 @@ def load_part(path:Path, allow_failure:bool=False)->List[Any]:
     with open(path, 'rb') as f:
       return pickle.load(f)
   except Exception as e:
+    print("Encountered an issue with", path)
     if allow_failure:
-      print("Encountered an issue with", path)
       return []
     else:
       raise e

@@ -108,6 +108,7 @@ setup(
       "paramiko",
       "plotille",
       "protobuf",
+      "pygsheets"
       "pymongo",
       "pymysql",
       "pytest",

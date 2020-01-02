@@ -37,11 +37,17 @@ class MultiLogger():
     self.log_to_console = True
     self.column_order = None
     self.row_idx = -1
+    if self.log_to_gsheets and not self.new_sheet:
+      self.column_order = self.gsheets_worksheet.get_row(1, include_tailing_empty=False)
+      self.row_idx = len(self.gsheets_worksheet.get_col(1, include_tailing_empty=False))
+      print("Resuming on row", self.row_idx, "with", self.column_order)
 
   def open_or_create(self, gsheets_client, title):
     try:
+      self.new_sheet = False
       return gsheets_client.open(title)
     except pygsheets.SpreadsheetNotFound:
+      self.new_sheet = True
       return gsheets_client.create(title)
 
   def log_row(self, vals:Dict[str, Any])->None:

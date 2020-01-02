@@ -28,12 +28,21 @@ class MultiLogger():
     if self.log_to_gsheets:
       assert Path(config.gsheets_api_cred).is_file()
       self.gsheets_client = pygsheets.authorize(client_secret=config.gsheets_api_cred)
-      self.gsheets_sheet = self.gsheets_client.create(config.gsheets_title)
+      self.gsheets_sheet = self.open_or_create(
+          self.gsheets_client,
+          config.gsheets_title
+      )
       self.gsheets_worksheet = self.gsheets_sheet.sheet1
       print("Logging to google sheets:", self.gsheets_sheet.url)
     self.log_to_console = True
     self.column_order = None
     self.row_idx = -1
+
+  def open_or_create(self, gsheets_client, title):
+    try:
+      return gsheets_client.open(title)
+    except pygsheets.SpreadsheetNotFound:
+      return gsheets_client.create(title)
 
   def log_row(self, vals:Dict[str, Any])->None:
     if self.column_order is None:

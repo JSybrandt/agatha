@@ -222,7 +222,8 @@ message AbstractGeneratorConfig {
   optional float gradient_clip_val = 38 [default=1.0];
 
   //Needed for writing results to google sheets
-  optional string gsheets_api_cred_path = 39;
+  //Path to the secret json file
+  optional string gsheets_api_cred = 39;
   optional string gsheets_title = 40 [default="PyMoliere Generator Results"];
 }
 ////////////////////////////////////////////////////////////////////////////////

@@ -11,7 +11,8 @@ from pymoliere.ml.abstract_generator.misc_util import (
 from pymoliere.util.misc_util import Record
 
 def get_current_year():
-  return datetime.now().year
+  return 2019
+  #return datetime.now().year
 
 # http://universaldependencies.org/docs/en/pos/all.html
 ALL_POS_TAGS = [

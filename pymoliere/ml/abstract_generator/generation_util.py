@@ -1,82 +1,69 @@
 from pymoliere.ml.abstract_generator.abstract_generator import (
     AbstractGenerator,
 )
+from copy import deepcopy
+import json
+import numpy as np
+from pathlib import Path
+import pickle
+import pygsheets
+from pymoliere.config import config_pb2 as cpb
+from pymoliere.construct import text_util
+from pymoliere.ml.abstract_generator import datasets
+from pymoliere.ml.abstract_generator.path_util import get_paths
 from pymoliere.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
 from pymoliere.util.misc_util import Record
-from pymoliere.construct import text_util
+import re
 import torch
 from typing import Tuple, List, Iterable, Dict, Any
-from copy import deepcopy
-import numpy as np
-import pickle
-from pymoliere.config import config_pb2 as cpb
-from pymoliere.ml.abstract_generator.path_util import get_paths
-from pymoliere.ml.abstract_generator import datasets
-import json
-import re
 try:
   from nlgeval import NLGEval
 except ImportError:
  # This is a heavy dependency, and we don't want to worry all users with it.
  pass
 
-def name_thy_self(config:cpb.AbstractGeneratorConfig)->str:
-  assert config.HasField("restore_from_checkpoint"), \
-      "Must supply restore_from_checkpoint config"
-  paths = get_paths(config)
-  model = AbstractGenerator.load_from_checkpoint(config.restore_from_checkpoint)
-  model.init_tokenizer()
-  model.freeze()
-  model.eval()
+class MultiLogger():
+  def __init__(self, config:cpb.AbstractGeneratorConfig):
+    self.log_to_gsheets = config.HasField("gsheets_api_cred")
+    if self.log_to_gsheets:
+      assert Path(config.gsheets_api_cred).is_file()
+      self.gsheets_client = pygsheets.authorize(client_secret=config.gsheets_api_cred)
+      self.gsheets_sheet = self.gsheets_client.create(config.gsheets_title)
+      self.gsheets_worksheet = self.gsheets_sheet.sheet1
+      print("Logging to google sheets:", self.gsheets_sheet.url)
+    self.log_to_console = True
+    self.column_order = None
+    self.row_idx = -1
 
-  text = """
-    Medical Hypothesis Generation via. Conditional Abstract Generation. In
-    this work, we present a variant of GPT-2 that incorporates medical domain
-    knowledge. This system, which we have named py
-  """
-  text = re.sub(r"\s+", " ", text)
-  text = text.strip()
+  def log_row(vals:Dict[str, Any])->None:
+    if self.column_order is None:
+      self.column_order = [k for k in vals]
+      # Log the header
+      self.log_row({c:c for c in self.column_order})
+    # get a new row
+    self.row_idx += 1
+    if self.log_to_console:
+      self._log_console(vals)
+    if self.log_to_gsheets:
+      self._log_gsheets(vals)
 
-  abstract = dict(
-      pmid=0000,
-      year=2019,
-      mesh_headings=[],
-      sentences=[dict(
-        type="title",
-        text=text,
-        tags=[],
-        ents=[],
-      ), dict(
-        type="abstract:raw",
-        text="Discard this.",
-        tags=[],
-        ents=[],
-      )]
-  )
+  def _log_console(vals: Dict[str, Any])->None:
+    assert self.column_order is not None, "Must init column_order first"
+    assert self.log_to_console, "_log_console called when not log_to_console"
+    fmtrow = "\t".join([
+      str(vals[col]) if col in vals else "N/A"
+      for col in self.column_order
+    ])
+    print(f"{self.row_idx}|{fmtrow}")
 
-  encoder = datasets.EncodedAbstracts(
-      abstract_ds=[abstract],
-      tokenizer_kwargs=model.hparams.tokenizer_kwargs,
-      max_text_length=model.hparams.max_text_length,
-      max_mesh_length=model.hparams.max_text_length-1,
-      title_only=True,
-      return_abstract=True,
-  )
-
-  loader = torch.utils.data.DataLoader(
-      dataset=encoder,
-      batch_size=1,
-      collate_fn=collate_for_generation,
-  )
-
-  for model_in, abstract in loader:
-    new_sentence = generate_new_text(
-        model,
-        model_in,
-        min_size=3,
-        max_size=10,
+  def _log_gsheets(vals:Dict[str, Any])->None:
+    assert self.column_order is not None, "Must init column_order first"
+    assert self.log_to_gsheets, "_log_gsheets called when not log_to_gsheets"
+    values = [vals[col] if col in vals else None for col in self.column_order]
+    self.gsheets_worksheet.add_rows(
+        row=self.row_idx,
+        values=values
     )
-    print(new_sentence)
 
 
 def evaluate(
@@ -85,6 +72,9 @@ def evaluate(
     gen_whole_abstract:bool=True,
     skip_metrics:bool=True,
 ):
+
+  multilogger = MultiLogger(config)
+
   assert config.HasField("restore_from_checkpoint"), \
       "Must supply restore_from_checkpoint config"
   paths = get_paths(config)
@@ -113,9 +103,9 @@ def evaluate(
           batch_size=1,
           collate_fn=collate_for_generation,
           shuffle=True,
-          #num_workers=model.hparams.dataset_workers,
       )
 
+      # loader typically returns a list, but we set this to batch of 1
       for model_in, (abstract,) in loader:
         reference_sentences = [
             sent["text"]
@@ -139,16 +129,19 @@ def evaluate(
             print("TITLE:", title)
             print("GEN:", new_sentence)
             print("---")
+          if skip_metrics:
+            metrics = {}
           else:
             metrics = get_nlg_eval().compute_individual_metrics(
                 reference_sentences,
                 new_sentence,
             )
             metrics = {k: float(v) for k, v in metrics.items()}
-            metrics["generated_text"] = new_sentence
-            metrics["pmid"] = abstract["pmid"]
-            metrics["title"] = title
-            print(json.dumps(metrics))
+          metrics["generated_text"] = new_sentence
+          metrics["pmid"] = abstract["pmid"]
+          metrics["title"] = title
+          multilogger.log_row(metrics)
+
 
 def collate_for_generation(batch):
   assert isinstance(batch[0], tuple), "Generation requires return_abstract"
@@ -165,41 +158,6 @@ def get_nlg_eval():
     print("Loading eval data (first time only)")
     get_nlg_eval.nlg_eval = NLGEval()
   return get_nlg_eval.nlg_eval
-
-
-"""
-def calculate_first_sentence_perplexity(
-    model:AbstractGenerator,
-    tokenizer:AbstractGeneratorTokenizer,
-    context:torch.LongTensor,
-    initial_text:torch.LongTensor,
-    evaluated_text:torch.LongTensor
-)->float:
-  assert len(context.shape) == len(initial_text.shape) \
-      == len(evaluated_text.shape) == 2
-  # Only handling batch size 1 right now
-  assert context.shape[1] == initial_text.shape[1] \
-      == evaluated_text.shape[1] == 1
-
-  # input text is both values merged
-  all_text = torch.cat((initial_text, evaluated_text))
-  # predictions is size (len(all_text), 1, vocab_size)
-  predictions = model(context, all_text)["text"].detach()
-  assert predictions.shape[0] == all_text.shape[0]
-  # Multiplying resulting probs here
-  product = 1
-  # iterate through the evaluated component
-  for prediction_idx in range(len(initial_text), len(all_text)):
-    # this is the given token in the expected section
-    expected_token = \
-        int(all_text[prediction_idx, 0]) - tokenizer.vocab_start_idx
-
-    # We predicted this probability from the n-1'th position
-    # Remember that our model outputs log-probabilities
-    log_prob = float(predictions[prediction_idx-1, 0, expected_token])
-    product *= (1 / np.exp(log_prob))
-  return product ** (1 / len(evaluated_text))
-"""
 
 
 def generate_new_text_tokens(
@@ -264,3 +222,97 @@ def generate_new_text(
   if res[-1] == model.tokenizer.end_idx:
     res = res[:-1]
   return model.tokenizer.decode_text(res)
+
+
+def name_thy_self(config:cpb.AbstractGeneratorConfig)->str:
+  assert config.HasField("restore_from_checkpoint"), \
+      "Must supply restore_from_checkpoint config"
+  paths = get_paths(config)
+  model = AbstractGenerator.load_from_checkpoint(config.restore_from_checkpoint)
+  model.init_tokenizer()
+  model.freeze()
+  model.eval()
+
+  text = """
+    Medical Hypothesis Generation via. Conditional Abstract Generation. In
+    this work, we present a variant of GPT-2 that incorporates medical domain
+    knowledge. This system, which we have named py
+  """
+  text = re.sub(r"\s+", " ", text)
+  text = text.strip()
+
+  abstract = dict(
+      pmid=0000,
+      year=2019,
+      mesh_headings=[],
+      sentences=[dict(
+        type="title",
+        text=text,
+        tags=[],
+        ents=[],
+      ), dict(
+        type="abstract:raw",
+        text="Discard this.",
+        tags=[],
+        ents=[],
+      )]
+  )
+
+  encoder = datasets.EncodedAbstracts(
+      abstract_ds=[abstract],
+      tokenizer_kwargs=model.hparams.tokenizer_kwargs,
+      max_text_length=model.hparams.max_text_length,
+      max_mesh_length=model.hparams.max_text_length-1,
+      title_only=True,
+      return_abstract=True,
+  )
+
+  loader = torch.utils.data.DataLoader(
+      dataset=encoder,
+      batch_size=1,
+      collate_fn=collate_for_generation,
+  )
+
+  for model_in, abstract in loader:
+    new_sentence = generate_new_text(
+        model,
+        model_in,
+        min_size=3,
+        max_size=10,
+    )
+    print(new_sentence)
+
+
+"""
+def calculate_first_sentence_perplexity(
+    model:AbstractGenerator,
+    tokenizer:AbstractGeneratorTokenizer,
+    context:torch.LongTensor,
+    initial_text:torch.LongTensor,
+    evaluated_text:torch.LongTensor
+)->float:
+  assert len(context.shape) == len(initial_text.shape) \
+      == len(evaluated_text.shape) == 2
+  # Only handling batch size 1 right now
+  assert context.shape[1] == initial_text.shape[1] \
+      == evaluated_text.shape[1] == 1
+
+  # input text is both values merged
+  all_text = torch.cat((initial_text, evaluated_text))
+  # predictions is size (len(all_text), 1, vocab_size)
+  predictions = model(context, all_text)["text"].detach()
+  assert predictions.shape[0] == all_text.shape[0]
+  # Multiplying resulting probs here
+  product = 1
+  # iterate through the evaluated component
+  for prediction_idx in range(len(initial_text), len(all_text)):
+    # this is the given token in the expected section
+    expected_token = \
+        int(all_text[prediction_idx, 0]) - tokenizer.vocab_start_idx
+
+    # We predicted this probability from the n-1'th position
+    # Remember that our model outputs log-probabilities
+    log_prob = float(predictions[prediction_idx-1, 0, expected_token])
+    product *= (1 / np.exp(log_prob))
+  return product ** (1 / len(evaluated_text))
+"""

@@ -93,6 +93,7 @@ def evaluate(
 
   model = AbstractGenerator.load_from_checkpoint(config.restore_from_checkpoint)
   model.init_tokenizer()
+  model.cuda()
   model.freeze()
   model.eval()
 
@@ -127,17 +128,13 @@ def evaluate(
             [s["text"] for s in abstract["sentences"] if s["type"] == "title"]
         )
         for trial_idx in range(num_trials):
+          model_in = {k: v.cuda() for k, v in model_in.items()}
           new_sentence = generate_new_text(
               model,
               model_in,
               gen_whole_abstract,
               min_size=3,
           )
-          if skip_metrics:
-            print("PMID:", abstract["pmid"])
-            print("TITLE:", title)
-            print("GEN:", new_sentence)
-            print("---")
           if skip_metrics:
             metrics = {}
           else:

@@ -115,7 +115,8 @@ class EncodedAbstracts(Dataset):
     result = None
     for sent_idx in range(selected_sent_idx, len(sents)):
       is_first = sent_idx==0
-      is_last = sent_idx == len(sents)-1
+      # in the case we're only getting the title, drop the [END]
+      is_last = (sent_idx == len(sents)-1) and not self.title_only
       tmp_tokens = self.tokenizer.encode_sentence(
           sents[sent_idx], is_first, is_last
       )

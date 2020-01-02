@@ -35,7 +35,7 @@ class MultiLogger():
     self.column_order = None
     self.row_idx = -1
 
-  def log_row(vals:Dict[str, Any])->None:
+  def log_row(self, vals:Dict[str, Any])->None:
     if self.column_order is None:
       self.column_order = [k for k in vals]
       # Log the header

@@ -84,7 +84,7 @@ class MultiLogger():
 def evaluate(
     config:cpb.AbstractGeneratorConfig,
     gen_whole_abstract:bool=True,
-    skip_metrics:bool=True,
+    skip_metrics:bool=False,
 ):
 
   multilogger = MultiLogger(config)
@@ -122,12 +122,12 @@ def evaluate(
 
       # loader typically returns a list, but we set this to batch of 1
       for model_in, (abstract,) in loader:
-        reference_sentences = [
+        reference_abstract = " ".join([
             sent["text"]
             for sent in abstract["sentences"]
             if sent["type"] != "title"
-        ]
-        if len(reference_sentences) == 0:
+        ])
+        if len(reference_abstract) == 0:
           continue
         title = " ".join(
             [s["text"] for s in abstract["sentences"] if s["type"] == "title"]
@@ -135,7 +135,7 @@ def evaluate(
         for trial_idx in range(config.trials_per_generation):
           trial_model_in = deepcopy(model_in)
           trial_model_in = {k: v.cuda() for k, v in trial_model_in.items()}
-          new_sentence = generate_new_text(
+          new_abstract = generate_new_text(
               model,
               trial_model_in,
               gen_whole_abstract,
@@ -146,13 +146,16 @@ def evaluate(
             metrics = {}
           else:
             metrics = get_nlg_eval().compute_individual_metrics(
-                reference_sentences,
-                new_sentence,
+                reference_abstract,
+                new_abstract,
             )
             metrics = {k: float(v) for k, v in metrics.items()}
-          metrics["generated_text"] = new_sentence
+          metrics["generated_text"] = new_abstract
           metrics["pmid"] = abstract["pmid"]
           metrics["title"] = title
+          metrics["original_text"] = " ".join(reference_abstract)
+          if config.trials_per_generation > 1:
+            metrics["trial"] = trial_idx
           multilogger.log_row(metrics)
 
 
@@ -169,7 +172,11 @@ def collate_for_generation(batch):
 def get_nlg_eval():
   if not hasattr(get_nlg_eval, "nlg_eval"):
     print("Loading eval data (first time only)")
-    get_nlg_eval.nlg_eval = NLGEval()
+    get_nlg_eval.nlg_eval = NLGEval(
+        no_glove=True,
+        no_skipthoughts=True,
+        metrics_to_omit=["CIDEr"]
+    )
   return get_nlg_eval.nlg_eval
 
 

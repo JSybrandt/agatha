@@ -12,7 +12,6 @@ from transformers import (
     BertTokenizer,
 )
 from torch.nn.utils.rnn import pad_sequence
-from tqdm import tqdm
 from typing import Tuple, Iterable, ClassVar
 import dask.bag as dbag
 import dask.dataframe as ddf
@@ -97,7 +96,6 @@ def embed_records(
     text_field:str,
     max_sequence_length:int,
     out_embedding_field:str="embedding",
-    show_pbar:bool=False,
 )->Iterable[Record]:
   """
   Introduces an embedding field to each record, indicated the bert embedding
@@ -108,13 +106,7 @@ def embed_records(
   tok, model = dpg.get("embedding_util:tok,model")
 
   res = []
-  # PBar is necessary when using embed_records in helper scripts.
-  pbar = tqdm(
-      iter_to_batches(records, batch_size),
-      total=int(len(records) / batch_size),
-      disable=not show_pbar,
-  )
-  for batch in pbar:
+  for batch in iter_to_batches(records, batch_size):
     texts = list(map(lambda x: x[text_field], batch))
     sequs = pad_sequence(
       sequences=[

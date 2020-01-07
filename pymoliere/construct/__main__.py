@@ -227,24 +227,28 @@ if __name__ == "__main__":
   sentence_edges_terms = graph_util.record_to_bipartite_edges(
     records=sentences_with_bow,
     get_neighbor_keys_fn=text_util.get_interesting_token_keys,
+    weight_by_tf_idf=False,
   )
   ckpt("sentence_edges_terms")
 
   sentence_edges_entities = graph_util.record_to_bipartite_edges(
     records=sentences_with_bow,
     get_neighbor_keys_fn=text_util.get_entity_keys,
+    weight_by_tf_idf=False,
   )
   ckpt("sentence_edges_entities")
 
   sentence_edges_mesh = graph_util.record_to_bipartite_edges(
     records=sentences_with_bow,
     get_neighbor_keys_fn=text_util.get_mesh_keys,
+    weight_by_tf_idf=False,
   )
   ckpt("sentence_edges_mesh")
 
   sentence_edges_ngrams = graph_util.record_to_bipartite_edges(
     records=sentences_with_bow,
     get_neighbor_keys_fn=text_util.get_ngram_keys,
+    weight_by_tf_idf=False,
   )
   ckpt("sentence_edges_ngrams")
 

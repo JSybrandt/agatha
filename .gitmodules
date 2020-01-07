@@ -1,3 +1,9 @@
 [submodule "benchmarks/pubmed_sentence_classifier/raw_data"]
 	path = benchmarks/pubmed_sentence_classifier/raw_data
 	url = https://github.com/Franck-Dernoncourt/pubmed-rct.git
+[submodule "tools/convert_graph_for_pytorch_biggraph/externals/CLI11"]
+	path = tools/convert_graph_for_pytorch_biggraph/externals/CLI11
+	url = git@github.com:CLIUtils/CLI11.git
+[submodule "tools/convert_graph_for_pytorch_biggraph/externals/HighFive"]
+	path = tools/convert_graph_for_pytorch_biggraph/externals/HighFive
+	url = git@github.com:BlueBrain/HighFive.git

@@ -383,7 +383,10 @@ if __name__ == "__main__":
     pbg_config = biggraph_util.get_biggraph_config(
         Path(config.export_with_big_graph_config)
     )
-    biggraph_util.export_graph_for_biggraph(pbg_config, all_subgraph_partitions)
+    biggraph_util.export_graph_for_biggraph(
+        pbg_config,
+        all_subgraph_partitions
+    )
 
 
 

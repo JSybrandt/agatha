@@ -188,7 +188,6 @@ message AbstractGeneratorConfig {
   // May be "train" or "evaluate" or "prep"
   optional string mode = 10 [default="train"];
   optional string model_path = 11;
-  optional DatabaseConfig result_db = 12;
   // The number of word parts to generate when prepping the model
   // Number of sentences to look at when training sentence piece tokenizer
   optional int32 max_tokenizer_sentences = 14 [default=100000];
@@ -212,8 +211,6 @@ message AbstractGeneratorConfig {
   optional string tokenizer_data_path = 30;
   optional string extra_data_path = 31;
 
-  optional string eval_result_path = 32;
-
   //Needed for pytorch distributed
   optional int32 num_nodes = 33;
   optional int32 accumulate_batches = 34 [default=1];
@@ -225,6 +222,11 @@ message AbstractGeneratorConfig {
   //Path to the secret json file
   optional string gsheets_api_cred = 39;
   optional string gsheets_title = 40 [default="PyMoliere Generator Results"];
+
+  optional string predicate_spacy_model = 41 [default="en_core_sci_lg"];
+  optional string predicate_stopword_list = 42;
+
+  optional int32 trials_per_generation = 43 [default=1];
 }
 ////////////////////////////////////////////////////////////////////////////////
 

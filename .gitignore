@@ -140,3 +140,5 @@ configs/
 *_pb2.py
 
 explore/
+
+*.json

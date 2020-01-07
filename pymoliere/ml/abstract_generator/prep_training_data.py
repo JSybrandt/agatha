@@ -7,12 +7,41 @@ from pymoliere.config import config_pb2 as cpb
 from pymoliere.construct import dask_checkpoint, file_util, text_util, ftp_util
 from pymoliere.ml.abstract_generator.misc_util import OrderedIndex, items_to_ordered_index
 from pymoliere.ml.abstract_generator.path_util import get_paths
+from pymoliere.ml.abstract_generator import predicate_util
 from pymoliere.util.misc_util import Record
 import random
 import sentencepiece as spm
 from sqlitedict import SqliteDict
 import string
-from typing import Iterable, List, Dict
+from typing import Iterable, List, Dict, Optional
+from pymoliere.construct import dask_process_global as dpg
+
+def extract_predicates(config:cpb.AbstractGeneratorConfig):
+  paths = get_paths(config)
+  dask_client = connect_to_dask_cluster(config)
+
+  preloader = dpg.WorkerPreloader()
+  preloader.register(*predicate_util.get_scispacy_initalizer(
+      config.predicate_spacy_model
+  ))
+  preloader.register(*predicate_util.get_stopwordlist_initializer(
+      config.predicate_stopword_list
+  ))
+  dpg.add_global_preloader(client=dask_client, preloader=preloader)
+
+  abstracts = file_util.load(
+      paths["checkpoint_dir"]
+      .joinpath("medline_documents")
+  )
+
+  predicates = abstracts.map_partitions(predicate_util.abstracts_to_predicates)
+  predicates = dask_checkpoint.checkpoint(
+      predicates,
+      name="predicates",
+      checkpoint_dir=paths["model_ckpt_dir"],
+      overwrite=False,
+  )
+  predicates.compute()
 
 
 def prep(config:cpb.AbstractGeneratorConfig):
@@ -159,10 +188,13 @@ def group_and_filter_parsed_sentences(
       }
   return list(abstracts.values())
 
-def connect_to_dask_cluster(config:cpb.AbstractGeneratorConfig)->None:
+def connect_to_dask_cluster(
+    config:cpb.AbstractGeneratorConfig
+)->Optional[Client]:
   # Potential cluster
   if config.cluster.run_locally or config.cluster.address == "localhost":
     print("Running dask on local machine!")
+    return None
   else:
     cluster_address = f"{config.cluster.address}:{config.cluster.port}"
     print("Configuring Dask, attaching to cluster")
@@ -171,6 +203,8 @@ def connect_to_dask_cluster(config:cpb.AbstractGeneratorConfig)->None:
     if config.cluster.restart:
       print("\t- Restarting cluster...")
       dask_client.restart()
+    return dask_client
+
 
 def to_training_database(bag:dbag.Bag, database_dir:Path):
   assert database_dir.is_dir()

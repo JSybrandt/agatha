@@ -83,7 +83,6 @@ class MultiLogger():
 
 def evaluate(
     config:cpb.AbstractGeneratorConfig,
-    num_trials:int=1,
     gen_whole_abstract:bool=True,
     skip_metrics:bool=True,
 ):
@@ -133,13 +132,15 @@ def evaluate(
         title = " ".join(
             [s["text"] for s in abstract["sentences"] if s["type"] == "title"]
         )
-        for trial_idx in range(num_trials):
-          model_in = {k: v.cuda() for k, v in model_in.items()}
+        for trial_idx in range(config.trials_per_generation):
+          trial_model_in = deepcopy(model_in)
+          trial_model_in = {k: v.cuda() for k, v in trial_model_in.items()}
           new_sentence = generate_new_text(
               model,
-              model_in,
+              trial_model_in,
               gen_whole_abstract,
               min_size=3,
+              max_size=1000,
           )
           if skip_metrics:
             metrics = {}

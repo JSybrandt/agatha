@@ -9,7 +9,7 @@ from pymoliere.ml.abstract_generator.abstract_generator import AbstractGenerator
 from pymoliere.ml.abstract_generator.generation_util import evaluate, name_thy_self
 from pymoliere.ml.abstract_generator.misc_util import OrderedIndex
 from pymoliere.ml.abstract_generator.path_util import get_paths
-from pymoliere.ml.abstract_generator.prep_training_data import prep
+from pymoliere.ml.abstract_generator.prep_training_data import prep, extract_predicates
 from pymoliere.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -24,7 +24,7 @@ from typing import Iterable, List, Dict
 
 
 # Eval added as an alias for evaluate
-MODES = ["train", "evaluate", "prep", "eval", "name"]
+MODES = ["train", "evaluate", "prep", "eval", "name", "extract_predicates"]
 
 
 def get_model_from_config(
@@ -114,3 +114,5 @@ if __name__ == "__main__":
     evaluate(config)
   if config.mode == "name":
     name_thy_self(config)
+  if config.mode == "extract_predicates":
+    extract_predicates(config)

@@ -109,6 +109,7 @@ setup(
       "plotille",
       "protobuf",
       "pygsheets"
+      "pygsheets",
       "pymongo",
       "pymysql",
       "pytest",

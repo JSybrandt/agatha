@@ -131,7 +131,7 @@ def evaluate(
             sent["text"]
             for sent in abstract["sentences"]
             if sent["type"] != "title"
-        ])
+        ]).lower()
         if len(original_abstract) == 0:
           continue
         title = " ".join(

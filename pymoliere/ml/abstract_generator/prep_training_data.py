@@ -156,6 +156,20 @@ def prep(config:cpb.AbstractGeneratorConfig):
     pickle.dump(extra_data, f)
   print("\t- Written:", paths["model_extra_data_path"])
 
+  if not paths["ngram_freqs_path"].is_file():
+    # We're going to need the frequency distribution of ngrams for analysis
+    print("Collecting a sample of ngram frequencies.")
+    ngram_frequencies = dict(
+        file_util.load(paths["model_ckpt_dir"].joinpath("sentences_with_bow"))
+        .random_sample(0.1)
+        .map(lambda r: r["bow"])
+        .flatten()
+        .frequencies()
+        .compute()
+    )
+    with open(paths["ngram_freqs_path"], 'wb') as f:
+      pickle.dump(ngram_frequencies, f)
+
 
 def group_and_filter_parsed_sentences(
     sentences:Iterable[Record]

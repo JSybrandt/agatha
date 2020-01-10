@@ -16,6 +16,8 @@ from pymoliere.util.misc_util import Record
 import re
 import torch
 from typing import Tuple, List, Iterable, Dict, Any
+import spacy
+import math
 try:
   from nlgeval import NLGEval
 except ImportError:
@@ -39,8 +41,11 @@ class MultiLogger():
     self.row_idx = -1
     if self.log_to_gsheets and not self.new_sheet:
       self.column_order = self.gsheets_worksheet.get_row(1, include_tailing_empty=False)
-      self.row_idx = len(self.gsheets_worksheet.get_col(1, include_tailing_empty=False))
-      print("Resuming on row", self.row_idx, "with", self.column_order)
+      if len(self.column_order) == 0:
+        self.column_order = None
+      else:
+        self.row_idx = len(self.gsheets_worksheet.get_col(1, include_tailing_empty=False))
+        print("Resuming on row", self.row_idx, "with", self.column_order)
 
   def open_or_create(self, gsheets_client, title):
     try:
@@ -122,16 +127,16 @@ def evaluate(
 
       # loader typically returns a list, but we set this to batch of 1
       for model_in, (abstract,) in loader:
-        reference_abstract = " ".join([
+        original_abstract = " ".join([
             sent["text"]
             for sent in abstract["sentences"]
             if sent["type"] != "title"
         ])
-        if len(reference_abstract) == 0:
+        if len(original_abstract) == 0:
           continue
         title = " ".join(
             [s["text"] for s in abstract["sentences"] if s["type"] == "title"]
-        )
+        ).lower()
         for trial_idx in range(config.trials_per_generation):
           trial_model_in = deepcopy(model_in)
           trial_model_in = {k: v.cuda() for k, v in trial_model_in.items()}
@@ -142,21 +147,96 @@ def evaluate(
               min_size=3,
               max_size=1000,
           )
-          if skip_metrics:
-            metrics = {}
-          else:
-            metrics = get_nlg_eval().compute_individual_metrics(
-                reference_abstract,
-                new_abstract,
-            )
-            metrics = {k: float(v) for k, v in metrics.items()}
-          metrics["generated_text"] = new_abstract
+          metrics = {}
           metrics["pmid"] = abstract["pmid"]
           metrics["title"] = title
-          metrics["original_text"] = " ".join(reference_abstract)
+          metrics["generated_abstract"] = new_abstract
+          metrics["original_abstract"] = original_abstract
           if config.trials_per_generation > 1:
             metrics["trial"] = trial_idx
+          if not skip_metrics:
+            metrics.update({
+              k: float(v) for k, v in
+              get_nlg_eval().compute_individual_metrics(
+                original_abstract,
+                new_abstract,
+              ).items()
+            })
+            metrics["CIDEr-Title"] = compute_cider_minus_title(
+                original_abstract=original_abstract,
+                original_title=title,
+                generated_abstract=new_abstract,
+                ngram_freqs_path=paths["ngram_freqs_path"],
+            )
           multilogger.log_row(metrics)
+
+
+def iterate_ngrams(text:str, max_size:int, spacy_version:str)->Iterable[str]:
+  "Iterates all _-sep ngrams, parsed using spacy, ignores punct"
+  assert max_size > 1, "Must iterate at least 2-grams"
+  self = iterate_ngrams
+  if not hasattr(self, "nlp"):
+    self.nlp = spacy.load(spacy_version)
+  for sent in self.nlp(text).sents:
+    for start, _ in enumerate(sent):
+      for size in range(1, max_size):
+        token_range = sent[start:start+size]
+        if(
+            # The n_gram is actually n grams
+            (len(token_range) == size)
+            # None of the tokens are punct
+            and not any(map(lambda t: t.pos_=="PUNCT", token_range))
+        ):
+          yield "_".join([str(t.lemma_) for t in token_range])
+
+
+def compute_cider_minus_title(
+    original_abstract:str,
+    original_title:str,
+    generated_abstract:str,
+    ngram_freqs_path:Path,
+    ngram_size:int=4,
+    spacy_version:str="en_core_sci_lg",
+)->float:
+  self = compute_cider_minus_title
+  if not hasattr(self, "ngram_freqs"):
+    print("Loading ngram frequencies, first time only.")
+    with open(ngram_freqs_path, 'rb') as f:
+      self.ngram_freqs = pickle.load(f)
+
+  title_ngrams = set(iterate_ngrams(
+      text=original_title,
+      max_size=ngram_size,
+      spacy_version=spacy_version,
+  ))
+
+  original_abstract_ngrams = set(iterate_ngrams(
+      text=original_abstract,
+      max_size=ngram_size,
+      spacy_version=spacy_version,
+  ))
+
+  nontrivial_target_ngrams = original_abstract_ngrams - title_ngrams
+
+  nontrivial_recalled_ngrams= set(iterate_ngrams(
+      text=generated_abstract,
+      max_size=ngram_size,
+      spacy_version=spacy_version,
+  )).intersection(nontrivial_target_ngrams)
+
+  def score_set(ngram_set):
+    return sum(
+      ( 1 / math.log2(self.ngram_freqs[ngram] + 1)
+        if ngram in self.ngram_freqs else 1
+      ) for ngram in ngram_set
+    )
+
+  target_score = score_set(nontrivial_target_ngrams)
+  recall_score = score_set(nontrivial_recalled_ngrams)
+  if target_score == 0:
+    return 1
+  else:
+    return recall_score / target_score
 
 
 def collate_for_generation(batch):

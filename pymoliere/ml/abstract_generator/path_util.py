@@ -21,6 +21,7 @@ def get_paths(config:cpb.AbstractGeneratorConfig):
   tokenizer_model_path = model_root_dir.joinpath("tokenizer.model")
   tokenizer_vocab_path = model_root_dir.joinpath("tokenizer.vocab")
   training_db_dir = model_root_dir.joinpath("training_db")
+  ngram_freqs_path = model_root_dir.joinpath("ngram_frequencies.pkl")
 
   if config.HasField("tokenizer_data_path"):
     tokenizer_model_path = Path(config.tokenizer_data_path)

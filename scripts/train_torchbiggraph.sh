@@ -22,13 +22,8 @@ fi
 NUM_NODES=$(wc -l < $NODEFILE)
 echo Starting on $NUM_NODES nodes
 
-MAX_RANK=$(($NUM_NODES-1))
+while read REMOTE_HOST; do
+  ssh $REMOTE_HOST "/zfs/safrolab/users/jsybran/pymoliere/scripts/start_with_rank.sh $CONFIG" &
+done < $NODEFILE
 
-parallel \
-  --sshloginfile "$NODEFILE" \
-  --ungroup \
-  -j 1 \
-  """
-    echo Starting {} on \$HOSTNAME
-    torchbiggraph_train --rank {} $CONFIG
-  """ ::: $(seq 0 $MAX_RANK)
+wait

@@ -6,6 +6,7 @@ from collections import defaultdict
 from tqdm import tqdm
 from copy import copy
 from itertools import product
+from pymoliere.util.database_util import PREDICATE_TYPE
 
 # Used to distinguish a reg string from %Y-%m-%d
 Datestr = str
@@ -56,22 +57,22 @@ def filter_by_date(
   )
 
 
-def predicate_to_key(p:Predicate)->str:
-  return f"{p['subj_ids']}\t{p['pred_type']}\t{p['obj_ids']}"
+def predicate_to_key(predicate:Predicate)->str:
+  return "{TYP}:{subj}:{pred}:{obj}".format(
+      TYP=PREDICATE_TYPE,
+      subj=predicate["subj_ids"],
+      pred=predicate["pred_type"],
+      obj=predicate["obj_ids"],
+  ).lower()
 
 
 def earliest_occurances(
     semmeddb:Iterable[Predicate],
 )->Dict[PredicateKey, Datestr]:
-  # Earliest invalid date
-  pred2date = defaultdict(lambda: "0000-00-00")
+  # Init to the largest possible date string
+  pred2date = defaultdict(lambda: "9999-99-99")
   for predicate in semmeddb:
     key = predicate_to_key(predicate)
     if pred2date[key] > predicate["date"]:
       pred2date[key] = predicate["date"]
   return pred2date
-
-
-
-
-

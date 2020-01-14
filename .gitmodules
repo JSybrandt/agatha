@@ -1,12 +1,15 @@
 [submodule "benchmarks/pubmed_sentence_classifier/raw_data"]
 	path = benchmarks/pubmed_sentence_classifier/raw_data
 	url = https://github.com/Franck-Dernoncourt/pubmed-rct.git
-[submodule "tools/convert_graph_for_pytorch_biggraph/externals/HighFive"]
-	path = tools/convert_graph_for_pytorch_biggraph/externals/HighFive
+[submodule "externals/HighFive"]
+	path = externals/HighFive
 	url = git@github.com:BlueBrain/HighFive.git
-[submodule "tools/convert_graph_for_pytorch_biggraph/externals/json"]
-	path = tools/convert_graph_for_pytorch_biggraph/externals/json
+[submodule "externals/json"]
+	path = externals/json
 	url = git@github.com:nlohmann/json.git
-[submodule "tools/convert_graph_for_pytorch_biggraph/externals/argparse"]
-	path = tools/convert_graph_for_pytorch_biggraph/externals/argparse
+[submodule "externals/argparse"]
+	path = externals/argparse
 	url = git@github.com:p-ranav/argparse.git
+[submodule "externals/sqlite_orm"]
+	path = externals/sqlite_orm
+	url = git@github.com:fnc12/sqlite_orm.git

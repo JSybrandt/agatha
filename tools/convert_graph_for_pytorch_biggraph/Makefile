@@ -2,10 +2,11 @@ CC=g++
 FLAGS=
 FLAGS+=-std=c++17
 FLAGS+=-Wall
-INCLUDES=
-INCLUDES+=-I./externals/argparse/include
-INCLUDES+=-I./externals/HighFive/include
-INCLUDES+=-I./externals/json/include
+EXTERN=../../externals
+INCLUDES=-I../shared_headers
+INCLUDES+=-I$(EXTERN)/argparse/include
+INCLUDES+=-I$(EXTERN)/HighFive/include
+INCLUDES+=-I$(EXTERN)/json/include
 LIBS=
 LIBS+=-lhdf5
 LIBS+=-fopenmp

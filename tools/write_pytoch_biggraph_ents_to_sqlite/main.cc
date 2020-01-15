@@ -7,6 +7,7 @@
 #include <sstream>
 #include <sqlite3.h>
 #include "enumerate.h"
+#include "glob.h"
 
 using std::stringstream;
 using std::cout;
@@ -48,17 +49,6 @@ tuple<char, size_t> parse_json_filename(const fs::path json_path){
     throw runtime_error("Invalid file name: " + string(json_path));
   }
   return {type[0], part};
-}
-
-// Returns all tsv files in the directory
-vector<fs::path> glob_ext(const fs::path& root, const string& ext){
-  vector<fs::path> result;
-  for(auto& p_ent: fs::directory_iterator(root)){
-    fs::path p = p_ent.path();
-    if(p.extension() == ext)
-      result.push_back(p);
-  }
-  return result;
 }
 
 list<EntityEmbeddingLocation> file_to_emb_locs(const fs::path& json_path){

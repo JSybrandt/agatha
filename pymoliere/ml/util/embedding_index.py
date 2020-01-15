@@ -34,7 +34,7 @@ class EmbeddingLocationIndex(object):
       FROM
         {db_name}
       WHERE
-        entity = '{entity}'
+        entity=?
       ;
     """
     self.exists_fmt_str = """
@@ -45,7 +45,7 @@ class EmbeddingLocationIndex(object):
         FROM
           {db_name}
         WHERE
-          entity = '{entity}'
+          entity=?
       )
     ;
     """
@@ -54,10 +54,8 @@ class EmbeddingLocationIndex(object):
     assert self.db_cursor is not None, "__contains__ called outside of with"
     return (
         self.db_cursor.execute(
-          self.exists_fmt_str.format(
-            db_name=self.db_name,
-            entity=entity
-          )
+          self.exists_fmt_str.format(db_name=self.db_name),
+          entity
         )
         .fetchone()[0]
         == 1  # EXISTS returns 0 or 1
@@ -67,10 +65,8 @@ class EmbeddingLocationIndex(object):
     assert self.db_cursor is not None, "__getitem__ called outside of with"
     return (
         self.db_cursor.execute(
-          self.select_fmt_str.format(
-            db_name=self.db_name,
-            entity=entity
-          )
+          self.select_fmt_str.format(db_name=self.db_name),
+          (entity,)
         )
         .fetchone()
     )
@@ -144,6 +140,9 @@ class EmbeddingIndex(object):
     assert self.inside_context_mngr, "Called __getitem__ outside of with"
     emb_loc = self.embedding_location_index[name]
     assert emb_loc is not None, f"EmbeddingIndex does not contain {name}"
+    return self._load_embedding_from_h5(emb_loc)
+
+  def _load_embedding_from_h5(self, emb_loc:EmbeddingLocation)->np.array:
     h5_path = self._get_embedding_path(emb_loc)
     assert h5_path.is_file(), f"{emb_loc} -> {h5_path} Does not exist."
     with h5py.File(h5_path, "r") as h5_file:

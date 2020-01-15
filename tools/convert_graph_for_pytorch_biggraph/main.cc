@@ -321,6 +321,26 @@ void write_hdf5_edge_buckets(
   }
 }
 
+vector<char> split_string_to_chars(const string& input){
+  vector<char> res;
+  stringstream ss(input);
+  string s;
+  while(getline(ss, s, ',')){
+    assert(s.size()==1);
+    res.push_back(s[0]);
+  }
+  return res;
+}
+
+vector<string> split_string_to_strings(const string& input){
+  vector<string> res;
+  stringstream ss(input);
+  string s;
+  while(getline(ss, s, ',')){
+    res.push_back(s);
+  }
+  return res;
+}
 
 int main(int argc, char **argv){
   argparse::ArgumentParser parser("tsvs_to_ptbg");
@@ -335,13 +355,16 @@ int main(int argc, char **argv){
         .help("Each entity type will be split into this number of parts.")
         .action([](const std::string& s){ return size_t(stoi(s)); });
   parser.add_argument("--types")
-        .default_value(vector<char>{'s', 'e', 'l', 'm', 'n'})
-        .help("List of character names used as node types.");
+        .default_value(vector<char>{'s', 'e', 'l', 'm', 'n', 'p'})
+        .help("List of character names used as node types.")
+        .action(split_string_to_chars);
   parser.add_argument("--relations")
         .default_value(vector<string>{
-          "le", "lm", "ln", "ls", "em", "en", "es", "mn", "ms", "ns", "ss"
+          "le", "lm", "ln", "ls", "em", "en", "es", "mn", "ms", "ns", "ss",
+          "ps", "pe", "pl", "pn", "pm",
         })
-        .help("List of character names used as node types.");
+        .help("List of character names used as node types.")
+        .action(split_string_to_strings);
   parser.add_argument("--load-entity-partitions")
         .help("Recover the entity partitions from a previous run.")
         .default_value(false)

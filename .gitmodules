@@ -13,3 +13,9 @@
 [submodule "externals/sqlite_orm"]
 	path = externals/sqlite_orm
 	url = git@github.com:fnc12/sqlite_orm.git
+[submodule "externals/pbar"]
+	path = externals/include/pbar
+	url = git@github.com:Jvanrhijn/pbar.git
+[submodule "externals/cppitertools"]
+	path = externals/include/cppitertools
+	url = git@github.com:ryanhaining/cppitertools.git

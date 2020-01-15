@@ -16,7 +16,7 @@
 #include <filesystem>
 #include <tuple>
 #include <iterator>
-#include "enumerate.h"
+#include <cppitertools/enumerate.hpp>
 #include "glob.h"
 
 
@@ -384,7 +384,7 @@ int main(int argc, char **argv){
     }
   }
   unordered_map<string, size_t> relation2idx;
-  for(const auto& [idx, rel] : enumerate(relation_types)){
+  for(const auto& [idx, rel] : iter::enumerate(relation_types)){
     relation2idx[rel] = idx;
   }
 
@@ -412,7 +412,7 @@ int main(int argc, char **argv){
         json input;
         json_file >> input;
         json_file.close();
-        for(const auto& [node_idx, node] : enumerate(input)){
+        for(const auto& [node_idx, node] : iter::enumerate(input)){
           local_node2idx[node] = node_idx;
         }
         #pragma omp critical
@@ -463,7 +463,7 @@ int main(int argc, char **argv){
         for(size_t part_idx = 0; part_idx < num_partitions; ++part_idx){
           char type = node_types[type_idx];
           const list<string>& nodes = type2part2nodes[type][part_idx];
-          for(const auto& [idx, name] : enumerate(nodes)){
+          for(const auto& [idx, name] : iter::enumerate(nodes)){
             local_node2idx[name] = idx;
           }
       }

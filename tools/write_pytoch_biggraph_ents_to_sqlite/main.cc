@@ -5,9 +5,10 @@
 #include <sqlite_orm/sqlite_orm.h>
 #include <fstream>
 #include <sstream>
+#include <cppitertools/enumerate.hpp>
 #include <sqlite3.h>
-#include "enumerate.h"
 #include "glob.h"
+#include "add_index_to_sqlite.h"
 
 using std::stringstream;
 using std::cout;
@@ -58,7 +59,7 @@ list<EntityEmbeddingLocation> file_to_emb_locs(const fs::path& json_path){
   json_file >> names;
   json_file.close();
   list<EntityEmbeddingLocation> result;
-  for(auto [row, name]: enumerate(names)){
+  for(auto [row, name]: iter::enumerate(names)){
     result.push_back({name, string(1, type), part, row});
   }
   return result;
@@ -101,7 +102,6 @@ int main(int argc, char **argv){
         sql::make_column(
           "entity",
           &EntityEmbeddingLocation::entity
-          //sql::primary_key()
         ),
         sql::make_column(
           "entity_type",
@@ -139,31 +139,12 @@ int main(int argc, char **argv){
       return true;
   });
 
-  // Now we need to index the added entity column.
-  // This is faster than creating one to begin with.
-  stringstream index_stmt;
-  index_stmt << "CREATE INDEX IF NOT EXISTS entity_index ON "
-             << table_name
-             << "(entity);";
-
-  // Creating index on entity column
-  sqlite3* db_conn;
-  int exit_code = sqlite3_open(sqlite_path.c_str(), &db_conn);
-  if(exit_code){
-    cout << "Failed to re-open the sqlite database for index creation." << endl;
-  }
   cout << "Creating index" << endl;
-  char* err_msg;
-  exit_code = sqlite3_exec(
-      db_conn,
-      index_stmt.str().c_str(),
-      0,
-      0,
-      &err_msg
+  add_index_to_sqlite(
+      sqlite_path,
+      "entity_index",
+      table_name,
+      "entity"
   );
-  if(exit_code){
-    cout << "Failed to create index:" << err_msg << endl;
-  }
-  sqlite3_close(db_conn);
   return 0;
 }

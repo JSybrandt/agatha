@@ -1,5 +1,6 @@
 #include <unordered_map>
 #include <list>
+#include <unordered_set>
 #include <argparse.hpp>
 #include <nlohmann/json.hpp>
 #include <sqlite_orm/sqlite_orm.h>
@@ -16,7 +17,8 @@ using json = nlohmann::json;
 namespace fs = std::filesystem;
 namespace sql = sqlite_orm;
 
-using Graph = std::unordered_map<std::string, std::list<std::string>>;
+using Neighbors = std::unordered_set<std::string>;
+using Graph = std::unordered_map<std::string, Neighbors>;
 
 struct GraphEntry {
   std::string node;
@@ -25,8 +27,8 @@ struct GraphEntry {
 
 void merge_graphs(Graph& base_graph, Graph& add_graph){
   for(auto& [node, add_neighbors] : add_graph){
-    auto& base_neighbors = base_graph[node];
-    base_neighbors.splice(base_neighbors.end(), add_neighbors);
+    std::unordered_set<std::string>& base_neighbors = base_graph[node];
+    base_neighbors.merge(add_neighbors);
   }
 }
 
@@ -40,7 +42,7 @@ Graph parse_tsv(const fs::path& tsv_path){
       std::string node1, node2;
       getline(tsv_parser, node1, '\t');
       getline(tsv_parser, node2, '\t');
-      res[node1].push_back(node2);
+      res[node1].insert(node2);
     } catch (...) {
       std::cerr << "Encountered an issue with: " << line << std::endl;
     }

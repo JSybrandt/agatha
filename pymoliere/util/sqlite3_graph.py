@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 import json
-from typing import List
+from typing import Set
 
 
 class Sqlite3Graph():
@@ -43,14 +43,16 @@ class Sqlite3Graph():
         == 1  # EXISTS returns 0 or 1
     )
 
-  def __getitem__(self, entity:str)->List[str]:
+  def __getitem__(self, entity:str)->Set[str]:
     assert self.db_cursor is not None, "__getitem__ called outside of with"
-    return json.loads(
-        self.db_cursor.execute(
-          self.select_neighbors_stmt,
-          (entity,)
-        )
-        .fetchone()[0]
+    return set(
+        json.loads(
+          self.db_cursor.execute(
+            self.select_neighbors_stmt,
+            (entity,)
+          )
+          .fetchone()[0]
+      )
     )
 
   def __enter__(self):

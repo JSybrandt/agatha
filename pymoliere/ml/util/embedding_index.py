@@ -55,7 +55,7 @@ class EmbeddingLocationIndex(object):
     return (
         self.db_cursor.execute(
           self.exists_fmt_str.format(db_name=self.db_name),
-          entity
+          (entity,)
         )
         .fetchone()[0]
         == 1  # EXISTS returns 0 or 1
@@ -85,6 +85,8 @@ class EmbeddingLocationIndex(object):
 
   def __exit__(self, exc_type, exc_value, traceback):
     self.db_conn.close()
+    self.db_conn = None
+    self.db_cursor = None
     return False
 
 class EmbeddingIndex(object):

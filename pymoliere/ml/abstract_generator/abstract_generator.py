@@ -12,6 +12,7 @@ from pymoliere.ml.abstract_generator.lamb_optimizer import Lamb
 import os
 from argparse import Namespace
 from pymoliere.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
+from pymoliere.ml.util.kv_store_dataset import KVStoreDictDataset
 
 
 class AbstractGenerator(pl.LightningModule):
@@ -207,7 +208,7 @@ class AbstractGenerator(pl.LightningModule):
   @pl.data_loader
   def train_dataloader(self):
     self.init_tokenizer()
-    abstracts = datasets.KVStoreDictDataset(self.hparams.training_data_dir)
+    abstracts = KVStoreDictDataset(self.hparams.training_data_dir)
     encoder = datasets.EncodedAbstracts(
         abstract_ds=abstracts,
         tokenizer_kwargs=self.hparams.tokenizer_kwargs,

@@ -8,7 +8,7 @@ import dask.bag as dbag
 # Object types
 
 GENE_TYPE="a"
-UMLS_TERM_TYPE="c"
+UMLS_TERM_TYPE="m"  # these are now m:c###
 DATA_BANK_TYPE="d"
 ENTITY_TYPE="e"
 LEMMA_TYPE="l"

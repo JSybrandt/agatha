@@ -6,44 +6,30 @@ from pymoliere.ml.point_cloud_evaluator import dataset
 from pymoliere.ml.util.embedding_index import EmbeddingIndex
 from pymoliere.util.sqlite3_graph import Sqlite3Graph
 from pymoliere.util import database_util as dbu
+from pymoliere.ml.util.kv_store_dataset import KVStoreDictDataset
 
 class PointCloudEvaluator(pl.LightningModule):
 
-  def __init__(self, hparam:Namespace):
+  def __init__(self, hparams:Namespace):
     super(PointCloudEvaluator, self).__init__()
-    self.hparam = hparam
+    self.hparams = hparams
     self.transformer = torch.nn.Transformer(
-        d_model=self.hparam.dim,
-        nhead=self.hparam.transformer_heads,
+        d_model=self.hparams.dim,
+        nhead=self.hparams.transformer_heads,
         num_encoder_layers=0,
-        num_decoder_layers=self.hparam.transformer_layers,
-        dim_feedforward=self.hparam.dim*4,
-        dropout=self.hparam.transformer_dropout,
+        num_decoder_layers=self.hparams.transformer_layers,
+        dim_feedforward=self.hparams.dim*4,
+        dropout=self.hparams.transformer_dropout,
     )
-    self.dense_out = torch.nn.Linear(self.hparam.dim, 1)
+    self.dense_out = torch.nn.Linear(self.hparams.dim, 1)
     self.sig = torch.nn.Sigmoid()
     self.loss_fn = torch.nn.BCELoss()
-    self.embedding_index = EmbeddingIndex(
-      embedding_dir=self.hparam.embedding_dir,
-      emb_loc_db_path=self.hparam.sqlite_embedding_location,
-    )
-    self.graph_index = Sqlite3Graph(self.hparam.sqlite_graph)
-    self.root_embedding = torch.nn.Parameter(torch.rand(1, self.hparam.dim))
-
-  def __enter__(self):
-    self.embedding_index.__enter__()
-    self.graph_index.__enter__()
-    return self
-
-  def __exit__(self, *param):
-    self.embedding_index.__exit__(*param)
-    self.graph_index.__exit__(*param)
-    return False
+    self.root_embedding = torch.nn.Parameter(torch.rand(1, self.hparams.dim))
 
   def forward(self, point_clouds:torch.FloatTensor):
     # sequence length X batch_size X dim
     assert len(point_clouds.shape) == 3
-    assert point_clouds.shape[2] == self.hparam.dim
+    assert point_clouds.shape[2] == self.hparams.dim
     batch_size = point_clouds.shape[1]
 
     # now its seq_len + 1 X batch_size X dim
@@ -61,14 +47,17 @@ class PointCloudEvaluator(pl.LightningModule):
     )
     # Get first embedding per batch
     point_key = encoded_result[0, :, :]
-    return self.sig(self.dense_out(point_key))
+    return self.sig(self.dense_out(point_key)).reshape(-1)
 
   def training_step(self, batch, batch_idx):
     predictions = self.forward(batch["point_clouds"])
     labels = batch["labels"]
+    if self.hparams.debug:
+      print(torch.stack((predictions, labels)).detach())
     loss = self.loss_fn(predictions, labels)
     metrics=dict(
-        loss=loss
+        loss=loss,
+        accuracy=((predictions>0.5)==(labels > 0.5)).sum()/float(len(predictions)),
     )
     return {
         'loss': loss,
@@ -78,29 +67,29 @@ class PointCloudEvaluator(pl.LightningModule):
 
   @pl.data_loader
   def train_dataloader(self):
-    point_cloud_ds = dataset.PointCloudDataset(
-        embedding_dim=self.hparam.dim,
-        entity_dir=self.hparam.entity_dir,
-        embedding_index=self.embedding_index,
-        graph_index=self.graph_index,
-        source_node_type=dbu.SENTENCE_TYPE,
-        neighbor_cloud_type=dbu.LEMMA_TYPE,
-    )
-    #sampler=torch.utils.data.distributed.DistributedSampler(point_cloud_ds)
+    # point_cloud_ds = dataset.PointCloudDataset(
+        # embedding_dim=self.hparams.dim,
+        # entity_dir=self.hparams.entity_dir,
+        # embedding_index=self.embedding_index,
+        # graph_index=self.graph_index,
+        # source_node_type=dbu.SENTENCE_TYPE,
+        # neighbor_cloud_type=dbu.LEMMA_TYPE,
+    # )
+    point_cloud_ds = KVStoreDictDataset(self.hparams.training_data_dir)
+    sampler=torch.utils.data.distributed.DistributedSampler(point_cloud_ds)
     return torch.utils.data.DataLoader(
-      dataset=point_cloud_ds,
-      #sampler=sampler,
-      batch_size=int(self.hparam.batch_size/2),
-      # Collate will double the batch
-      collate_fn=dataset.point_cloud_training_collate,
+        dataset=point_cloud_ds,
+        sampler=sampler,
+        batch_size=int(self.hparams.batch_size/2),
+        # Collate will double the batch
+        collate_fn=dataset.point_cloud_training_collate,
     )
 
   def configure_optimizers(self):
-    return torch.optim.Adam(self.parameters(), lr=self.hparam.lr)
+    return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
 
   @staticmethod
-  def configure_argument_parser()->ArgumentParser:
-    parser = ArgumentParser()
+  def configure_argument_parser(parser:ArgumentParser)->ArgumentParser:
     parser.add_argument(
         "--sqlite-graph",
         type=Path,
@@ -151,6 +140,11 @@ class PointCloudEvaluator(pl.LightningModule):
         type=float,
         default=0.01,
     )
+    parser.add_argument(
+        "--training-data-dir",
+        type=Path
+    )
+    parser.add_argument("--debug", action="store_true")
     return parser
 
 

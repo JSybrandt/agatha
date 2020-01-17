@@ -56,7 +56,7 @@ class Sqlite3Graph():
     )
 
   def __enter__(self):
-    self.db_conn = sqlite3.connect(self.db_path)
+    self.db_conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
     self.db_cursor = self.db_conn.cursor()
     return self
 

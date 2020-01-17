@@ -1,13 +1,61 @@
 import pytorch_lightning as pl
+from argparse import ArgumentParser
 from pymoliere.ml.point_cloud_evaluator.point_cloud_evaluator import (
-    PointCloudEvaluator
+    PointCloudEvaluator,
 )
+from pymoliere.ml.point_cloud_evaluator import prep_training_data
+from pathlib import Path
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.logging import TestTubeLogger
 
 if __name__ == "__main__":
-  parser = PointCloudEvaluator.configure_argument_parser()
-  trainer = pl.Trainer(
-      gpus=1,
-      #distributed_backend='dp',
+  parser = ArgumentParser()
+  parser.add_argument("--mode", type=str)
+  parser.add_argument("--train-fraction", type=float, default=1)
+  parser.add_argument("--train-num-machines", type=int, default=1)
+  parser.add_argument("--train-gradient-clip-val", type=float, default=1)
+  parser.add_argument(
+      "--model-ckpt-dir",
+      type=Path,
+      default=Path("./point_cloud_eval_ckpt")
   )
-  with PointCloudEvaluator(parser.parse_args()) as model:
+
+
+  PointCloudEvaluator.configure_argument_parser(parser)
+  prep_training_data.configure_argument_parser(parser)
+
+  args = parser.parse_args()
+
+  print(args)
+
+  if args.mode == "prep":
+    prep_training_data.prep_training_data(args)
+  else:
+    logger = TestTubeLogger(
+        save_dir=args.model_ckpt_dir,
+        version=0,
+    )
+    # DEFAULTS used by the Trainer
+    checkpoint_callback = ModelCheckpoint(
+      filepath=args.model_ckpt_dir,
+      save_best_only=False,
+      verbose=True,
+      monitor='loss',
+      mode='min',
+      prefix=''
+    )
+    trainer = pl.Trainer(
+        logger=logger,
+        checkpoint_callback=checkpoint_callback,
+        gradient_clip_val=args.train_gradient_clip_val,
+        default_save_path=args.model_ckpt_dir,
+        gpus=-1,
+        nb_gpu_nodes=args.train_num_machines,
+        distributed_backend='ddp',
+        early_stop_callback=None,
+        train_percent_check=args.train_fraction,
+        track_grad_norm=2 if args.debug else -1,
+        overfit_pct=0.01 if args.debug else 0,
+    )
+    model = PointCloudEvaluator(args)
     trainer.fit(model)

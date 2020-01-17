@@ -7,6 +7,7 @@ import json
 from typing import Optional, List
 import random
 from itertools import chain
+from bisect import bisect_right
 
 def point_cloud_training_collate(positive_examples:List[torch.FloatTensor]):
   # Each matrix inside batch is #points X dim
@@ -70,9 +71,11 @@ class EntityIndex(object):
 
   def get_path_idx(self, global_idx:int)->int:
     assert global_idx < len(self)
-    for path_idx, start_idx in enumerate(self.prefix_count):
-      if start_idx <= global_idx:
-        return path_idx
+    assert global_idx >= 0
+    # bisect-right is currently the rightmost value greater than global_idx
+    # so that - 1 is the index of the cell we want in
+    # because of the above asserts, we're good.
+    return bisect_right(self.prefix_count, global_idx) - 1
 
   def __len__(self):
     return self.prefix_count[-1]

@@ -49,13 +49,19 @@ if __name__ == "__main__":
         checkpoint_callback=checkpoint_callback,
         gradient_clip_val=args.train_gradient_clip_val,
         default_save_path=args.model_ckpt_dir,
-        gpus=-1,
+        gpus=0 if args.debug else -1,
         nb_gpu_nodes=args.train_num_machines,
-        distributed_backend='ddp',
+        distributed_backend=None if args.debug else 'ddp',
         early_stop_callback=None,
         train_percent_check=args.train_fraction,
         track_grad_norm=2 if args.debug else -1,
         overfit_pct=0.01 if args.debug else 0,
+        weights_summary='full',
     )
     model = PointCloudEvaluator(args)
+    # if args.debug:
+      # from torchviz import make_dot
+      # out = model.forward(model.example_input)
+      # dot = make_dot(out.mean(), dict(model.named_parameters()))
+      # dot.save(args.model_ckpt_dir.joinpath("model.dot"))
     trainer.fit(model)

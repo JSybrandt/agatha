@@ -34,7 +34,7 @@ else
       python3 -m pymoliere.ml.point_cloud_evaluator                     \
         --training-data-dir $TRAINING_DATA                              \
         --model-ckpt-dir $MODEL_CKPT_DIR                                \
-        --batch-size 512                                                \
+        --batch-size 256                                                \
         --train-num-machines $NUM_NODES
     """ ::: $(seq $NUM_NODES)
 fi

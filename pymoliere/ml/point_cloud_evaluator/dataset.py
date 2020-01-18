@@ -15,19 +15,22 @@ def point_cloud_training_collate(positive_examples:List[torch.FloatTensor]):
   assert all(map(lambda p: len(p.shape)==2, positive_examples))
   emb_dim = positive_examples[0].shape[1]
   assert all(map(lambda p: p.shape[1] == emb_dim, positive_examples))
+  # Shuffle within each point cloud
+  for pos in positive_examples:
+    pos[torch.randperm(pos.shape[0])] = pos
   # They are all # points X embedding dim
   # Shuffle all embeddings together
-  shuffled_embeddings =  torch.cat(positive_examples)
-  shuffled_embeddings[
-      torch.randperm(shuffled_embeddings.shape[0])
-  ] = shuffled_embeddings
-  # shuffled_embeddings is total#points X embedding_dim
+  shuffled_emb =  torch.cat(positive_examples)
+  shuffled_emb[torch.randperm(shuffled_emb.shape[0])] = shuffled_emb
+  rand_mask = torch.rand_like(shuffled_emb) < 0.1
+  shuffled_emb[rand_mask] = torch.rand(rand_mask.sum())
+  # shuffled_emb is total#points X embedding_dim
   # parse out shuffled embeddings into negative training examples
   negative_examples = []
   start_idx = 0
   for pos_ex in positive_examples:
     end_idx = start_idx + pos_ex.shape[0]
-    negative_examples.append(shuffled_embeddings[start_idx:end_idx])
+    negative_examples.append(shuffled_emb[start_idx:end_idx])
     start_idx = end_idx
   # negative_examples is the same shapes as positive_examples
   # Shuffle together a list of positives and negatives

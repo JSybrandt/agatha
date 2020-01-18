@@ -7,6 +7,8 @@ import numpy as np
 import h5py
 from tqdm import tqdm
 import sqlite3
+from typing import Iterable, Tuple
+from itertools import chain
 
 @dataclass
 class EmbeddingLocation:
@@ -14,6 +16,74 @@ class EmbeddingLocation:
   entity_type: str
   partition_idx: int
   row_idx: Optional[int] = None
+
+class PreloadedEmbeddingLocationIndex(object):
+  def __init__(self, entity_dir:Path, entity_type:str):
+    self.entity_type=entity_type
+    entity_dir = Path(entity_dir)
+    assert entity_dir.is_dir()
+    self.entity_paths = list(entity_dir.glob(
+      f"entity_names_{self.entity_type}_*.json"
+    ))
+    self.part2names = {
+        self.parse_entity_name_path(path).partition_idx: self.load_names(path)
+        for path in self.entity_paths
+    }
+    self.name2emb_loc = {}
+    for part_idx, names in self.part2names.items():
+      for local_idx, name in enumerate(names):
+        self.name2emb_loc[name] = EmbeddingLocation(
+            entity_type=self.entity_type,
+            partition_idx=part_idx,
+            row_idx=local_idx,
+        )
+    assert len(self.name2emb_loc) > 0, "No entity names"
+
+
+  def __len__(self)->int:
+    return len(self.name2emb_loc)
+
+  def __getitem__(self, name:str)->EmbeddingLocation:
+    return self.name2emb_loc[name]
+
+  def get_name(self, loc:EmbeddingLocation)->str:
+    assert loc.entity_type == self.entity_type
+    assert loc.partition_idx in self.part2names
+    names = self.part2names[loc.partition_idx]
+    assert loc.row_idx < len(names)
+    return names[loc.row_idx]
+
+  @staticmethod
+  def parse_entity_name_path(entity_name_path:Path)->EmbeddingLocation:
+    ent_typ, part_idx = entity_name_path.stem.split("_")[-2:]
+    return EmbeddingLocation(
+        entity_type=ent_typ,
+        partition_idx=int(part_idx),
+    )
+
+  @staticmethod
+  def load_names(entity_name_path:Path)->List[str]:
+    with open(entity_name_path) as json_file:
+      return json.load(json_file)
+
+  @staticmethod
+  def parse_entity_names(
+      entity_name_path:Path
+  )->Iterable[Tuple[str, EmbeddingLocation]]:
+    base_el = (
+        PreloadedEmbeddingLocationIndex
+        .parse_entity_name_path(entity_name_path)
+    )
+    for local_idx, name in enumerate():
+      yield (
+          name,
+          EmbeddingLocation(
+            entity_type=base_el.entity_type,
+            partition_idx=base_el.partition_idx,
+            row_idx=local_idx
+          )
+      )
+
 
 class EmbeddingLocationIndex(object):
   """
@@ -153,4 +223,57 @@ class EmbeddingIndex(object):
   def _get_embedding_path(self, el:EmbeddingLocation)->Path:
     return self.embedding_dir.joinpath(
         f"embeddings_{el.entity_type}_{el.partition_idx}.{self.emb_ver}.h5"
+    )
+
+
+class PreloadedEmbeddingIndex(object):
+  def __init__(
+      self,
+      embedding_dir:Path,
+      entity_dir:Path,
+      select_entity_type:str,
+      emb_ver:str=None,
+  ):
+    self.entity_index = PreloadedEmbeddingLocationIndex(
+        entity_dir, select_entity_type
+    )
+
+    # Setup embedding version
+    valid_emb_ver = EmbeddingIndex.load_embedding_versions(embedding_dir)
+    assert len(valid_emb_ver) > 0, "Invalid embedding dir, has no versions."
+    if emb_ver is None:
+      assert len(valid_emb_ver) == 1, \
+        f"Must supply emb_ver if multiple exist: {valid_emb_ver}"
+      self.emb_ver = next(iter(valid_emb_ver))
+    else:
+      assert emb_ver in valid_emb_ver, "Invalid emb_ver"
+      self.emb_ver = emb_ver
+
+    self.embedding_paths = list(embedding_dir.glob(
+      f"embeddings_{select_entity_type}_*.{self.emb_ver}.h5"
+    ))
+    assert len(self.embedding_paths) > 0
+    self.name2embedding = {}
+    print("Loading MESH embeddings (first time only)")
+    for path in self.embedding_paths:
+      loc = self.parse_embedding_path(path)
+      with h5py.File(path, "r") as h5_file:
+        emb = h5_file["embeddings"]
+        for row_idx in range(len(emb)):
+          loc.row_idx = row_idx
+          self.name2embedding[self.entity_index.get_name(loc)] = emb[loc.row_idx]
+    print("Done!")
+
+  def __getitem__(self, name:str)->np.array:
+    return self.name2embedding[name]
+
+  def __len__(self)->int:
+    return len(self.name2embedding)
+
+  @staticmethod
+  def parse_embedding_path(embedding_path:str)->EmbeddingLocation:
+    entity_type, part_idx = embedding_path.name.split(".",1)[0].split("_")[1:]
+    return EmbeddingLocation(
+        entity_type=entity_type,
+        partition_idx=int(part_idx),
     )

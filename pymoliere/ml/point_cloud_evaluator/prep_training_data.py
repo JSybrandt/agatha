@@ -6,6 +6,7 @@ import dask.bag as dbag
 from distributed import Client
 from argparse import ArgumentParser, Namespace
 from pymoliere.ml.util.embedding_index import EmbeddingIndex
+from pymoliere.util.entity_index import EntityIndex
 from pymoliere.util.sqlite3_graph import Sqlite3Graph
 from pymoliere.ml.point_cloud_evaluator.point_cloud_evaluator import dataset
 from pymoliere.construct import dask_process_global as dpg
@@ -59,7 +60,7 @@ def prep_training_data(args:Namespace)->None:
   else:
     client = None
 
-  sent_idx = dataset.EntityIndex(args.entity_dir, dbu.SENTENCE_TYPE)
+  sent_idx = EntityIndex(args.entity_dir, dbu.SENTENCE_TYPE)
   num_sentences = len(sent_idx)
   sent_per_task = int(num_sentences / args.npartitions)
   print(f"Sentences in total: {num_sentences}. Per task: {sent_per_task}")

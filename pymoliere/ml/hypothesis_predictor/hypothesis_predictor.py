@@ -183,6 +183,8 @@ class HypothesisPredictor(pl.LightningModule):
     else:
       sampler = None
       shuffle=True
+    if len(self.train_predicates) == 0:
+      shuffle = False
     return torch.utils.data.DataLoader(
         dataset=self.train_predicates,
         shuffle=shuffle,
@@ -210,13 +212,9 @@ class HypothesisPredictor(pl.LightningModule):
 
   @pl.data_loader
   def test_dataloader(self):
-    if self.hparams.distributed:
-      sampler=torch.utils.data.distributed.DistributedSampler(self.test_predicates)
-    else:
-      sampler = None
     return torch.utils.data.DataLoader(
         dataset=self.test_predicates,
-        sampler=sampler,
+        #sampler=sampler,
         batch_size=self.hparams.batch_size,
         # Collate will double the batch
         collate_fn=test_predicate_collate,

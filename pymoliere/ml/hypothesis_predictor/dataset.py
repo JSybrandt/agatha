@@ -74,6 +74,7 @@ class TestPredicateLoader(torch.utils.data.Dataset):
     assert published_path.is_file()
     assert noise_path.is_file()
     self.predicates = []
+    num_failures = 0
     for path in [published_path, noise_path]:
       with open(path) as pred_file:
         for line in pred_file:
@@ -90,6 +91,10 @@ class TestPredicateLoader(torch.utils.data.Dataset):
             ))
           else:
             print("FAILED:", line.strip())
+            num_failures += 1
+    if num_failures > 0:
+      print("Failed:", num_failures)
+      print("Succeeded:", len(self.predicates))
 
   def __len__(self):
     return len(self.predicates)

@@ -1,5 +1,7 @@
 from pymoliere.ml.util.entity_index import EntityIndex
-from pymoliere.ml.util.embedding_index import PreloadedEmbeddingIndex
+from pymoliere.ml.util.embedding_index import (
+    PreloadedEmbeddingIndex, EmbeddingIndex
+)
 from pymoliere.util import database_util as dbu
 from pathlib import Path
 import torch
@@ -22,7 +24,7 @@ IDX2VERB = [
     "neg_process_of", "neg_produces", "neg_same_as", "neg_stimulates",
     "neg_treats", "neg_uses", "occurs_in", "part_of", "precedes",
     "predisposes", "prevents", "process_of", "produces", "same_as",
-    "stimulates", "treats", "uses", "UNKNOWN"
+    "stimulates", "treats", "uses", "UNKNOWN", "INVALID"
 ]
 VERB2IDX = {v:i for i, v in enumerate(IDX2VERB)}
 
@@ -61,23 +63,76 @@ class PredicateLoader(torch.utils.data.Dataset):
         verb_name=verb,
     )
 
-def predicate_collate(predicate_data:List[Dict[str, Any]])->Dict[str, Any]:
+class TestPredicateLoader(torch.utils.data.Dataset):
+  def __init__(
+      self,
+      test_data_dir:Path,
+      embedding_index:EmbeddingIndex
+  ):
+    published_path = test_data_dir.joinpath("published.txt")
+    noise_path = test_data_dir.joinpath("noise.txt")
+    assert published_path.is_file()
+    assert noise_path.is_file()
+    self.predicates = []
+    for path in [published_path, noise_path]:
+      with open(path) as pred_file:
+        for line in pred_file:
+          subj, obj, year = line.lower().strip().split("|")
+          subj = f"{dbu.MESH_TERM_TYPE}:{subj}"
+          obj = f"{dbu.MESH_TERM_TYPE}:{obj}"
+          if subj in embedding_index and obj in embedding_index:
+            self.predicates.append(dict(
+              subj_name=subj,
+              subj_emb=embedding_index[subj],
+              obj_name=obj,
+              obj_emb=embedding_index[obj],
+              verb_name="UNKNOWN" if path == published_path else "INVALID",
+            ))
+          else:
+            print("FAILED:", line.strip())
+
+  def __len__(self):
+    return len(self.predicates)
+
+  def __getitem__(self, idx):
+    return self.predicates[idx]
+
+def predicate_collate(
+    predicate_data:List[Dict[str, Any]],
+    num_negative_samples:int,
+)->Dict[str, Any]:
+  def generate_negative_sample():
+    return dict(
+        subj_emb=random.choice(predicate_data)["subj_emb"],
+        obj_emb=random.choice(predicate_data)["obj_emb"],
+    )
+  def safe_get_verb(pred):
+    verb_or_none = VERB2IDX.get(pred["verb_name"])
+    if verb_or_none is None:
+      return VERB2IDX["UNKNOWN"]
+    return verb_or_none
+
   subjects = []
   objects = []
   verbs = []
   labels = []
   for pred in predicate_data:
+    # Positive example
     subjects.append(pred["subj_emb"])
     objects.append(pred["obj_emb"])
-    verb_or_none = VERB2IDX.get(pred["verb_name"])
-    if verb_or_none is None:
-      verb_or_none = VERB2IDX["UNKNOWN"]
-    verbs.append(verb_or_none)
-  labels = ([1] * len(subjects)) + ([0] * len(subjects))
-  subjects = subjects + subjects
-  # Negative set has the objects rotated by 1
-  objects = objects + [objects[-1]] + objects[:-1]
-  verbs = verbs + verbs
+    safe_verb_idx = safe_get_verb(pred)
+    verbs.append(safe_verb_idx)
+    label = 0 if safe_verb_idx == VERB2IDX["INVALID"] else 1
+    labels.append(label)
+  for _ in range(num_negative_samples):
+    # Negative example
+    pred = generate_negative_sample()
+    subjects.append(pred["subj_emb"])
+    objects.append(pred["obj_emb"])
+    verbs.append(VERB2IDX["INVALID"])
+    labels.append(0)
+
+
   assert len(subjects) == len(objects) == len(verbs) == len(labels)
   return dict(
       # batch X emb_dim
@@ -89,3 +144,8 @@ def predicate_collate(predicate_data:List[Dict[str, Any]])->Dict[str, Any]:
       labels=torch.FloatTensor(labels),
   )
 
+def train_predicate_collate(predicate_data):
+  return predicate_collate(predicate_data, len(predicate_data))
+
+def test_predicate_collate(predicate_data):
+  return predicate_collate(predicate_data, 0)

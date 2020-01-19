@@ -46,6 +46,9 @@ class PreloadedEmbeddingLocationIndex(object):
   def __getitem__(self, name:str)->EmbeddingLocation:
     return self.name2emb_loc[name]
 
+  def __contains__(self, name:str)->bool:
+    return name in self.name2emb_loc
+
   def get_name(self, loc:EmbeddingLocation)->str:
     assert loc.entity_type == self.entity_type
     assert loc.partition_idx in self.part2names
@@ -252,6 +255,10 @@ class PreloadedEmbeddingIndex(object):
     self.embedding_paths = list(embedding_dir.glob(
       f"embeddings_{select_entity_type}_*.{self.emb_ver}.h5"
     ))
+    self.init=False
+
+  def _lazy_load_embeddings(self):
+    self.init=True
     assert len(self.embedding_paths) > 0
     self.name2embedding = {}
     print("Loading MESH embeddings (first time only)")
@@ -265,10 +272,19 @@ class PreloadedEmbeddingIndex(object):
     print("Done!")
 
   def __getitem__(self, name:str)->np.array:
+    if not self.init:
+      self._lazy_load_embeddings()
     return self.name2embedding[name]
 
   def __len__(self)->int:
+    if not self.init:
+      self._lazy_load_embeddings()
     return len(self.name2embedding)
+
+  def __contains__(self, name:str)->bool:
+    if not self.init:
+      self._lazy_load_embeddings()
+    return name in self.name2embedding
 
   @staticmethod
   def parse_embedding_path(embedding_path:str)->EmbeddingLocation:

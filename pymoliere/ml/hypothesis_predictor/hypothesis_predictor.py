@@ -4,21 +4,38 @@ import torch
 from pymoliere.ml.hypothesis_predictor.dataset import (
     VERB2IDX,
     PredicateLoader,
-    train_predicate_collate,
-    test_predicate_collate,
-    TestPredicateLoader, 
+    predicate_collate,
+    TestPredicateLoader,
 )
 from typing import Dict, Any
 from pathlib import Path
 from pymoliere.ml.abstract_generator.lamb_optimizer import Lamb
-from pymoliere.ml.util.embedding_index import (
-    EmbeddingIndex
-)
+from pymoliere.ml.util.embedding_index import EmbeddingIndex
+from pymoliere.ml.util.entity_index import EntityIndex
+import pymoliere.util.database_util as dbu
+from copy import deepcopy
 
 class HypothesisPredictor(pl.LightningModule):
   def __init__(self, hparams:Namespace):
     super(HypothesisPredictor, self).__init__()
     self.hparams = hparams
+    # self.hparams.sqlite_embedding_location = Path(self.hparams.sqlite_embedding_location)
+    # self.hparams.embedding_dir = Path(self.hparams.embedding_dir)
+    # self.hparams.entity_dir = Path(self.hparams.entity_dir)
+    # self.hparams.test_data_dir = Path(self.hparams.test_data_dir)
+
+    self.name2idx = {}
+    entity_index = EntityIndex(self.hparams.entity_dir, dbu.MESH_TERM_TYPE)
+    for idx in range(len(entity_index)):
+      self.name2idx[entity_index[idx]] = idx
+    self.name2idx["UNKNOWN"] = len(self.name2idx)
+
+    self.entity_embedding = torch.nn.Embedding(
+        len(self.name2idx),
+        self.hparams.dim,
+    )
+    #self.merger = torch.nn.Linear(self.hparams.dim+16, self.hparams.dim)
+
     self.h1 = torch.nn.Linear(self.hparams.dim*2, self.hparams.dim*2)
     self.h2 = torch.nn.Linear(self.hparams.dim*2, self.hparams.dim)
     self.h3 = torch.nn.Linear(self.hparams.dim, int(self.hparams.dim/2))
@@ -57,43 +74,53 @@ class HypothesisPredictor(pl.LightningModule):
 
   def forward(self, model_in:Dict[str, Any])->torch.FloatTensor:
     device = next(self.parameters()).device
-    subjects = model_in["subjects"].to(device)
-    objects = model_in["objects"].to(device)
+    #subjects = model_in["subj_emb"].to(device)
+    #objects = model_in["obj_emb"].to(device)
+    subj_indices = model_in["subj_idx"].to(device)
+    obj_indices = model_in["obj_idx"].to(device)
+
+    # subjects = torch.cat((subjects, self.entity_embedding(subj_indices)), dim=1)
+    # subjects = self.merger(subjects)
+    # objects = torch.cat((objects, self.entity_embedding(obj_indices)), dim=1)
+    # objects = self.merger(objects)
+    subjects = self.entity_embedding(subj_indices)
+    objects = self.entity_embedding(obj_indices)
     joint = torch.cat((subjects, objects), dim=1)
     joint = torch.relu(self.h1(joint))
     joint = torch.relu(self.h2(joint))
     joint = torch.relu(self.h3(joint))
 
-    predicted_labels = self.predict_label(joint)
-    predicted_labels = torch.sigmoid(predicted_labels).reshape(-1)
+    #predicted_labels = self.predict_label(joint)
+    #predicted_labels = torch.sigmoid(predicted_labels).reshape(-1)
     predicted_verbs = self.predict_verb(joint)
     predicted_verbs = torch.log_softmax(predicted_verbs, dim=1)
     return dict(
-        labels=predicted_labels.reshape(-1),
+        #labels=predicted_labels.reshape(-1),
         verbs=predicted_verbs,
     )
 
   def training_step(self, batch, batch_idx):
     predictions = self.forward(batch)
     device = next(self.parameters()).device
-    true_labels = batch["labels"].to(device)
+    #true_labels = batch["labels"].to(device)
     true_verbs = batch["verbs"].to(device)
-    label_loss = self.label_loss_fn(predictions["labels"], true_labels)
+    #label_loss = self.label_loss_fn(predictions["labels"], true_labels)
     verb_loss = self.verb_loss_fn(predictions["verbs"], true_verbs)
-    loss = label_loss + verb_loss
-    label_accuracy = (
-        ((predictions["labels"] > 0.5) == (true_labels > 0.5)).sum()
-        / float(len(predictions["labels"]))
-    )
+    loss = verb_loss
+    #loss = label_loss + verb_loss
+    #label_accuracy = (
+    #    ((predictions["labels"] > 0.5) == (true_labels > 0.5)).sum()
+    #    / float(len(predictions["labels"]))
+    #)
     verb_accuracy = (
         (predictions["verbs"].argmax(dim=1) == true_verbs).sum()
         / float(len(predictions["verbs"]))
     )
     metrics=dict(
         loss=loss,
-        label_loss=label_loss,
-        verb_loss=verb_loss,
-        label_accuracy=label_accuracy,
+        #label_loss=label_loss,
+        #verb_loss=verb_loss,
+        #label_accuracy=label_accuracy,
         verb_accuracy=verb_accuracy,
     )
     return {
@@ -105,35 +132,36 @@ class HypothesisPredictor(pl.LightningModule):
   def validation_step(self, batch, batch_idx):
     predictions = self.forward(batch)
     device = next(self.parameters()).device
-    true_labels = batch["labels"].to(device)
+    #true_labels = batch["labels"].to(device)
     true_verbs = batch["verbs"].to(device)
-    label_loss = self.label_loss_fn(predictions["labels"], true_labels)
+    #label_loss = self.label_loss_fn(predictions["labels"], true_labels)
     verb_loss = self.verb_loss_fn(predictions["verbs"], true_verbs)
-    loss = label_loss + verb_loss
-    label_accuracy = (
-        ((predictions["labels"] > 0.5) == (true_labels > 0.5)).sum()
-        / float(len(predictions["labels"]))
-    )
+    #loss = label_loss + verb_loss
+    # label_accuracy = (
+        # ((predictions["labels"] > 0.5) == (true_labels > 0.5)).sum()
+        # / float(len(predictions["labels"]))
+    # )
     verb_accuracy = (
         (predictions["verbs"].argmax(dim=1) == true_verbs).sum()
         / float(len(predictions["verbs"]))
     )
     return dict(
-        loss=loss,
-        label_loss=label_loss,
-        verb_loss=verb_loss,
-        label_accuracy=label_accuracy,
+        loss=verb_loss,
+        #loss=loss,
+        #label_loss=label_loss,
+        #verb_loss=verb_loss,
+        #label_accuracy=label_accuracy,
         verb_accuracy=verb_accuracy,
     )
 
   def validation_end(self, outputs):
     mean_loss = torch.stack([x["loss"] for x in outputs]).mean()
-    mean_label_accruacy = torch.stack([x["label_accuracy"] for x in outputs]).mean()
-    mean_verb_accruacy = torch.stack([x["verb_accuracy"] for x in outputs]).mean()
+    #mean_label_accruacy = torch.stack([x["label_accuracy"] for x in outputs]).mean()
+    #mean_verb_accruacy = torch.stack([x["verb_accuracy"] for x in outputs]).mean()
     vals = dict(
         val_loss=mean_loss,
-        label_accruacy=mean_label_accruacy,
-        verb_accruacy=mean_verb_accruacy,
+        #label_accruacy=mean_label_accruacy,
+        #verb_accruacy=mean_verb_accruacy,
     )
     print(vals)
     return vals
@@ -185,13 +213,14 @@ class HypothesisPredictor(pl.LightningModule):
       shuffle=True
     if len(self.train_predicates) == 0:
       shuffle = False
+    collate = lambda x: predicate_collate(x, len(x), self.name2idx)
     return torch.utils.data.DataLoader(
         dataset=self.train_predicates,
         shuffle=shuffle,
         sampler=sampler,
         batch_size=int(self.hparams.batch_size/2),
         # Collate will double the batch
-        collate_fn=train_predicate_collate,
+        collate_fn=collate,
         pin_memory=True,
     )
 
@@ -201,23 +230,25 @@ class HypothesisPredictor(pl.LightningModule):
       sampler=torch.utils.data.distributed.DistributedSampler(self.val_predicates)
     else:
       sampler = None
+    collate = lambda x: predicate_collate(x, len(x), self.name2idx)
     return torch.utils.data.DataLoader(
         dataset=self.val_predicates,
         sampler=sampler,
         batch_size=int(self.hparams.batch_size/2),
         # Collate will double the batch
-        collate_fn=train_predicate_collate,
+        collate_fn=collate,
         pin_memory=True,
     )
 
   @pl.data_loader
   def test_dataloader(self):
+    collate = lambda x: predicate_collate(x, 0, self.name2idx)
     return torch.utils.data.DataLoader(
         dataset=self.test_predicates,
         #sampler=sampler,
         batch_size=self.hparams.batch_size,
         # Collate will double the batch
-        collate_fn=test_predicate_collate,
+        collate_fn=collate,
         pin_memory=True,
     )
 
@@ -251,18 +282,19 @@ class HypothesisPredictor(pl.LightningModule):
   def configure_argument_parser(parser:ArgumentParser)->ArgumentParser:
     parser.add_argument(
         "--sqlite-embedding-location",
-        type=Path,
         help="Location of the db containing references for node's embeddings."
     )
     parser.add_argument(
         "--embedding-dir",
-        type=Path,
         help="Location of the directory containing H5 files, following PTBG"
     )
     parser.add_argument(
         "--entity-dir",
-        type=Path,
         help="Location of the directory containing json and count files."
+    )
+    parser.add_argument(
+        "--test-data-dir",
+        help="Directory containing published.txt and noise.txt"
     )
     parser.add_argument(
         "--batch-size",
@@ -283,11 +315,6 @@ class HypothesisPredictor(pl.LightningModule):
         "--warmup-steps",
         type=int,
         default=1000,
-    )
-    parser.add_argument(
-        "--test-data-dir",
-        type=Path,
-        help="Directory containing published.txt and noise.txt"
     )
     parser.add_argument(
         "--validation-fraction",

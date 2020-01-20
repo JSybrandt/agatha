@@ -13,8 +13,7 @@ if __name__ == "__main__":
   parser.add_argument("--train-gradient-clip-val", type=float, default=1)
   parser.add_argument(
       "--model-ckpt-dir",
-      type=Path,
-      default=Path("./point_cloud_eval_ckpt")
+      default="./point_cloud_eval_ckpt"
   )
 
 
@@ -23,10 +22,10 @@ if __name__ == "__main__":
 
   print(args)
 
-  logger = TestTubeLogger(
-      save_dir=args.model_ckpt_dir,
-      version=0,
-  )
+  # logger = TestTubeLogger(
+      # save_dir=args.model_ckpt_dir,
+      # version=0,
+  # )
   # DEFAULTS used by the Trainer
   # checkpoint_callback = ModelCheckpoint(
     # filepath=args.model_ckpt_dir,
@@ -37,8 +36,6 @@ if __name__ == "__main__":
     # prefix=''
   # )
   trainer = pl.Trainer(
-      logger=logger,
-      #checkpoint_callback=checkpoint_callback,
       gradient_clip_val=args.train_gradient_clip_val,
       default_save_path=args.model_ckpt_dir,
       gpus=-1 if args.distributed else 1,

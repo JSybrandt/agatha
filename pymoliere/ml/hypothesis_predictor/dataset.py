@@ -8,6 +8,7 @@ import torch
 from typing import Dict, Tuple, Any, List
 import random
 from copy import deepcopy
+from itertools import chain
 
 IDX2VERB = [
     "administered_to", "affects", "associated_with", "augments", "causes",
@@ -105,52 +106,54 @@ class TestPredicateLoader(torch.utils.data.Dataset):
 def predicate_collate(
     predicate_data:List[Dict[str, Any]],
     num_negative_samples:int,
+    name2idx:Dict[str, Any],
 )->Dict[str, Any]:
-  def generate_negative_sample():
+  def gen_neg_sample():
+    subj = random.choice(predicate_data)
+    obj = random.choice(predicate_data)
+    while obj == subj:
+      obj = random.choice(predicate_data)
     return dict(
-        subj_emb=random.choice(predicate_data)["subj_emb"],
-        obj_emb=random.choice(predicate_data)["obj_emb"],
+        subj_name=subj["subj_name"],
+        subj_emb=subj["subj_emb"],
+        obj_name=subj["obj_name"],
+        obj_emb=subj["obj_emb"],
+        verb_name="INVALID"
     )
-  def safe_get_verb(pred):
-    verb_or_none = VERB2IDX.get(pred["verb_name"])
-    if verb_or_none is None:
-      return VERB2IDX["UNKNOWN"]
-    return verb_or_none
+  def safe_get(name, name2idx):
+    name_or_none = name2idx.get(name)
+    if name_or_none is None:
+      return name2idx["UNKNOWN"]
+    return name_or_none
 
-  subjects = []
-  objects = []
-  verbs = []
+  subj_emb = []
+  obj_emb = []
+  verb_idx = []
+  subj_idx = []
+  obj_idx = []
   labels = []
-  for pred in predicate_data:
-    # Positive example
-    subjects.append(pred["subj_emb"])
-    objects.append(pred["obj_emb"])
-    safe_verb_idx = safe_get_verb(pred)
-    verbs.append(safe_verb_idx)
+  neg_samples = [gen_neg_sample() for _ in range(num_negative_samples)]
+  for pred in chain(predicate_data, neg_samples):
+    subj_idx.append(safe_get(pred["subj_name"], name2idx))
+    obj_idx.append(safe_get(pred["obj_name"], name2idx))
+    subj_emb.append(pred["subj_emb"])
+    obj_emb.append(pred["obj_emb"])
+    safe_verb_idx = safe_get(pred["verb_name"], VERB2IDX)
+    verb_idx.append(safe_verb_idx)
     label = 0 if safe_verb_idx == VERB2IDX["INVALID"] else 1
     labels.append(label)
-  for _ in range(num_negative_samples):
-    # Negative example
-    pred = generate_negative_sample()
-    subjects.append(pred["subj_emb"])
-    objects.append(pred["obj_emb"])
-    verbs.append(VERB2IDX["INVALID"])
-    labels.append(0)
 
-
-  assert len(subjects) == len(objects) == len(verbs) == len(labels)
+  assert len(subj_emb) == len(obj_emb) == len(verb_idx) == len(labels)
   return dict(
-      # batch X emb_dim
-      subjects=torch.FloatTensor(subjects),
-      # batch X emb_dim
-      objects=torch.FloatTensor(objects),
       # batch
-      verbs=torch.LongTensor(verbs),
+      subj_idx=torch.LongTensor(subj_idx),
+      # batch X emb_dim
+      subj_emb=torch.FloatTensor(subj_emb),
+      # batch
+      obj_idx=torch.LongTensor(obj_idx),
+      # batch X emb_dim
+      obj_emb=torch.FloatTensor(obj_emb),
+      # batch
+      verbs=torch.LongTensor(verb_idx),
       labels=torch.FloatTensor(labels),
   )
-
-def train_predicate_collate(predicate_data):
-  return predicate_collate(predicate_data, len(predicate_data))
-
-def test_predicate_collate(predicate_data):
-  return predicate_collate(predicate_data, 0)

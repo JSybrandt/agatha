@@ -29,13 +29,14 @@ parallel \
   --ungroup \
   -j 1 \
   """
+    sleep {}
     echo Starting {}
     python3 -m pymoliere.ml.hypothesis_predictor                      \
       --entity-dir $ENTITIES                                          \
       --embedding-dir $EMBEDDINGS                                     \
       --sqlite-embedding-location $EMB_LOC_DB                         \
       --model-ckpt-dir $MODEL_CKPT_DIR                                \
-      --batch-size 1024                                               \
+      --batch-size 1600                                               \
       --train-num-machines $NUM_NODES                                 \
       --test-data-dir $TEST_BENCHMARK \
       --distributed

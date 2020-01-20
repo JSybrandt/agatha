@@ -349,8 +349,8 @@ int main(int argc, char **argv){
         .action(split_string_to_chars);
   parser.add_argument("--relations")
         .default_value(vector<string>{
-          "le", "lm", "ln", "ls", "em", "en", "es", "mn", "ms", "ns", "ss",
-          "ps", "pe", "pl", "pn", "pm",
+          "ss", "se", "es", "sl", "ls", "sm", "ms", "sn", "ns", "sp", "ps",
+          "pn", "np", "pm", "mp", "pl", "lp", "pe", "ep",
         })
         .help("List of character names used as node types.")
         .action(split_string_to_strings);

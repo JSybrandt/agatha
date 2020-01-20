@@ -237,6 +237,8 @@ class PreloadedEmbeddingIndex(object):
       select_entity_type:str,
       emb_ver:str=None,
   ):
+    embedding_dir=Path(embedding_dir)
+    entity_dir=Path(entity_dir)
     self.entity_index = PreloadedEmbeddingLocationIndex(
         entity_dir, select_entity_type
     )

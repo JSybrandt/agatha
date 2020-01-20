@@ -11,9 +11,10 @@ from typing import List, Set, Tuple
 import itertools
 import json
 import sys
-import pymongo
 import dask
 from tqdm import tqdm
+from pymoliere.util.sqlite3_graph import Sqlite3Graph
+from pymoliere.util.sqlite3_bow import Sqlite3Bow
 
 
 def assert_conf_has_field(config:cpb.QueryConfig, field:str)->None:
@@ -40,57 +41,47 @@ if __name__ == "__main__":
     assert not result_path.exists()
     assert result_path.parent.is_dir()
 
-  print("Connecting to DB")
-  database = pymongo.MongoClient(
-      host=config.db.address,
-      port=config.db.port,
-  )[config.db.name]
+  graph_index = Sqlite3Graph(config.graph_db)
+  bow_index = Sqlite3Bow(config.bow_db)
 
-  # Check that the query is in the graph.
-  # Note: the graph is stored as an edge list with fields:
-  # {source: "...", target: "...", weight: x}
-  # This means the finds are just making sure an edge exists
-  print("Asserting source")
-  assert database.graph.find_one({"source": config.source}) is not None
-  print("Asserting target")
-  assert database.graph.find_one({"source": config.target}) is not None
+  with graph_index as graph_index:
+    assert config.source in graph_index, "Failed to find source in graph_index."
+    assert config.target in graph_index, "Failed to find target in graph_index."
 
-  # Get Path
-  print("Finding shortest path")
-  path, cached_graph = path_util.get_shortest_path(
-      collection=database.graph,
-      source=config.source,
-      target=config.target,
-      max_degree=config.max_degree,
-  )
-  if path is None:
-    raise ValueError(f"Path is disconnected, {config.source}, {config.target}")
-  pprint(path)
 
-  print("Collecting Nearby Sentences")
-  sentence_ids = set()
-  for path_node in path:
-    print("\t-", path_node)
-    # Each node along the path is allowed to add some sentences
-    sentence_ids.update(
-      path_util.get_nearby_nodes(
-        collection=database.graph,
-        source=path_node,
-        key_type=database_util.SENTENCE_TYPE,
-        max_result_size=config.max_sentences_per_path_elem,
+    # Get Path
+    print("Finding shortest path")
+    path, cached_graph = path_util.get_shortest_path(
+        graph_index=graph_index,
+        source=config.source,
+        target=config.target,
         max_degree=config.max_degree,
-        cached_graph=cached_graph,
-      )
     )
+    if path is None:
+      raise ValueError(f"Path is disconnected, {config.source}, {config.target}")
+    pprint(path)
 
-  print("Downloading Sentence Text for all", len(sentence_ids), "sentences")
-  text_corpus = [
-      database.sentences.find_one(
-        {"id": sent_id},
-        projection={"bow":1, "_id":0}
-      )["bow"]
-      for sent_id in tqdm(sentence_ids)
-  ]
+    print("Collecting Nearby Sentences")
+    sentence_ids = set()
+    for path_node in path:
+      print("\t-", path_node)
+      # Each node along the path is allowed to add some sentences
+      sentence_ids.update(
+        path_util.get_nearby_nodes(
+          graph_index=graph_index,
+          source=path_node,
+          key_type=database_util.SENTENCE_TYPE,
+          max_result_size=config.max_sentences_per_path_elem,
+          max_degree=config.max_degree,
+          cached_graph=cached_graph,
+        )
+      )
+
+  with bow_index as bow:
+    print("Downloading Sentence Text for all", len(sentence_ids), "sentences")
+    text_corpus = [
+        bow[s] for s in tqdm(sentence_ids) if s in bow
+    ]
 
   print("Identifying potential query-specific stopwords")
   min_support = config.topic_model.min_support_count

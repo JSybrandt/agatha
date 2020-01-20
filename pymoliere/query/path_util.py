@@ -7,35 +7,9 @@ import heapq
 import pymongo
 from copy import copy
 from tqdm import tqdm
-
-def download_neighbors(
-    collection:pymongo.collection.Collection,
-    source:str,
-    limit:int=0,
-)->List[Tuple[str, float]]:
-  """
-  Returns the neighbors of a given node as queried from the graph. If too many
-  neighbors exist, we can take a random selection based on limit. If limit is
-  0, we take all.
-  """
-  query_res =  collection.find(
-      {"source": source},
-      projection={
-        "target": 1,
-        "weight": 1,
-        "_id": 0,
-      },
-      limit=limit
-  )
-  res = []
-  for val in query_res:
-    try:
-      res.append((str(val["target"]), float(val["weight"])))
-    except ValueError:
-      print()
-      print(f"Node {source} has an invalid edge: {val}")
-  return res
-
+from pymoliere.util.sqlite3_graph import Sqlite3Graph
+import random
+from math import log2
 
 def recover_shortest_path_from_tight_edges(
     graph:nx.Graph,
@@ -83,7 +57,7 @@ def get_element_with_min_criteria(
   return res
 
 def get_shortest_path(
-    collection:pymongo.collection.Collection,
+    graph_index:Sqlite3Graph,
     source:str,
     target:str,
     max_degree:int,
@@ -147,11 +121,12 @@ def get_shortest_path(
 
     # Download this node's neighbors
     # For each edge
-    for neigh, weight in download_neighbors(
-        collection=collection,
-        source=curr_node,
-        limit=max_degree,
-    ):
+    #print(curr_node, graph.nodes[curr_node])
+    neighborhood = graph_index[curr_node]
+    if len(neighborhood) > max_degree:
+      neighborhood = random.sample(neighborhood, k=max_degree)
+    #print(f"Getting {len(neighborhood)} neighbors")
+    for neigh in neighborhood:
       # We may have discovered a new node
       if neigh not in graph:
         graph.add_node(
@@ -162,7 +137,13 @@ def get_shortest_path(
             visited=False,
             downloaded=False,
         )
-      graph.add_edge(curr_node, neigh, weight=weight)
+      if not graph.has_edge(curr_node, neigh):
+        graph.add_edge(
+            curr_node,
+            neigh,
+            #weight=graph_index.weight(curr_node, neigh)
+            weight=log2(len(neighborhood)),
+        )
     graph.nodes[curr_node]["downloaded"] = True
 
     for neigh, edge_attr in graph[curr_node].items():
@@ -189,7 +170,7 @@ def clear_node_attribute(graph:nx.Graph, attribute:str, reinitialize:Any=None)->
       del attr[attribute]
 
 def get_nearby_nodes(
-    collection:pymongo.collection.Collection,
+    graph_index:Sqlite3Graph,
     source:str,
     max_result_size:int,
     max_degree:int,
@@ -239,14 +220,16 @@ def get_nearby_nodes(
       if key_type is None or curr_node[0] == key_type:
         pbar.update(1)
         result.add(curr_node)
+        if len(result) >= max_result_size:
+          break
 
       # For each edge
       if not graph.nodes[curr_node]["downloaded"]:
-        for neigh, weight in download_neighbors(
-            collection=collection,
-            source=curr_node,
-            limit=max_degree,
-        ):
+        neighborhood = graph_index[curr_node]
+        if len(neighborhood) > max_degree:
+          neighborhood = random.sample(neighborhood, k=max_degree)
+        #print(f"Getting {len(neighborhood)} neighbors")
+        for neigh in neighborhood:
           # We may have discovered a new node
           if neigh not in graph:
             graph.add_node(
@@ -257,13 +240,23 @@ def get_nearby_nodes(
                 visited=False,
                 downloaded=False,
             )
-          graph.add_edge(curr_node, neigh, weight=weight)
+          if not graph.has_edge(curr_node, neigh):
+            graph.add_edge(
+                curr_node,
+                neigh,
+                #weight=graph_index.weight(curr_node, neigh)
+                weight=log2(len(neighborhood)),
+                #weight=1,
+            )
         graph.nodes[curr_node]["downloaded"] = True
       else:
         cached_count += 1
 
       # At this point, we've downloaded the current node
       for neigh, edge_attr in graph[curr_node].items():
+        if key_type is None or neigh[0] == key_type:
+          pbar.update(1)
+          result.add(neigh)
         weight = edge_attr["weight"]
         # Update the dists
         graph.nodes[neigh]["dist"] = min(

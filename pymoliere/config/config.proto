@@ -153,11 +153,11 @@ message ConstructConfig {
 message QueryConfig {
   optional string source = 1;
   optional string target = 2;
-  optional DatabaseConfig db = 3;
-  optional int32 max_sentences_per_path_elem = 4 [default=2000];
-  optional LdaConfig topic_model = 5;
-  optional ShortestPathConfig path = 6;
-  // optional NGramConfig phrases = 7;
+  optional string graph_db = 3;
+  optional string bow_db = 4;
+  optional int32 max_sentences_per_path_elem = 5 [default=2000];
+  optional LdaConfig topic_model = 6;
+  optional ShortestPathConfig path = 7;
   // Where to store result proto
   optional string result_path = 8 [default="./pymoliere_query_result.pb"];
   optional bool override = 9 [default=false];

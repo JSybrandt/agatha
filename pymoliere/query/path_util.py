@@ -257,6 +257,8 @@ def get_nearby_nodes(
         if key_type is None or neigh[0] == key_type:
           pbar.update(1)
           result.add(neigh)
+          if len(result) >= max_result_size:
+            break
         weight = edge_attr["weight"]
         # Update the dists
         graph.nodes[neigh]["dist"] = min(

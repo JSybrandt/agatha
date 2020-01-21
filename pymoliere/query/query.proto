@@ -17,6 +17,7 @@ message Document {
   }
   optional string key = 1;
   repeated TopicWeight topic_weights = 2;
+  repeated string terms = 3;
 }
 
 message MoliereResult {

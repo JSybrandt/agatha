@@ -4,10 +4,10 @@ DATA_BASE=/scratch4/jsybran/pymoliere_2020_01_02
 MODEL_BASE=$DATA_BASE/models/hypothesis_predictor
 TRAINING_DATA=$MODEL_BASE/training_data
 SQLITE_GRAPH=$DATA_BASE/mongo_data/graph.sqlite3
-ENTITIES=$DATA_BASE/pytorch_biggraph_with_semmeddb/entities
-EMBEDDINGS=$DATA_BASE/pytorch_biggraph_with_semmeddb/model_ckpt
+ENTITIES=$DATA_BASE/pytorch_biggraph/entities
+EMBEDDINGS=$DATA_BASE/pytorch_biggraph/embeddings
 GRAPH=$DATA_BASE/mongo_data/graph.sqlite3
-EMB_LOC_DB=$DATA_BASE/pytorch_biggraph_with_semmeddb/entities/embedding_location_db.sqlite3
+EMB_LOC_DB=$DATA_BASE/pytorch_biggraph/entities/embedding_location_db.sqlite3
 MODEL_CKPT_DIR=$MODEL_BASE/ckpts
 TEST_BENCHMARK=/zfs/safrolab/users/jsybran/pymoliere/data/benchmarks/predicates_2015
 

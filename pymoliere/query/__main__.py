@@ -76,9 +76,11 @@ if __name__ == "__main__":
           cached_graph=cached_graph,
         )
       )
+    sentence_ids = list(sentence_ids)
 
   with bow_index as bow:
     print("Downloading Sentence Text for all", len(sentence_ids), "sentences")
+    # List[List[str]]
     text_corpus = [
         bow[s] for s in tqdm(sentence_ids) if s in bow
     ]
@@ -107,11 +109,11 @@ if __name__ == "__main__":
   assert len(sentence_ids) == len(text_corpus)
 
   print("Computing topics")
-  word_idx = Dictionary(text_corpus)
-  int_corpus = [word_idx.doc2bow(t) for t in text_corpus]
+  word_index = Dictionary(text_corpus)
+  int_corpus = [word_index.doc2bow(t) for t in text_corpus]
   topic_model = LdaMulticore(
       corpus=int_corpus,
-      id2word=word_idx,
+      id2word=word_index,
       num_topics=config.topic_model.num_topics,
       random_state=config.topic_model.random_seed,
       iterations=config.topic_model.iterations,
@@ -130,10 +132,12 @@ if __name__ == "__main__":
 
   # Add documents from topic model
   print("\t- Topics per-document")
-  for key, bow in zip(sentence_ids, int_corpus):
+  for key, bow, words in zip(sentence_ids, int_corpus, text_corpus):
+    doc = result.documents.add()
+    doc.key = key
+    for word in words:
+      doc.terms.append(word)
     for topic_idx, weight in topic_model[bow]:
-      doc = result.documents.add()
-      doc.key = key
       topic_weight = doc.topic_weights.add()
       topic_weight.topic = topic_idx
       topic_weight.weight = weight
@@ -143,12 +147,12 @@ if __name__ == "__main__":
   for topic_idx in range(topic_model.num_topics):
     topic = result.topics.add()
     topic.index = topic_idx
-    for word_idx, weight in topic_model.get_topic_terms(
+    for word_index, weight in topic_model.get_topic_terms(
         topic_idx,
         config.topic_model.truncate_size,
     ):
       term_weight = topic.term_weights.add()
-      term_weight.term = topic_model.id2word[word_idx]
+      term_weight.term = topic_model.id2word[word_index]
       term_weight.weight = weight
 
   with open(result_path, "wb") as proto_file:

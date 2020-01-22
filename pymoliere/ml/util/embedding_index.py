@@ -256,31 +256,27 @@ class PreloadedEmbeddingIndex(object):
   def _lazy_load_embeddings(self):
     self.init=True
     assert len(self.embedding_paths) > 0
-    self.name2embedding = {}
+    self.loc2embeddings = {}
     print("Loading MESH embeddings (first time only)")
     for path in tqdm(self.embedding_paths):
       loc = self.parse_embedding_path(path)
       with h5py.File(path, "r") as h5_file:
-        emb = h5_file["embeddings"]
-        for row_idx in range(len(emb)):
-          loc.row_idx = row_idx
-          self.name2embedding[self.entity_index.get_name(loc)] = emb[loc.row_idx]
+        self.loc2embeddings[tuple(loc)] = h5_file["embeddings"][()]
     print("Done!")
 
   def __getitem__(self, name:str)->np.array:
     if not self.init:
       self._lazy_load_embeddings()
-    return self.name2embedding[name]
+    loc = self.entity_index[name]
+    return self.loc2embeddings[
+        (loc.entity_type, loc.partition_idx)
+    ][loc.row_idx]
 
   def __len__(self)->int:
-    if not self.init:
-      self._lazy_load_embeddings()
-    return len(self.name2embedding)
+    return len(self.entity_index)
 
   def __contains__(self, name:str)->bool:
-    if not self.init:
-      self._lazy_load_embeddings()
-    return name in self.name2embedding
+    return name in self.entity_index
 
   @staticmethod
   def parse_embedding_path(embedding_path:str)->EmbeddingLocation:

@@ -110,49 +110,36 @@ class EmbeddingLocationIndex(object):
         entity=?
       ;
     """
-    self.exists_fmt_str = """
-    SELECT
-      EXISTS(
-        SELECT
-          1
-        FROM
-          {db_name}
-        WHERE
-          entity=?
-      )
-    ;
-    """
+    self._cache = {}
+
+  def _get_or_none(self, entity:str):
+    return self.db_cursor.execute(
+        self.select_fmt_str.format(db_name=self.db_name),
+        (entity,)
+    ).fetchone()
 
   def __contains__(self, entity:str)->bool:
     assert self.db_cursor is not None, "__contains__ called outside of with"
-    return (
-        self.db_cursor.execute(
-          self.exists_fmt_str.format(db_name=self.db_name),
-          (entity,)
-        )
-        .fetchone()[0]
-        == 1  # EXISTS returns 0 or 1
-    )
+    res = self._cache.get(entity, "Missing")
+    if res == "Missing":
+      res = self._cache[entity] = self._get_or_none(entity)
+    return res is not None
 
   def __getitem__(self, entity:str)->EmbeddingLocation:
     assert self.db_cursor is not None, "__getitem__ called outside of with"
-    return (
-        self.db_cursor.execute(
-          self.select_fmt_str.format(db_name=self.db_name),
-          (entity,)
-        )
-        .fetchone()
-    )
+    assert entity in self
+    return self._cache[entity]
 
   def _query_to_emb_loc(self, cursor, row)->EmbeddingLocation:
-    if len(row) == 3:
       return EmbeddingLocation(*row)
-    else:
-      return row
 
   def __enter__(self):
-    self.db_conn = sqlite3.connect(self.db_path)
+    self.db_conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
     self.db_conn.row_factory = self._query_to_emb_loc
+    self.db_conn.execute('PRAGMA journal_mode = OFF')
+    self.db_conn.execute('PRAGMA synchronous = OFF')
+    self.db_conn.execute('PRAGMA cache_size = 100000')
+    self.db_conn.execute('PRAGMA temp_store = MEMORY')
     self.db_cursor = self.db_conn.cursor()
     return self
 
@@ -190,6 +177,8 @@ class EmbeddingIndex(object):
       assert emb_ver in valid_emb_ver, "Invalid emb_ver"
       self.emb_ver = emb_ver
 
+    self._cache =  {}
+
   @staticmethod
   def load_embedding_versions(embedding_dir:Path)->Set[str]:
     return set(map(
@@ -213,9 +202,12 @@ class EmbeddingIndex(object):
 
   def __getitem__(self, name:str)->np.array:
     assert self.inside_context_mngr, "Called __getitem__ outside of with"
-    emb_loc = self.embedding_location_index[name]
-    assert emb_loc is not None, f"EmbeddingIndex does not contain {name}"
-    return self._load_embedding_from_h5(emb_loc)
+    res = self._cache.get(name)
+    if res is None:
+      emb_loc = self.embedding_location_index[name]
+      assert emb_loc is not None, f"EmbeddingIndex does not contain {name}"
+      res = self._cache[name] = self._load_embedding_from_h5(emb_loc)
+    return res
 
   def _load_embedding_from_h5(self, emb_loc:EmbeddingLocation)->np.array:
     h5_path = self._get_embedding_path(emb_loc)

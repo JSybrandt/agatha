@@ -2,7 +2,7 @@ import torch
 from pathlib import Path
 from pymoliere.ml.util.embedding_index import EmbeddingIndex
 from pymoliere.util.sqlite3_graph import Sqlite3Graph
-from pymoliere.util.entity_index import EntityIndex
+from pymoliere.util.ml.entity_index import EntityIndex
 from pymoliere.util import database_util as dbu
 import json
 from typing import Optional, List

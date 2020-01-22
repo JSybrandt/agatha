@@ -56,7 +56,9 @@ class PredicateLoader(torch.utils.data.Dataset):
       entity_dir:Path,
       neighbors_per_term:int,
   ):
-    self.predicate_index = EntityIndex(entity_dir, entity_type=dbu.PREDICATE_TYPE)
+    self.predicate_index = EntityIndex(
+        entity_dir, entity_type=dbu.PREDICATE_TYPE
+    )
     self.embedding_index = embedding_index
     self.graph_index = graph_index
     self.neighbors_per_term = neighbors_per_term
@@ -71,24 +73,33 @@ class PredicateLoader(torch.utils.data.Dataset):
   def __len__(self):
     return len(self.predicate_index)
 
+  @staticmethod
   def _sample_relevant_neighbors(
-      self,
       term:str,
-      exclude:str,
+      excluded_term:str,
+      neighbors_per_term:int,
+      graph_index:Sqlite3Graph,
   )->List[str]:
-    items = [n for n in self.graph_index[term] if n is not exclude]
-    if len(items) <= self.neighbors_per_term:
+    items = [
+        n for n in graph_index[term]
+        if excluded_term not in PredicateLoader.parse_predicate_name(n)
+    ]
+    if len(items) <= neighbors_per_term:
       return items
     else:
-      return random.sample(items, self.neighbors_per_term)
+      return random.sample(items, neighbors_per_term)
 
   def __getitem__(self, idx:int)->PredicateObservation:
     predicate = self.predicate_index[idx]
     subj, _, obj = self.parse_predicate_name(predicate)
     subj = f"{dbu.MESH_TERM_TYPE}:{subj}"
     obj = f"{dbu.MESH_TERM_TYPE}:{obj}"
-    subj_neigh = self._sample_relevant_neighbors(subj, predicate)
-    obj_neigh = self._sample_relevant_neighbors(obj, predicate)
+    subj_neigh = self._sample_relevant_neighbors(
+        subj, obj, self.neighbors_per_term, self.graph_index
+    )
+    obj_neigh = self._sample_relevant_neighbors(
+        obj, subj, self.neighbors_per_term, self.graph_index
+    )
     return PredicateObservation(
         subject_embedding=self.embedding_index[subj],
         object_embedding=self.embedding_index[obj],
@@ -108,8 +119,9 @@ class TestPredicateLoader(torch.utils.data.Dataset):
       test_data_dir:Path,
       embedding_index:EmbeddingIndex,
       graph_index:Sqlite3Graph,
-
+      neighbors_per_term:int,
   ):
+    self.neighbors_per_term=neighbors_per_term
     self.embedding_index = embedding_index
     self.graph_index = graph_index
     published_path = Path(test_data_dir).joinpath("published.txt")
@@ -126,17 +138,6 @@ class TestPredicateLoader(torch.utils.data.Dataset):
             label = 1 if int(year) > 0 else 0
             self.subjs_objs_labels[(subj, obj, label)]
 
-  def _sample_relevant_neighbors(
-      self,
-      term:str,
-      exclude:str,
-  )->List[str]:
-    items = [n for n in self.graph_index[term] if n is not exclude]
-    if len(items) <= self.neighbors_per_term:
-      return items
-    else:
-      return random.sample(items, self.neighbors_per_term)
-
   def __len__(self):
     return len(self.subjs_objs_labels)
 
@@ -144,8 +145,12 @@ class TestPredicateLoader(torch.utils.data.Dataset):
     subj, obj, label = self.subjs_objs_labels[idx]
     subj = f"{dbu.MESH_TERM_TYPE}:{subj}"
     obj = f"{dbu.MESH_TERM_TYPE}:{obj}"
-    subj_neigh = self._sample_relevant_neighbors(subj, predicate)
-    obj_neigh = self._sample_relevant_neighbors(obj, predicate)
+    subj_neigh = PredicateLoader._sample_relevant_neighbors(
+        subj, obj, self.neighbors_per_term, self.graph_index
+    )
+    obj_neigh = PredicateLoader._sample_relevant_neighbors(
+        obj, subj, self.neighbors_per_term, self.graph_index
+    )
     return PredicateObservation(
         subject_embedding=self.embedding_index[subj],
         object_embedding=self.embedding_index[obj],

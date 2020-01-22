@@ -51,6 +51,7 @@ class HypothesisPredictor(pl.LightningModule):
         self.hparams.test_data_dir,
         self.embedding_index,
         self.graph_index,
+        self.hparams.neighbors_per_term,
     )
     # Layers
     # This is going to transform into {-1, 1}

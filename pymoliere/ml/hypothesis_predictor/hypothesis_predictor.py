@@ -152,8 +152,11 @@ class HypothesisPredictor(pl.LightningModule):
       sampler=torch.utils.data.distributed.DistributedSampler(dataset)
     collate = lambda batch: predicate_collate(
         positive_samples=batch,
-        num_negative_samples=int(
-          len(batch) * self.hparams.negative_sample_ratio
+        num_negative_scrambles=int(
+          len(batch) * self.hparams.negative_scramble_ratio
+        ),
+        num_negative_swaps=int(
+          len(batch) * self.hparams.negative_swap_ratio
         ),
         neighbors_per_term=self.hparams.neighbors_per_term,
     )
@@ -232,9 +235,16 @@ class HypothesisPredictor(pl.LightningModule):
         default=512,
     )
     parser.add_argument(
-        "--negative-sample-ratio",
+        "--negative-scramble-ratio",
         type=float,
-        default=5,
+        default=4,
+        help="A negative scramble draws the neighborhood sets randomly"
+    )
+    parser.add_argument(
+        "--negative-swap-ratio",
+        type=float,
+        default=2,
+        help="A negative swap exchanges the subject and object data in full."
     )
     parser.add_argument(
         "--lr",

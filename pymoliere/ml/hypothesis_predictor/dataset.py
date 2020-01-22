@@ -104,12 +104,13 @@ class PredicateLoader(torch.utils.data.Dataset):
 
 def predicate_collate(
     positive_samples:List[PredicateObservation],
-    num_negative_samples:int,
+    num_negative_scrambles:int,
+    num_negative_swaps:int,
     neighbors_per_term:int,
 )->Dict[str, Any]:
 
   negative_samples:List[PredicateObservation] = []
-  if num_negative_samples > 0:
+  if num_negative_scrambles > 0:
     all_neighbors = list(chain.from_iterable(map(
         lambda x: chain(
           x.subject_neighbor_embeddings,
@@ -121,20 +122,36 @@ def predicate_collate(
         lambda x: [x.subject_embedding, x.object_embedding],
         positive_samples
     )))
-    for _ in range(num_negative_samples):
+    for _ in range(num_negative_scrambles):
       negative_samples.append(PredicateObservation(
         subject_embedding=random.choice(all_entities),
         object_embedding=random.choice(all_entities),
         subject_neighbor_embeddings=[
           random.choice(all_neighbors)
-          for _ in range(random.randint(1, num_negative_samples))
+          for _ in range(random.randint(1, num_negative_scrambles))
         ],
         object_neighbor_embeddings=[
           random.choice(all_neighbors)
-          for _ in range(random.randint(1, num_negative_samples))
+          for _ in range(random.randint(1, num_negative_scrambles))
         ],
         label=0,
       ))
+  if num_negative_swaps > 0:
+    sample_indices = list(range(len(positive_samples)))
+    for _ in range(num_negative_swaps):
+      sidx = oidx = random.choice(sample_indices)
+      while oidx == sidx:
+        oidx = random.choice(sample_indices)
+      negative_samples.append(PredicateObservation(
+        subject_embedding=positive_samples[sidx].subject_embedding,
+        object_embedding=positive_samples[oidx].object_embedding,
+        subject_neighbor_embeddings=\
+            positive_samples[sidx].subject_neighbor_embeddings,
+        object_neighbor_embeddings=\
+            positive_samples[oidx].object_neighbor_embeddings,
+        label=0,
+      ))
+
 
   samples = positive_samples + negative_samples
   random.shuffle(samples)

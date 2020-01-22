@@ -16,29 +16,34 @@ class EmbeddingLocation:
   entity_type: str
   partition_idx: int
   row_idx: Optional[int] = None
+  def __iter__(self):
+    yield self.entity_type
+    yield self.partition_idx
+    if self.row_idx is not None:
+      yield self.row_idx
 
 class PreloadedEmbeddingLocationIndex(object):
-  def __init__(self, entity_dir:Path, entity_type:str):
-    self.entity_type=entity_type
+  def __init__(self, entity_dir:Path, entity_types:str):
     entity_dir = Path(entity_dir)
     assert entity_dir.is_dir()
-    self.entity_paths = list(entity_dir.glob(
-      f"entity_names_{self.entity_type}_*.json"
-    ))
-    self.part2names = {
-        self.parse_entity_name_path(path).partition_idx: self.load_names(path)
+    print("Loading embedding locations")
+    self.entity_paths = list(chain.from_iterable(map(
+      lambda typ: entity_dir.glob(f"entity_names_{typ}_*.json"),
+      entity_types
+    )))
+    self.loc2names = {
+        tuple(self.parse_entity_name_path(path)): self.load_names(path)
         for path in self.entity_paths
     }
     self.name2emb_loc = {}
-    for part_idx, names in self.part2names.items():
+    for (entity_type, partition_idx), names in self.loc2names.items():
       for local_idx, name in enumerate(names):
         self.name2emb_loc[name] = EmbeddingLocation(
-            entity_type=self.entity_type,
-            partition_idx=part_idx,
+            entity_type=entity_type,
+            partition_idx=partition_idx,
             row_idx=local_idx,
         )
     assert len(self.name2emb_loc) > 0, "No entity names"
-
 
   def __len__(self)->int:
     return len(self.name2emb_loc)
@@ -50,11 +55,7 @@ class PreloadedEmbeddingLocationIndex(object):
     return name in self.name2emb_loc
 
   def get_name(self, loc:EmbeddingLocation)->str:
-    assert loc.entity_type == self.entity_type
-    assert loc.partition_idx in self.part2names
-    names = self.part2names[loc.partition_idx]
-    assert loc.row_idx < len(names)
-    return names[loc.row_idx]
+    return self.loc2names[(loc.entity_type, loc.partition_idx)][loc.row_idx]
 
   @staticmethod
   def parse_entity_name_path(entity_name_path:Path)->EmbeddingLocation:
@@ -226,13 +227,13 @@ class PreloadedEmbeddingIndex(object):
       self,
       embedding_dir:Path,
       entity_dir:Path,
-      select_entity_type:str,
+      entity_types:str,  # one char per ent
       emb_ver:str=None,
   ):
     embedding_dir=Path(embedding_dir)
     entity_dir=Path(entity_dir)
     self.entity_index = PreloadedEmbeddingLocationIndex(
-        entity_dir, select_entity_type
+        entity_dir, entity_types
     )
 
     # Setup embedding version
@@ -246,9 +247,10 @@ class PreloadedEmbeddingIndex(object):
       assert emb_ver in valid_emb_ver, "Invalid emb_ver"
       self.emb_ver = emb_ver
 
-    self.embedding_paths = list(embedding_dir.glob(
-      f"embeddings_{select_entity_type}_*.{self.emb_ver}.h5"
-    ))
+    self.embedding_paths = list(chain.from_iterable([
+      embedding_dir.glob(f"embeddings_{typ}_*.{self.emb_ver}.h5")
+      for typ in entity_types
+    ]))
     self.init=False
 
   def _lazy_load_embeddings(self):
@@ -256,7 +258,7 @@ class PreloadedEmbeddingIndex(object):
     assert len(self.embedding_paths) > 0
     self.name2embedding = {}
     print("Loading MESH embeddings (first time only)")
-    for path in self.embedding_paths:
+    for path in tqdm(self.embedding_paths):
       loc = self.parse_embedding_path(path)
       with h5py.File(path, "r") as h5_file:
         emb = h5_file["embeddings"]

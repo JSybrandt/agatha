@@ -11,7 +11,7 @@ from pymoliere.ml.hypothesis_predictor.dataset import (
 from typing import Dict, Any, List, Tuple
 from pathlib import Path
 from pymoliere.ml.abstract_generator.lamb_optimizer import Lamb
-from pymoliere.ml.util.embedding_index import EmbeddingIndex
+from pymoliere.ml.util.embedding_index import EmbeddingIndex, PreloadedEmbeddingIndex
 from pymoliere.ml.util.entity_index import EntityIndex
 import pymoliere.util.database_util as dbu
 from copy import deepcopy
@@ -27,10 +27,12 @@ class HypothesisPredictor(pl.LightningModule):
     self.hparams = hparams
     assert self.hparams.neighbors_per_term > 0
     # Helper data structures
-    self.embedding_index = EmbeddingIndex(
+    self.embedding_index = PreloadedEmbeddingIndex(
         embedding_dir=self.hparams.embedding_dir,
-        emb_loc_db_path=self.hparams.sqlite_embedding_path,
-    ).__enter__()
+        #emb_loc_db_path=self.hparams.sqlite_embedding_path,
+        entity_dir=self.hparams.entity_dir,
+        entity_types="mp"
+    )
     self.graph_index = Sqlite3Graph(self.hparams.sqlite_graph_path).__enter__()
 
     # All predicates, will split

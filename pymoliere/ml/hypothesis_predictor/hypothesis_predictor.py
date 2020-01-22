@@ -119,7 +119,7 @@ class HypothesisPredictor(pl.LightningModule):
     )
     for k in metrics:
       if not torch.isfinite(metrics[k]):
-        metrics[k] = torch.FloatTensor(0)
+        metrics[k] = torch.zeros(1)
     return {
         'loss': metrics["loss"],
         'progress_bar': metrics,

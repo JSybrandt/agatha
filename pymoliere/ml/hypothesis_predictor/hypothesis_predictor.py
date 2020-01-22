@@ -53,6 +53,20 @@ class HypothesisPredictor(pl.LightningModule):
     self.embedding_transformation = torch.nn.Linear(
         self.hparams.dim, self.hparams.dim
     )
+    self.encode_predicate_data = torch.nn.TransformerEncoder(
+        encoder_layer=torch.nn.TransformerEncoderLayer(
+          self.hparams.dim,
+          self.hparams.transformer_heads,
+          self.hparams.transformer_ff_dim,
+          self.hparams.transformer_dropout,
+          "relu"
+        ),
+        num_layers=self.hparams.transformer_layers,
+        norm=torch.nn.LayerNorm(self.hparams.dim),
+    )
+    self.encoding_to_logit = torch.nn.Linear(
+      self.hparams.dim, 1
+    )
     # Extra
     self.loss_fn = torch.nn.BCELoss()
 
@@ -67,38 +81,45 @@ class HypothesisPredictor(pl.LightningModule):
     )
 
   def forward(self, batch:HypothesisBatch)->torch.FloatTensor:
-    # batch X dim
-    local_subj_emb = self.embedding_transformation(batch.subject_embedding)
-    local_subj_emb = torch.tanh(local_subj_emb)
-    # batch X dim
-    local_obj_emb = self.embedding_transformation(batch.object_embedding)
-    local_obj_emb = torch.tanh(local_obj_emb)
-    # # neigh_seq X batch X dim
-    # local_subj_neig_embs = self.embedding_transformation(
-        # batch.subject_neighbor_embeddings
-    # )
-    # local_subj_neig_embs = torch.tanh(local_subj_neig_embs)
-    # # neigh_seq X batch X dim
-    # local_obj_neig_embs = self.embedding_transformation(
-        # batch.object_neighbor_embeddings
-    # )
-    # local_obj_neig_embs = torch.tanh(local_obj_neig_embs)
-    # |batch|
-    subj_obj_dots = (local_subj_emb * local_obj_emb).sum(dim=1)
-    return torch.sigmoid(subj_obj_dots)
-
+    # seq X batch X dim
+    stacked_embeddings = torch.cat([
+      batch.subject_embedding.unsqueeze(0),
+      batch.object_embedding.unsqueeze(0),
+      batch.subject_neighbor_embeddings,
+      batch.object_neighbor_embeddings,
+    ])
+    local_stacked_emb = self.embedding_transformation(stacked_embeddings)
+    local_stacked_emb = torch.relu(local_stacked_emb)
+    encoded_predicate = self.encode_predicate_data(local_stacked_emb)
+    encoded_predicate = encoded_predicate.mean(dim=0)
+    logit = self.encoding_to_logit(encoded_predicate)
+    logit = torch.sigmoid(logit).reshape(-1)
+    return logit
 
   def training_step(self, batch, batch_idx):
     batch = self._batch_to_device(batch)
     predictions = self.forward(batch)
     device = next(self.parameters()).device
+    predictions_true = (predictions > 0.5)
+    label_true = (batch.label > 0.5)
     metrics=dict(
         loss=self.loss_fn(predictions, batch.label),
         accuracy=(
-          ((predictions > 0.5) == (batch.label > 0.5))
+          (predictions_true == label_true)
           .sum().float() / float(len(predictions))
         ),
+        precision=(
+          label_true[predictions_true].sum().float()
+          / predictions_true.sum().float()
+        ),
+        recall=(
+          predictions_true[label_true].sum().float()
+          / label_true.sum().float()
+        ),
     )
+    for k in metrics:
+      if not torch.isfinite(metrics[k]):
+        metrics[k] = torch.FloatTensor(0)
     return {
         'loss': metrics["loss"],
         'progress_bar': metrics,
@@ -239,6 +260,26 @@ class HypothesisPredictor(pl.LightningModule):
         "--neighbors-per-term",
         type=int,
         default=5,
+    )
+    parser.add_argument(
+        "--transformer-layers",
+        type=int,
+        default=4,
+    )
+    parser.add_argument(
+        "--transformer-ff-dim",
+        type=int,
+        default=512,
+    )
+    parser.add_argument(
+        "--transformer-heads",
+        type=int,
+        default=8,
+    )
+    parser.add_argument(
+        "--transformer-dropout",
+        type=float,
+        default=0.1,
     )
     parser.add_argument(
         "--distributed",

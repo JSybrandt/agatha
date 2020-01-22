@@ -4,40 +4,47 @@ source paths
 
 mkdir -p $TRAINING_DATA
 
-#python3 -m pymoliere.ml.hypothesis_predictor                      \
-  #--entity-dir $ENTITIES                                          \
-  #--embedding-dir $EMBEDDINGS                                     \
-  #--sqlite-embedding-location $EMB_LOC_DB                         \
-  #--model-ckpt-dir $MODEL_CKPT_DIR                                \
-  #--batch-size 512                                                \
-  #--test-data-dir $TEST_BENCHMARK
+if [ -z "$1" ]; then
 
-NODEFILE=$PBS_NODEFILE
-if [[ ! -f "$NODEFILE" ]]; then
-  NODEFILE=/home/jsybran/.nodefile
-fi
-if [[ ! -f "$NODEFILE" ]]; then
-  echo "Must supply a nodefile"
-  exit 1
-fi
+  NODEFILE=$PBS_NODEFILE
+  if [[ ! -f "$NODEFILE" ]]; then
+    NODEFILE=/home/jsybran/.nodefile
+  fi
+  if [[ ! -f "$NODEFILE" ]]; then
+    echo "Must supply a nodefile"
+    exit 1
+  fi
 
-NUM_NODES=$(wc -l < $NODEFILE)
-echo Starting on $NUM_NODES nodes
+  NUM_NODES=$(wc -l < $NODEFILE)
+  echo Starting on $NUM_NODES nodes
 
-parallel \
-  --sshloginfile "$NODEFILE" \
-  --ungroup \
-  -j 1 \
-  """
-    sleep {}
-    echo Starting {}
+  parallel \
+    --sshloginfile "$NODEFILE" \
+    --ungroup \
+    -j 1 \
+    """
+      sleep {}
+      echo Starting {}
+      python3 -m pymoliere.ml.hypothesis_predictor                      \
+        --entity-dir $ENTITIES                                          \
+        --embedding-dir $EMBEDDINGS                                     \
+        --sqlite-embedding-path $EMB_LOC_DB                             \
+        --sqlite-graph-path $GRAPH                                      \
+        --model-ckpt-dir $MODEL_CKPT_DIR                                \
+        --batch-size 1600                                               \
+        --train-num-machines $NUM_NODES                                 \
+        --test-data-dir $TEST_BENCHMARK \
+        --distributed
+    """ ::: $(seq $NUM_NODES)
+
+else
+
     python3 -m pymoliere.ml.hypothesis_predictor                      \
       --entity-dir $ENTITIES                                          \
       --embedding-dir $EMBEDDINGS                                     \
-      --sqlite-embedding-location $EMB_LOC_DB                         \
+      --sqlite-embedding-path $EMB_LOC_DB                             \
+      --sqlite-graph-path $GRAPH                                      \
       --model-ckpt-dir $MODEL_CKPT_DIR                                \
-      --batch-size 1600                                               \
-      --train-num-machines $NUM_NODES                                 \
-      --test-data-dir $TEST_BENCHMARK \
-      --distributed
-  """ ::: $(seq $NUM_NODES)
+      --batch-size 16                                                 \
+      --test-data-dir $TEST_BENCHMARK
+fi

@@ -25,6 +25,7 @@ class HypothesisPredictor(pl.LightningModule):
   def __init__(self, hparams:Namespace):
     super(HypothesisPredictor, self).__init__()
     self.hparams = hparams
+    assert self.hparams.neighbors_per_term > 0
     # Helper data structures
     self.embedding_index = EmbeddingIndex(
         embedding_dir=self.hparams.embedding_dir,
@@ -136,7 +137,7 @@ class HypothesisPredictor(pl.LightningModule):
 
     metrics=dict(
         loss=sum(partial_losses),
-        num_correct_comparisions=(
+        correct_comp=(
           correctly_sorted / (correctly_sorted + incorrectly_sorted)
         ),
         pr_auc=torch.tensor(pr_auc),
@@ -185,7 +186,7 @@ class HypothesisPredictor(pl.LightningModule):
         dataset=self.training_data,
         shuffle=shuffle,
         sampler=sampler,
-        batch_size=self.hparams.batch_size,
+        batch_size=self.hparams.positives_per_batch,
         collate_fn=collate,
     )
 
@@ -251,20 +252,20 @@ class HypothesisPredictor(pl.LightningModule):
         help="Directory containing published.txt and noise.txt"
     )
     parser.add_argument(
-        "--batch-size",
+        "--positives-per-batch",
         type=int,
-        default=512,
+        default=16,
     )
     parser.add_argument(
         "--neg-scramble-rate",
         type=float,
-        default=4,
+        default=10,
         help="A negative scramble draws the neighborhood sets randomly"
     )
     parser.add_argument(
         "--neg-swap-rate",
         type=float,
-        default=2,
+        default=10,
         help="A negative swap exchanges the subject and object data in full."
     )
     parser.add_argument(

@@ -45,6 +45,6 @@ else
       --sqlite-embedding-path $EMB_LOC_DB                             \
       --sqlite-graph-path $GRAPH                                      \
       --model-ckpt-dir $MODEL_CKPT_DIR                                \
-      --batch-size 16                                                 \
+      --positives-per-batch 16                                        \
       --test-data-dir $TEST_BENCHMARK
 fi

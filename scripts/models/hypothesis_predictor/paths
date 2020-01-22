@@ -7,6 +7,7 @@ SQLITE_GRAPH=$DATA_BASE/mongo_data/graph.sqlite3
 ENTITIES=$DATA_BASE/pytorch_biggraph/entities
 EMBEDDINGS=$DATA_BASE/pytorch_biggraph/embeddings
 GRAPH=$DATA_BASE/mongo_data/graph.sqlite3
+SEMMEDDB_GRAPH=$DATA_BASE/mongo_data/semmeddb_graph/semmeddb_mp.sqlite3
 EMB_LOC_DB=$DATA_BASE/pytorch_biggraph/entities/embedding_location_db.sqlite3
 MODEL_CKPT_DIR=$MODEL_BASE/ckpts
 TEST_BENCHMARK=/zfs/safrolab/users/jsybran/pymoliere/data/benchmarks/predicates_2015

@@ -32,21 +32,34 @@ void merge_graphs(Graph& base_graph, Graph& add_graph){
   }
 }
 
-Graph parse_tsv(const fs::path& tsv_path){
+bool node_passes_filter(
+    const std::string& node,
+    const std::string& filter,
+    size_t idx
+){
+  return (filter.size() == 0) || (filter[idx] == node[0]);
+}
+
+Graph parse_tsv(const fs::path& tsv_path, const std::string& filter_relation){
   Graph res;
   std::fstream tsv_file(tsv_path, std::ios::in);
   std::string line;
   while(getline(tsv_file, line)){
-    try{
+    //try{
       std::stringstream tsv_parser(line);
       std::string node1, node2;
       getline(tsv_parser, node1, '\t');
+      if(!node_passes_filter(node1, filter_relation, 0))
+        continue;
       getline(tsv_parser, node2, '\t');
+      if(!node_passes_filter(node2, filter_relation, 1))
+        continue;
       res[node1].insert(node2);
-    } catch (...) {
-      std::cerr << "Encountered an issue with: " << line << std::endl;
-    }
+    //} catch (...) {
+      //std::cerr << "Encountered an issue with: " << line << std::endl;
+    //}
   }
+  tsv_file.close();
   return res;
 }
 
@@ -58,7 +71,9 @@ int main(int argc, char** argv){
   parser.add_argument("-o", "--sqlite")
         .help("The location to write sqlite db")
         .action([](const std::string& s){ return fs::path(s); });
-
+  parser.add_argument("--filter-relation")
+        .help("String, where each character is a selected entity")
+        .default_value("");
   try {
     parser.parse_args(argc, argv);
   }
@@ -70,6 +85,9 @@ int main(int argc, char** argv){
 
   fs::path tsv_dir_path = parser.get<fs::path>("--tsv-dir");
   fs::path sqlite_path = parser.get<fs::path>("--sqlite");
+  std::string filter_relation = parser.get<std::string>("--filter-relation");
+
+  assert((filter_relation.size() == 0) || (filter_relation.size() == 2));
 
   assert(fs::is_directory(tsv_dir_path));
   assert(!fs::exists(sqlite_path));
@@ -82,7 +100,7 @@ int main(int argc, char** argv){
   Graph graph;
   #pragma omp parallel for schedule(dynamic)
   for(size_t i = 0; i < all_tsv_files.size(); ++i){
-    Graph local_graph = parse_tsv(all_tsv_files[i]);
+    Graph local_graph = parse_tsv(all_tsv_files[i], filter_relation);
     #pragma omp critical
     {
       merge_graphs(graph, local_graph);

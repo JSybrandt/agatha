@@ -15,7 +15,7 @@ from pymoliere.ml.util.embedding_index import EmbeddingIndex, PreloadedEmbedding
 from pymoliere.ml.util.entity_index import EntityIndex
 import pymoliere.util.database_util as dbu
 from copy import deepcopy
-from pymoliere.util.sqlite3_graph import Sqlite3Graph
+from pymoliere.util.sqlite3_graph import Sqlite3Graph, PreloadedSqlite3Graph
 from sklearn.metrics import (
     average_precision_score,
     roc_auc_score,
@@ -33,7 +33,7 @@ class HypothesisPredictor(pl.LightningModule):
         entity_dir=self.hparams.entity_dir,
         entity_types="mp"
     )
-    self.graph_index = Sqlite3Graph(self.hparams.sqlite_graph_path).__enter__()
+    self.graph_index = PreloadedSqlite3Graph(self.hparams.sqlite_graph_path).__enter__()
 
     # All predicates, will split
     predicates = PredicateLoader(
@@ -260,13 +260,13 @@ class HypothesisPredictor(pl.LightningModule):
     )
     parser.add_argument(
         "--neg-scramble-rate",
-        type=float,
+        type=int,
         default=10,
         help="A negative scramble draws the neighborhood sets randomly"
     )
     parser.add_argument(
         "--neg-swap-rate",
-        type=float,
+        type=int,
         default=10,
         help="A negative swap exchanges the subject and object data in full."
     )

@@ -5,8 +5,7 @@ from typing import Set
 from math import log2
 from pymoliere.util.misc_util import iter_to_batches
 
-
-class Sqlite3Graph():
+class Sqlite3Graph(object):
   def __init__(self, db_path:Path):
     db_path = Path(db_path)
     assert db_path.is_file(), "Sqlite database not found."
@@ -67,13 +66,16 @@ class Sqlite3Graph():
       )
     return cache_res
 
-  def __enter__(self):
-    self.db_conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
+  def _config_connection(self)->None:
     self.db_conn.execute('PRAGMA journal_mode = OFF')
     self.db_conn.execute('PRAGMA synchronous = OFF')
     self.db_conn.execute('PRAGMA cache_size = 100000')
     self.db_conn.execute('PRAGMA temp_store = MEMORY')
     self.db_cursor = self.db_conn.cursor()
+
+  def __enter__(self):
+    self.db_conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
+    self._config_connection()
     return self
 
   def __exit__(self, exc_type, exc_value, traceback):
@@ -84,3 +86,15 @@ class Sqlite3Graph():
 
   def weight(self, source:str, target:str)->float:
     return log2(len(self[source])) * log2(len(self[target]))
+
+class PreloadedSqlite3Graph(Sqlite3Graph):
+  def __init__(self, db_path:Path):
+    super(PreloadedSqlite3Graph, self).__init__(db_path)
+
+  def __enter__(self):
+    file_db_conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
+    self.db_conn = sqlite3.connect(":memory:")
+    file_db_conn.backup(self.db_conn)
+    file_db_conn.close()
+    self._config_connection()
+    return self

@@ -252,13 +252,16 @@ def predicate_collate(
   negative class. We're going to compare the ranking between the first and
   all others.
   """
-
-  return [
-      observations_to_batch(positive_samples)
-  ] + [
+  assert neg_swaps_per + neg_scrambles_per > 0, "Must set some negative samples"
+  res  = [observations_to_batch(positive_samples)]
+  if neg_scrambles_per > 0:
+    res += [
       generate_negative_scramble_batch(positive_samples, neighbors_per_term)
       for _ in range(neg_scrambles_per)
-  ] + [
+    ]
+  if neg_swaps_per > 0:
+    res += [
       generate_negative_swap_batch(positive_samples)
       for _ in range(neg_swaps_per)
-  ]
+    ]
+  return res

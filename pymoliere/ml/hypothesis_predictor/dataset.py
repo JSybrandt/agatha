@@ -102,81 +102,6 @@ class PredicateLoader(torch.utils.data.Dataset):
     )
 
 
-def predicate_collate(
-    positive_samples:List[PredicateObservation],
-    num_negative_scrambles:int,
-    num_negative_swaps:int,
-    neighbors_per_term:int,
-)->Dict[str, Any]:
-
-  negative_samples:List[PredicateObservation] = []
-  if num_negative_scrambles > 0:
-    all_neighbors = list(chain.from_iterable(map(
-        lambda x: chain(
-          x.subject_neighbor_embeddings,
-          x.object_neighbor_embeddings,
-        ),
-        positive_samples
-    )))
-    all_entities = list(chain.from_iterable(map(
-        lambda x: [x.subject_embedding, x.object_embedding],
-        positive_samples
-    )))
-    for _ in range(num_negative_scrambles):
-      negative_samples.append(PredicateObservation(
-        subject_embedding=random.choice(all_entities),
-        object_embedding=random.choice(all_entities),
-        subject_neighbor_embeddings=[
-          random.choice(all_neighbors)
-          for _ in range(random.randint(1, num_negative_scrambles))
-        ],
-        object_neighbor_embeddings=[
-          random.choice(all_neighbors)
-          for _ in range(random.randint(1, num_negative_scrambles))
-        ],
-        label=0,
-      ))
-  if num_negative_swaps > 0:
-    sample_indices = list(range(len(positive_samples)))
-    for _ in range(num_negative_swaps):
-      sidx = oidx = random.choice(sample_indices)
-      while oidx == sidx:
-        oidx = random.choice(sample_indices)
-      negative_samples.append(PredicateObservation(
-        subject_embedding=positive_samples[sidx].subject_embedding,
-        object_embedding=positive_samples[oidx].object_embedding,
-        subject_neighbor_embeddings=\
-            positive_samples[sidx].subject_neighbor_embeddings,
-        object_neighbor_embeddings=\
-            positive_samples[oidx].object_neighbor_embeddings,
-        label=0,
-      ))
-
-
-  samples = positive_samples + negative_samples
-  random.shuffle(samples)
-
-  return HypothesisBatch(
-      subject_embedding=torch.FloatTensor([
-        s.subject_embedding for s in samples
-      ]),
-      object_embedding=torch.FloatTensor([
-        s.object_embedding for s in samples
-      ]),
-      subject_neighbor_embeddings=torch.nn.utils.rnn.pad_sequence([
-        torch.FloatTensor(s.subject_neighbor_embeddings)
-        for s in samples
-      ]),
-      object_neighbor_embeddings=torch.nn.utils.rnn.pad_sequence([
-        torch.FloatTensor(s.object_neighbor_embeddings)
-        for s in samples
-      ]),
-      label=torch.FloatTensor([
-        s.label for s in samples
-      ]),
-  )
-
-
 class TestPredicateLoader(torch.utils.data.Dataset):
   def __init__(
       self,
@@ -232,3 +157,103 @@ class TestPredicateLoader(torch.utils.data.Dataset):
         ],
         label=label,
     )
+
+
+def observations_to_batch(samples:List[PredicateObservation])->HypothesisBatch:
+  return HypothesisBatch(
+      subject_embedding=torch.FloatTensor([
+        s.subject_embedding for s in samples
+      ]),
+      object_embedding=torch.FloatTensor([
+        s.object_embedding for s in samples
+      ]),
+      subject_neighbor_embeddings=torch.nn.utils.rnn.pad_sequence([
+        torch.FloatTensor(s.subject_neighbor_embeddings)
+        for s in samples
+      ]),
+      object_neighbor_embeddings=torch.nn.utils.rnn.pad_sequence([
+        torch.FloatTensor(s.object_neighbor_embeddings)
+        for s in samples
+      ]),
+      label=torch.FloatTensor([
+        s.label for s in samples
+      ]),
+  )
+
+def generate_negative_scramble_batch(
+    positive_samples:List[PredicateObservation],
+    neighbors_per_term:int,
+)->HypothesisBatch:
+  negative_samples = []
+  # Record all neighbors
+  all_neighbors = list(chain.from_iterable(map(
+      lambda x: chain(
+        x.subject_neighbor_embeddings,
+        x.object_neighbor_embeddings,
+      ),
+      positive_samples
+  )))
+  # Record all subj-obj
+  all_entities = list(chain.from_iterable(map(
+      lambda x: [x.subject_embedding, x.object_embedding],
+      positive_samples
+  )))
+  # Create a negative sample for each positive
+  for _ in positive_samples:
+    negative_samples.append(PredicateObservation(
+      subject_embedding=random.choice(all_entities),
+      object_embedding=random.choice(all_entities),
+      subject_neighbor_embeddings=[
+        random.choice(all_neighbors)
+        for _ in range(random.randint(1, neighbors_per_term))
+      ],
+      object_neighbor_embeddings=[
+        random.choice(all_neighbors)
+        for _ in range(random.randint(1, neighbors_per_term))
+      ],
+      label=0,
+    ))
+  return observations_to_batch(negative_samples)
+
+def generate_negative_swap_batch(
+    positive_samples:List[PredicateObservation]
+)->HypothesisBatch:
+  negative_samples = []
+  sample_indices = list(range(len(positive_samples)))
+  for _ in positive_samples:
+    sidx = oidx = random.choice(sample_indices)
+    while oidx == sidx:
+      oidx = random.choice(sample_indices)
+    negative_samples.append(PredicateObservation(
+      subject_embedding=positive_samples[sidx].subject_embedding,
+      object_embedding=positive_samples[oidx].object_embedding,
+      subject_neighbor_embeddings=\
+          positive_samples[sidx].subject_neighbor_embeddings,
+      object_neighbor_embeddings=\
+          positive_samples[oidx].object_neighbor_embeddings,
+      label=0,
+    ))
+  return observations_to_batch(negative_samples)
+
+def predicate_collate(
+    positive_samples:List[PredicateObservation],
+    neg_scrambles_per:int,
+    neg_swaps_per:int,
+    neighbors_per_term:int,
+)->List[HypothesisBatch]:
+  """
+  Outputs a list of comparisons. The FIRST element of the list is the
+  positive class, then all following are of equal length, but of the
+  negative class. We're going to compare the ranking between the first and
+  all others.
+  """
+
+  return [
+      observations_to_batch(positive_samples)
+  ] + [
+      generate_negative_scramble_batch(positive_samples, neighbors_per_term)
+      for _ in range(neg_scrambles_per)
+  ] + [
+      generate_negative_swap_batch(positive_samples)
+      for _ in range(neg_swaps_per)
+  ]

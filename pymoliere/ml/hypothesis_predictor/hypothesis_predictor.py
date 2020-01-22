@@ -8,7 +8,7 @@ from pymoliere.ml.hypothesis_predictor.dataset import (
     TestPredicateLoader,
     HypothesisBatch,
 )
-from typing import Dict, Any
+from typing import Dict, Any, List, Tuple
 from pathlib import Path
 from pymoliere.ml.abstract_generator.lamb_optimizer import Lamb
 from pymoliere.ml.util.embedding_index import EmbeddingIndex
@@ -16,6 +16,10 @@ from pymoliere.ml.util.entity_index import EntityIndex
 import pymoliere.util.database_util as dbu
 from copy import deepcopy
 from pymoliere.util.sqlite3_graph import Sqlite3Graph
+from sklearn.metrics import (
+    average_precision_score,
+    roc_auc_score,
+)
 
 class HypothesisPredictor(pl.LightningModule):
   def __init__(self, hparams:Namespace):
@@ -68,7 +72,7 @@ class HypothesisPredictor(pl.LightningModule):
       self.hparams.dim, 1
     )
     # Extra
-    self.loss_fn = torch.nn.BCELoss()
+    self.loss_fn = torch.nn.MarginRankingLoss(margin=0.1)
 
   def _batch_to_device(self, b:HypothesisBatch)->HypothesisBatch:
     device = next(self.parameters()).device
@@ -96,26 +100,46 @@ class HypothesisPredictor(pl.LightningModule):
     logit = torch.sigmoid(logit).reshape(-1)
     return logit
 
-  def training_step(self, batch, batch_idx):
-    batch = self._batch_to_device(batch)
-    predictions = self.forward(batch)
-    device = next(self.parameters()).device
-    predictions_true = (predictions > 0.5)
-    label_true = (batch.label > 0.5)
+  @staticmethod
+  def _to_labels_n_scores(
+      predictions:torch.FloatTensor,
+      label:int
+  )->List[Tuple[float, int]]:
+    return [
+        (label, score)
+        for score in predictions.detach().cpu().numpy()
+    ]
+
+  def training_step(self, batch:List[HypothesisBatch], batch_idx):
+    pos_batch = batch[0]
+    neg_batches = batch[1:]
+    pos_predictions = self.forward(self._batch_to_device(pos_batch))
+    partial_losses = []
+    correctly_sorted = pos_predictions.new_zeros(1)
+    incorrectly_sorted = pos_predictions.new_zeros(1)
+    labels_n_scores = self._to_labels_n_scores(pos_predictions, 1)
+    for idx, neg_batch in enumerate(neg_batches):
+      neg_predictions = self.forward(self._batch_to_device(neg_batch))
+      labels_n_scores += self._to_labels_n_scores(neg_predictions, 0)
+      partial_losses.append(self.loss_fn(
+          pos_predictions,
+          neg_predictions,
+          pos_predictions.new_ones(len(pos_predictions))
+      ))
+      correctly_sorted += (pos_predictions > neg_predictions).detach().cpu().sum().float()
+      incorrectly_sorted += (neg_predictions > pos_predictions).detach().cpu().sum().float()
+
+    labels, scores = zip(*labels_n_scores)
+    roc_auc = roc_auc_score(labels, scores)
+    pr_auc = average_precision_score(labels, scores)
+
     metrics=dict(
-        loss=self.loss_fn(predictions, batch.label),
-        accuracy=(
-          (predictions_true == label_true)
-          .sum().float() / float(len(predictions))
+        loss=sum(partial_losses),
+        num_correct_comparisions=(
+          correctly_sorted / (correctly_sorted + incorrectly_sorted)
         ),
-        precision=(
-          label_true[predictions_true].sum().float()
-          / predictions_true.sum().float()
-        ),
-        recall=(
-          predictions_true[label_true].sum().float()
-          / label_true.sum().float()
-        ),
+        pr_auc=torch.tensor(pr_auc),
+        roc_auc=torch.tensor(roc_auc),
     )
     for k in metrics:
       if not torch.isfinite(metrics[k]):
@@ -152,12 +176,8 @@ class HypothesisPredictor(pl.LightningModule):
       sampler=torch.utils.data.distributed.DistributedSampler(dataset)
     collate = lambda batch: predicate_collate(
         positive_samples=batch,
-        num_negative_scrambles=int(
-          len(batch) * self.hparams.negative_scramble_ratio
-        ),
-        num_negative_swaps=int(
-          len(batch) * self.hparams.negative_swap_ratio
-        ),
+        neg_scrambles_per=self.hparams.neg_scramble_rate,
+        neg_swaps_per=self.hparams.neg_swap_rate,
         neighbors_per_term=self.hparams.neighbors_per_term,
     )
     return torch.utils.data.DataLoader(
@@ -235,13 +255,13 @@ class HypothesisPredictor(pl.LightningModule):
         default=512,
     )
     parser.add_argument(
-        "--negative-scramble-ratio",
+        "--neg-scramble-rate",
         type=float,
         default=4,
         help="A negative scramble draws the neighborhood sets randomly"
     )
     parser.add_argument(
-        "--negative-swap-ratio",
+        "--neg-swap-rate",
         type=float,
         default=2,
         help="A negative swap exchanges the subject and object data in full."

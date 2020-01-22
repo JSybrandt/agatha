@@ -90,11 +90,26 @@ class Sqlite3Graph(object):
 class PreloadedSqlite3Graph(Sqlite3Graph):
   def __init__(self, db_path:Path):
     super(PreloadedSqlite3Graph, self).__init__(db_path)
+    self.graph_data = {}
+
+  def __contains__(self, entity:str)->bool:
+    return entity in self.graph_data
+
+  def __getitem__(self, entity:str)->Set[str]:
+    return self.graph_data[entity]
 
   def __enter__(self):
+    print("Loading SqliteDB")
     file_db_conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
-    self.db_conn = sqlite3.connect(":memory:")
-    file_db_conn.backup(self.db_conn)
+    self.graph_data = {
+        node: json.loads(neighbors)
+        for node, neighbors in
+        file_db_conn.execute("SELECT node, neighbors FROM graph;").fetchall()
+    }
     file_db_conn.close()
-    self._config_connection()
     return self
+
+  def __exit__(self, *args, **kwargs):
+    self.graph_data = {}
+    return False
+

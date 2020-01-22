@@ -29,11 +29,14 @@ if [ -z "$1" ]; then
         --entity-dir $ENTITIES                                          \
         --embedding-dir $EMBEDDINGS                                     \
         --sqlite-embedding-path $EMB_LOC_DB                             \
-        --sqlite-graph-path $GRAPH                                      \
+        --sqlite-graph-path $SEMMEDDB_GRAPH                             \
         --model-ckpt-dir $MODEL_CKPT_DIR                                \
-        --batch-size 1600                                               \
+        --positives-per-batch 400                                       \
+        --neg-swap-rate 7                                               \
+        --neg-scramble-rate 0                                           \
+        --neighbors-per-term 10                                         \
+        --test-data-dir $TEST_BENCHMARK                                 \
         --train-num-machines $NUM_NODES                                 \
-        --test-data-dir $TEST_BENCHMARK \
         --distributed
     """ ::: $(seq $NUM_NODES)
 
@@ -45,9 +48,10 @@ else
       --sqlite-embedding-path $EMB_LOC_DB                             \
       --sqlite-graph-path $SEMMEDDB_GRAPH                             \
       --model-ckpt-dir $MODEL_CKPT_DIR                                \
-      --positives-per-batch 32                                        \
+      --positives-per-batch 400                                       \
       --neg-swap-rate 7                                               \
       --neg-scramble-rate 0                                           \
       --neighbors-per-term 10                                         \
       --test-data-dir $TEST_BENCHMARK
+
 fi

@@ -251,22 +251,15 @@ class PreloadedEmbeddingIndex(object):
       embedding_dir.glob(f"embeddings_{typ}_*.{self.emb_ver}.h5")
       for typ in entity_types
     ]))
-    self.init=False
-
-  def _lazy_load_embeddings(self):
-    self.init=True
     assert len(self.embedding_paths) > 0
+    print("Loading Embeddings")
     self.loc2embeddings = {}
-    print("Loading MESH embeddings (first time only)")
     for path in tqdm(self.embedding_paths):
       loc = self.parse_embedding_path(path)
       with h5py.File(path, "r") as h5_file:
         self.loc2embeddings[tuple(loc)] = h5_file["embeddings"][()]
-    print("Done!")
 
   def __getitem__(self, name:str)->np.array:
-    if not self.init:
-      self._lazy_load_embeddings()
     loc = self.entity_index[name]
     return self.loc2embeddings[
         (loc.entity_type, loc.partition_idx)

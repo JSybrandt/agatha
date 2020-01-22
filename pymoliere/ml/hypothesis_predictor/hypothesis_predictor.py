@@ -190,6 +190,7 @@ class HypothesisPredictor(pl.LightningModule):
         sampler=sampler,
         batch_size=self.hparams.positives_per_batch,
         collate_fn=collate,
+        num_workers=4,
     )
 
   @pl.data_loader

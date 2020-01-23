@@ -2,49 +2,63 @@ import torch
 from pathlib import Path
 from pymoliere.ml.util.embedding_index import EmbeddingIndex
 from pymoliere.util.sqlite3_graph import Sqlite3Graph
-from pymoliere.util.ml.entity_index import EntityIndex
-from pymoliere.util import database_util as dbu
-import json
-from typing import Optional, List
+from pymoliere.ml.util.entity_index import EntityIndex
+from typing import List
 import random
-from itertools import chain
-from bisect import bisect_right
+from dataclasses import dataclass
+import numpy as np
 
-def point_cloud_training_collate(positive_examples:List[torch.FloatTensor]):
-  # Each matrix inside batch is #points X dim
-  assert len(positive_examples) > 0
-  assert all(map(lambda p: len(p.shape)==2, positive_examples))
-  emb_dim = positive_examples[0].shape[1]
-  assert all(map(lambda p: p.shape[1] == emb_dim, positive_examples))
-  # Shuffle within each point cloud
-  for pos in positive_examples:
-    pos[torch.randperm(pos.shape[0])] = pos
-  # They are all # points X embedding dim
-  # Shuffle all embeddings together
-  shuffled_emb =  torch.cat(positive_examples)
-  shuffled_emb[torch.randperm(shuffled_emb.shape[0])] = shuffled_emb
-  rand_mask = torch.rand_like(shuffled_emb) < 0.1
-  shuffled_emb[rand_mask] = torch.rand(rand_mask.sum())
-  # shuffled_emb is total#points X embedding_dim
-  # parse out shuffled embeddings into negative training examples
-  negative_examples = []
-  start_idx = 0
-  for pos_ex in positive_examples:
-    end_idx = start_idx + pos_ex.shape[0]
-    negative_examples.append(shuffled_emb[start_idx:end_idx])
-    start_idx = end_idx
-  # negative_examples is the same shapes as positive_examples
-  # Shuffle together a list of positives and negatives
-  all_examples = list(chain(
-      map(lambda p: (p, 1), positive_examples),
-      map(lambda n: (n, 0), negative_examples),
-  ))
-  random.shuffle(all_examples)
-  tensors, labels = zip(*all_examples)
-  return {
-      "point_clouds": torch.nn.utils.rnn.pad_sequence(tensors),
-      "labels": torch.FloatTensor(labels)
-  }
+@dataclass
+class PointCloudObservation:
+  lemma_embeddings:List[np.array]
+
+@dataclass
+class PointCloudTensors:
+  lemmas:torch.FloatTensor
+
+def pointclouds_to_tensors(
+    samples:List[PointCloudObservation]
+)->PointCloudTensors:
+  return PointCloudTensors(
+      # Seq Leng X Batch size X emb dim
+      lemmas=torch.nn.utils.rnn.pad_sequence([
+        torch.FloatTensor(s.lemma_embeddings) for s in samples
+      ]),
+  )
+
+def sample_lemma(examples:List[PointCloudObservation]):
+  return random.choice(random.choice(examples).lemma_embeddings)
+
+def generate_negative_scramble_batch(
+    positive_examples:List[PointCloudObservation]
+)->PointCloudTensors:
+  return pointclouds_to_tensors([
+      PointCloudObservation(
+        # generate a random set of equal length
+        lemma_embeddings=[
+          sample_lemma(positive_examples)
+          for _ in pos_ref.lemma_embeddings
+        ]
+      )
+      # Duplicate the sizes from each positive example
+      for pos_ref in positive_examples
+  ])
+
+def collate_point_clouds(
+    positive_examples:List[PointCloudObservation],
+    neg_scrambles_per:int,
+)->List[PointCloudTensors]:
+  """
+  The first one is the positive sample, the rest are negatives
+  """
+  assert neg_scrambles_per > 0
+  positive_examples = [
+      p for p in positive_examples if len(p.lemma_embeddings) > 0
+  ]
+  res = [pointclouds_to_tensors(positive_examples)]
+  for _ in range(neg_scrambles_per):
+    res.append(generate_negative_scramble_batch(positive_examples))
+  return res
 
 
 class PointCloudDataset(torch.utils.data.Dataset):
@@ -54,32 +68,29 @@ class PointCloudDataset(torch.utils.data.Dataset):
       entity_dir:Path,
       embedding_index:EmbeddingIndex,
       graph_index:Sqlite3Graph,
-      source_node_type:str,
-      neighbor_cloud_type:str,
+      source_type:str,
+      neigh_type:str,
+      max_neighbors:int,
   ):
     assert embedding_dim > 0
-    self.embedding_dim = embedding_dim
-    self.neighbor_cloud_type = neighbor_cloud_type
-    assert self.neighbor_cloud_type in {
-      dbu.ENTITY_TYPE,
-      dbu.LEMMA_TYPE,
-      dbu.MESH_TERM_TYPE,
-      dbu.NGRAM_TYPE,
-      dbu.PREDICATE_TYPE,
-    }
+    self.max_neighbors = max_neighbors
+    self.neigh_type = neigh_type
     self.embedding_index = embedding_index
     self.graph_index = graph_index
-    self.sentence_names = EntityIndex(entity_dir, source_node_type)
+    self.sentence_names = EntityIndex(entity_dir, source_type)
 
   def __len__(self):
     return len(self.sentence_names)
 
-  def __getitem__(self, idx:int)->torch.tensor:
+  def __getitem__(self, idx:int)->PointCloudObservation:
     name = self.sentence_names[idx]
-    neighs = [n for n in self.graph_index[name] if n[0] == self.neighbor_cloud_type]
-    if len(neighs) > 0:
-      return torch.stack([
-        torch.FloatTensor(self.embedding_index[n]) for n in neighs
-      ])
-    else:
-      return torch.zeros((1, self.embedding_dim))
+    valid_neighbors = [
+        n for n in self.graph_index[name] if n[0] == self.neigh_type
+    ]
+    if len(valid_neighbors) > self.max_neighbors:
+      valid_neighbors = random.sample(valid_neighbors, self.max_neighbors)
+    return PointCloudObservation(
+        lemma_embeddings=[
+          self.embedding_index[n] for n in valid_neighbors
+        ]
+    )

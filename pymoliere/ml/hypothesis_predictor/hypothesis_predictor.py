@@ -6,7 +6,7 @@ from pymoliere.ml.hypothesis_predictor.dataset import (
     PredicateLoader,
     predicate_collate,
     TestPredicateLoader,
-    HypothesisBatch,
+    HypothesisTensors,
 )
 from typing import Dict, Any, List, Tuple
 from pathlib import Path
@@ -33,7 +33,9 @@ class HypothesisPredictor(pl.LightningModule):
         entity_dir=self.hparams.entity_dir,
         entity_types="mp"
     )
-    self.graph_index = PreloadedSqlite3Graph(self.hparams.sqlite_graph_path).__enter__()
+    self.graph_index = PreloadedSqlite3Graph(
+        self.hparams.sqlite_graph_path
+    ).__enter__()
 
     # All predicates, will split
     predicates = PredicateLoader(
@@ -78,9 +80,9 @@ class HypothesisPredictor(pl.LightningModule):
     # Extra
     self.loss_fn = torch.nn.MarginRankingLoss(margin=0.1)
 
-  def _batch_to_device(self, b:HypothesisBatch)->HypothesisBatch:
+  def _tensors_to_device(self, b:HypothesisTensors)->HypothesisTensors:
     device = next(self.parameters()).device
-    return HypothesisBatch(
+    return HypothesisTensors(
         subject_embedding=b.subject_embedding.to(device),
         object_embedding=b.object_embedding.to(device),
         subject_neighbor_embeddings=b.subject_neighbor_embeddings.to(device),
@@ -88,7 +90,7 @@ class HypothesisPredictor(pl.LightningModule):
         label=b.label.to(device),
     )
 
-  def forward(self, batch:HypothesisBatch)->torch.FloatTensor:
+  def forward(self, batch:HypothesisTensors)->torch.FloatTensor:
     # seq X batch X dim
     stacked_embeddings = torch.cat([
       batch.subject_embedding.unsqueeze(0),
@@ -101,8 +103,8 @@ class HypothesisPredictor(pl.LightningModule):
     encoded_predicate = self.encode_predicate_data(local_stacked_emb)
     encoded_predicate = encoded_predicate.mean(dim=0)
     logit = self.encoding_to_logit(encoded_predicate)
-    logit = torch.sigmoid(logit).reshape(-1)
-    return logit
+    logit = torch.sigmoid(logit)
+    return logit.reshape(-1)
 
   @staticmethod
   def _to_labels_n_scores(
@@ -114,24 +116,30 @@ class HypothesisPredictor(pl.LightningModule):
         for score in predictions.detach().cpu().numpy()
     ]
 
-  def training_step(self, batch:List[HypothesisBatch], batch_idx):
+  def training_step(self, batch:List[HypothesisTensors], batch_idx):
     pos_batch = batch[0]
     neg_batches = batch[1:]
-    pos_predictions = self.forward(self._batch_to_device(pos_batch))
+    pos_predictions = self.forward(self._tensors_to_device(pos_batch))
     partial_losses = []
     correctly_sorted = pos_predictions.new_zeros(1)
     incorrectly_sorted = pos_predictions.new_zeros(1)
     labels_n_scores = self._to_labels_n_scores(pos_predictions, 1)
     for idx, neg_batch in enumerate(neg_batches):
-      neg_predictions = self.forward(self._batch_to_device(neg_batch))
+      neg_predictions = self.forward(self._tensors_to_device(neg_batch))
       labels_n_scores += self._to_labels_n_scores(neg_predictions, 0)
       partial_losses.append(self.loss_fn(
           pos_predictions,
           neg_predictions,
           pos_predictions.new_ones(len(pos_predictions))
       ))
-      correctly_sorted += (pos_predictions > neg_predictions).detach().cpu().sum().float()
-      incorrectly_sorted += (neg_predictions > pos_predictions).detach().cpu().sum().float()
+      correctly_sorted += (
+          (pos_predictions > neg_predictions)
+          .detach().cpu().sum().float()
+      )
+      incorrectly_sorted += (
+          (neg_predictions > pos_predictions)
+          .detach().cpu().sum().float()
+      )
 
     labels, scores = zip(*labels_n_scores)
     roc_auc = roc_auc_score(labels, scores)

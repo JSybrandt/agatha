@@ -8,10 +8,13 @@ mkdir -p $TRAINING_DATA
 # debug
 if [[ ! -z "$1" ]]; then
   python3 -m pymoliere.ml.point_cloud_evaluator                     \
-    --training-data-dir $TRAINING_DATA                              \
     --model-ckpt-dir $MODEL_CKPT_DIR                                \
-    --batch-size 16                                                 \
-    --debug
+    --sqlite-graph $GRAPH \
+    --sqlite-embedding-location $EMB_LOC_DB \
+    --entity-dir $ENTITIES \
+    --embedding-dir $EMBEDDINGS \
+    --positives-per-batch 16 \
+    --neg-scramble-rate 7 
 else
 
   NODEFILE=$PBS_NODEFILE

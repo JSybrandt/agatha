@@ -14,7 +14,7 @@ from dataclasses import dataclass
 import numpy as np
 
 @dataclass
-class HypothesisBatch:
+class HypothesisTensors:
   subject_embedding:torch.FloatTensor
   object_embedding:torch.FloatTensor
   subject_neighbor_embeddings:torch.FloatTensor
@@ -164,8 +164,8 @@ class TestPredicateLoader(torch.utils.data.Dataset):
     )
 
 
-def observations_to_batch(samples:List[PredicateObservation])->HypothesisBatch:
-  return HypothesisBatch(
+def oservation_to_tensors(samples:List[PredicateObservation])->HypothesisTensors:
+  return HypothesisTensors(
       subject_embedding=torch.FloatTensor([
         s.subject_embedding for s in samples
       ]),
@@ -188,7 +188,7 @@ def observations_to_batch(samples:List[PredicateObservation])->HypothesisBatch:
 def generate_negative_scramble_batch(
     positive_samples:List[PredicateObservation],
     neighbors_per_term:int,
-)->HypothesisBatch:
+)->HypothesisTensors:
   negative_samples = []
   # Record all neighbors
   all_neighbors = list(chain.from_iterable(map(
@@ -218,11 +218,11 @@ def generate_negative_scramble_batch(
       ],
       label=0,
     ))
-  return observations_to_batch(negative_samples)
+  return oservation_to_tensors(negative_samples)
 
 def generate_negative_swap_batch(
     positive_samples:List[PredicateObservation]
-)->HypothesisBatch:
+)->HypothesisTensors:
   negative_samples = []
   sample_indices = list(range(len(positive_samples)))
   for _ in positive_samples:
@@ -238,14 +238,14 @@ def generate_negative_swap_batch(
           positive_samples[oidx].object_neighbor_embeddings,
       label=0,
     ))
-  return observations_to_batch(negative_samples)
+  return oservation_to_tensors(negative_samples)
 
 def predicate_collate(
     positive_samples:List[PredicateObservation],
     neg_scrambles_per:int,
     neg_swaps_per:int,
     neighbors_per_term:int,
-)->List[HypothesisBatch]:
+)->List[HypothesisTensors]:
   """
   Outputs a list of comparisons. The FIRST element of the list is the
   positive class, then all following are of equal length, but of the
@@ -253,7 +253,7 @@ def predicate_collate(
   all others.
   """
   assert neg_swaps_per + neg_scrambles_per > 0, "Must set some negative samples"
-  res  = [observations_to_batch(positive_samples)]
+  res  = [oservation_to_tensors(positive_samples)]
   if neg_scrambles_per > 0:
     res += [
       generate_negative_scramble_batch(positive_samples, neighbors_per_term)

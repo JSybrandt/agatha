@@ -53,7 +53,7 @@ else
       --neg-swap-rate 7                                               \
       --neg-scramble-rate 0                                           \
       --neighbors-per-term 10                                         \
-      --train-fraction 0.1                                            \
+      --train-fraction 0.01                                           \
       --test-data-dir $TEST_BENCHMARK
 
 fi

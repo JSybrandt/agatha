@@ -37,6 +37,7 @@ if [ -z "$1" ]; then
         --neighbors-per-term 10                                         \
         --test-data-dir $TEST_BENCHMARK                                 \
         --train-num-machines $NUM_NODES                                 \
+        --train-fraction 0.1                                            \
         --distributed
     """ ::: $(seq $NUM_NODES)
 
@@ -52,6 +53,7 @@ else
       --neg-swap-rate 7                                               \
       --neg-scramble-rate 0                                           \
       --neighbors-per-term 10                                         \
+      --train-fraction 0.1                                            \
       --test-data-dir $TEST_BENCHMARK
 
 fi

@@ -13,8 +13,10 @@ if [[ ! -z "$1" ]]; then
     --sqlite-embedding-location $EMB_LOC_DB \
     --entity-dir $ENTITIES \
     --embedding-dir $EMBEDDINGS \
-    --positives-per-batch 16 \
-    --neg-scramble-rate 7 
+    --positives-per-batch 256 \
+    --neg-scramble-rate 7 \
+    --transformer-layers 4 \
+    --transformer-heads 8
 else
 
   NODEFILE=$PBS_NODEFILE

@@ -17,7 +17,7 @@ using json = nlohmann::json;
 namespace fs = std::filesystem;
 namespace sql = sqlite_orm;
 
-using Neighbors = std::unordered_set<std::string>;
+using Neighbors = std::list<std::string>;
 using Graph = std::unordered_map<std::string, Neighbors>;
 
 struct GraphEntry {
@@ -27,8 +27,8 @@ struct GraphEntry {
 
 void merge_graphs(Graph& base_graph, Graph& add_graph){
   for(auto& [node, add_neighbors] : add_graph){
-    std::unordered_set<std::string>& base_neighbors = base_graph[node];
-    base_neighbors.merge(add_neighbors);
+    Neighbors& base_neighbors = base_graph[node];
+    base_neighbors.splice(base_neighbors.end(), add_neighbors);
   }
 }
 
@@ -54,7 +54,7 @@ Graph parse_tsv(const fs::path& tsv_path, const std::string& filter_relation){
       getline(tsv_parser, node2, '\t');
       if(!node_passes_filter(node2, filter_relation, 1))
         continue;
-      res[node1].insert(node2);
+      res[node1].push_back(node2);
     //} catch (...) {
       //std::cerr << "Encountered an issue with: " << line << std::endl;
     //}
@@ -98,14 +98,22 @@ int main(int argc, char** argv){
   std::cout << "Loading whole graph" << std::endl;
   int num_finished = 0;
   Graph graph;
-  #pragma omp parallel for schedule(dynamic)
-  for(size_t i = 0; i < all_tsv_files.size(); ++i){
-    Graph local_graph = parse_tsv(all_tsv_files[i], filter_relation);
+  #pragma omp parallel
+  {
+    Graph local_graph;
+    #pragma omp for schedule(dynamic)
+    for(size_t i = 0; i < all_tsv_files.size(); ++i){
+      Graph tmp = parse_tsv(all_tsv_files[i], filter_relation);
+      merge_graphs(local_graph, tmp);
+      #pragma omp critical
+      {
+        ++num_finished;
+        std::cout << num_finished << "/" << all_tsv_files.size() << std::endl;
+      }
+    }
     #pragma omp critical
     {
       merge_graphs(graph, local_graph);
-      ++num_finished;
-      std::cout << num_finished << "/" << all_tsv_files.size() << std::endl;
     }
   }
 
@@ -120,7 +128,11 @@ int main(int argc, char** argv){
   std::vector<std::string> neighborhoods(nodes.size());
   #pragma omp parallel for schedule(dynamic)
   for(size_t i=0; i<nodes.size(); ++i){
-    neighborhoods[i] = json(graph[nodes[i]]).dump();
+    auto& neigh_list = graph[nodes[i]];
+    std::unordered_set<std::string> neigh_set(
+        neigh_list.begin(), neigh_list.end()
+    );
+    neighborhoods[i] = json(neigh_set).dump();
     graph[nodes[i]].clear(); // drop list, keep memory reasonable
   }
 
@@ -138,8 +150,8 @@ int main(int argc, char** argv){
   std::cout << "Writing DB" << std::endl;
   storage.transaction([&]{
       // Both strings
-      for(const auto&& [node, neighbors]: iter::zip(nodes, neighborhoods)){
-        storage.insert(GraphEntry{node, neighbors});
+      for(const auto&& [node, neigh_str]: iter::zip(nodes, neighborhoods)){
+        storage.insert(GraphEntry{node, neigh_str});
       }
       return true;
   });

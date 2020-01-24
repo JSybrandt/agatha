@@ -78,7 +78,7 @@ class HypothesisPredictor(pl.LightningModule):
       self.hparams.dim, 1
     )
     # Extra
-    self.loss_fn = torch.nn.MarginRankingLoss(margin=0.1)
+    self.loss_fn = torch.nn.MarginRankingLoss(margin=self.hparams.margin)
 
   def _tensors_to_device(self, b:HypothesisTensors)->HypothesisTensors:
     device = next(self.parameters()).device
@@ -163,10 +163,14 @@ class HypothesisPredictor(pl.LightningModule):
     }
 
   def validation_step(self, batch, batch_idx):
-    return self.training_step(batch, batch_idx)["log"]
+    metrics = self.training_step(batch, batch_idx)["log"]
+    metrics["val_loss"] = metrics["loss"]
+    return metrics
 
   def test_step(self, batch, batch_idx):
     return self.training_step(batch, batch_idx)["log"]
+    metrics["test_loss"] = metrics["loss"]
+    return metrics
 
   def _on_end(self, outputs):
     metrics = {}
@@ -321,6 +325,11 @@ class HypothesisPredictor(pl.LightningModule):
     )
     parser.add_argument(
         "--transformer-dropout",
+        type=float,
+        default=0.1,
+    )
+    parser.add_argument(
+        "--margin",
         type=float,
         default=0.1,
     )

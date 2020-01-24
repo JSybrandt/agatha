@@ -48,6 +48,48 @@ IDX2VERB = [
 ]
 VERB2IDX = {v:i for i, v in enumerate(IDX2VERB)}
 
+def _sample_relevant_neighbors(
+    term:str,
+    excluded_term:str,
+    neighbors_per_term:int,
+    graph_index:Sqlite3Graph,
+)->List[str]:
+  items = [
+      n for n in graph_index[term]
+      if excluded_term not in PredicateLoader.parse_predicate_name(n)
+  ]
+  if len(items) <= neighbors_per_term:
+    return items
+  else:
+    return random.sample(items, neighbors_per_term)
+
+
+def generate_predicate_observation(
+    subj:str,
+    obj:str,
+    neighbors_per_term:int,
+    graph_index:Sqlite3Graph,
+    embedding_index:EmbeddingIndex,
+    label:int=1,
+):
+    subj_neigh = _sample_relevant_neighbors(
+        subj, obj, neighbors_per_term, graph_index
+    )
+    obj_neigh = _sample_relevant_neighbors(
+        obj, subj, neighbors_per_term, graph_index
+    )
+    return PredicateObservation(
+        subject_embedding=embedding_index[subj],
+        object_embedding=embedding_index[obj],
+        subject_neighbor_embeddings=[
+          embedding_index[n] for n in subj_neigh
+        ],
+        object_neighbor_embeddings=[
+          embedding_index[n] for n in obj_neigh
+        ],
+        label=label
+    )
+
 class PredicateLoader(torch.utils.data.Dataset):
   def __init__(
       self,
@@ -73,43 +115,14 @@ class PredicateLoader(torch.utils.data.Dataset):
   def __len__(self):
     return len(self.predicate_index)
 
-  @staticmethod
-  def _sample_relevant_neighbors(
-      term:str,
-      excluded_term:str,
-      neighbors_per_term:int,
-      graph_index:Sqlite3Graph,
-  )->List[str]:
-    items = [
-        n for n in graph_index[term]
-        if excluded_term not in PredicateLoader.parse_predicate_name(n)
-    ]
-    if len(items) <= neighbors_per_term:
-      return items
-    else:
-      return random.sample(items, neighbors_per_term)
-
   def __getitem__(self, idx:int)->PredicateObservation:
     predicate = self.predicate_index[idx]
     subj, _, obj = self.parse_predicate_name(predicate)
     subj = f"{dbu.MESH_TERM_TYPE}:{subj}"
     obj = f"{dbu.MESH_TERM_TYPE}:{obj}"
-    subj_neigh = self._sample_relevant_neighbors(
-        subj, obj, self.neighbors_per_term, self.graph_index
-    )
-    obj_neigh = self._sample_relevant_neighbors(
-        obj, subj, self.neighbors_per_term, self.graph_index
-    )
-    return PredicateObservation(
-        subject_embedding=self.embedding_index[subj],
-        object_embedding=self.embedding_index[obj],
-        subject_neighbor_embeddings=[
-          self.embedding_index[n] for n in subj_neigh
-        ],
-        object_neighbor_embeddings=[
-          self.embedding_index[n] for n in obj_neigh
-        ],
-        label=1
+    return generate_predicate_observation(
+        subj, obj, self.neighbors_per_term, self.graph_index,
+        self.embedding_index, 1
     )
 
 
@@ -145,26 +158,13 @@ class TestPredicateLoader(torch.utils.data.Dataset):
     subj, obj, label = self.subjs_objs_labels[idx]
     subj = f"{dbu.MESH_TERM_TYPE}:{subj}"
     obj = f"{dbu.MESH_TERM_TYPE}:{obj}"
-    subj_neigh = PredicateLoader._sample_relevant_neighbors(
-        subj, obj, self.neighbors_per_term, self.graph_index
-    )
-    obj_neigh = PredicateLoader._sample_relevant_neighbors(
-        obj, subj, self.neighbors_per_term, self.graph_index
-    )
-    return PredicateObservation(
-        subject_embedding=self.embedding_index[subj],
-        object_embedding=self.embedding_index[obj],
-        subject_neighbor_embeddings=[
-          self.embedding_index[n] for n in subj_neigh
-        ],
-        object_neighbor_embeddings=[
-          self.embedding_index[n] for n in obj_neigh
-        ],
-        label=label,
+    return generate_predicate_observation(
+        subj, obj, self.neighbors_per_term, self.graph_index,
+        self.embedding_index, 1
     )
 
 
-def oservation_to_tensors(samples:List[PredicateObservation])->HypothesisTensors:
+def observations_to_tensors(samples:List[PredicateObservation])->HypothesisTensors:
   return HypothesisTensors(
       subject_embedding=torch.FloatTensor([
         s.subject_embedding for s in samples
@@ -218,7 +218,7 @@ def generate_negative_scramble_batch(
       ],
       label=0,
     ))
-  return oservation_to_tensors(negative_samples)
+  return observations_to_tensors(negative_samples)
 
 def generate_negative_swap_batch(
     positive_samples:List[PredicateObservation]
@@ -238,7 +238,7 @@ def generate_negative_swap_batch(
           positive_samples[oidx].object_neighbor_embeddings,
       label=0,
     ))
-  return oservation_to_tensors(negative_samples)
+  return observations_to_tensors(negative_samples)
 
 def predicate_collate(
     positive_samples:List[PredicateObservation],
@@ -253,7 +253,7 @@ def predicate_collate(
   all others.
   """
   assert neg_swaps_per + neg_scrambles_per > 0, "Must set some negative samples"
-  res  = [oservation_to_tensors(positive_samples)]
+  res  = [observations_to_tensors(positive_samples)]
   if neg_scrambles_per > 0:
     res += [
       generate_negative_scramble_batch(positive_samples, neighbors_per_term)

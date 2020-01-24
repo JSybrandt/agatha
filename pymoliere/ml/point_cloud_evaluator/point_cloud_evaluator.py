@@ -121,7 +121,9 @@ class PointCloudEvaluator(pl.LightningModule):
     }
 
   def validation_step(self, batch, batch_idx):
-    return self.training_step(batch, batch_idx)["log"]
+    metrics = self.training_step(batch, batch_idx)["log"]
+    metrics["val_loss"] = metrics["loss"]
+    return metrics
 
   def _on_end(self, outputs):
     metrics = {}

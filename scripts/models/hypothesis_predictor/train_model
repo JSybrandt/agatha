@@ -49,11 +49,15 @@ else
       --sqlite-embedding-path $EMB_LOC_DB                             \
       --sqlite-graph-path $SEMMEDDB_GRAPH                             \
       --model-ckpt-dir $MODEL_CKPT_DIR                                \
-      --positives-per-batch 400                                       \
-      --neg-swap-rate 7                                               \
-      --neg-scramble-rate 0                                           \
-      --neighbors-per-term 10                                         \
-      --train-fraction 0.01                                           \
+      --margin 0.1 \
+      --transformer-ff-dim 512 \
+      --transformer-layers 4 \
+      --positives-per-batch 40                                        \
+      --neg-swap-rate 40                                              \
+      --neg-scramble-rate 5                                           \
+      --neighbors-per-term 30                                         \
+      --train-fraction 0.1                                           \
+      --validation-fraction 0.01                                      \
       --test-data-dir $TEST_BENCHMARK
 
 fi

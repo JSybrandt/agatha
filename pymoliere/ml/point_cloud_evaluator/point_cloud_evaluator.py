@@ -29,7 +29,7 @@ class PointCloudEvaluator(pl.LightningModule):
         entity_types="l"
     )
 
-    graph_index = Sqlite3Graph(self.hparams.sqlite_graph).__enter__()
+    graph_index = PreloadedSqlite3Graph(self.hparams.sqlite_graph).__enter__()
 
     # Data set
     all_sentences = PointCloudDataset(

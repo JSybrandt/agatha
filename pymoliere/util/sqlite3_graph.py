@@ -19,52 +19,29 @@ class Sqlite3Graph(object):
         node=?
       ;
     """
-    self.node_exists_stmt = """
-    SELECT
-      EXISTS(
-        SELECT
-          1
-        FROM
-          graph
-        WHERE
-          node=?
-      )
-    ;
-    """
     self.db_path = db_path
     self.db_conn = None
     self.db_cursor = None
-    self._contains_cache = {}
-    self._item_cache = {}
+    self._cache = {}
 
   def __contains__(self, entity:str)->bool:
     assert self.db_cursor is not None, "__contains__ called outside of with"
-    cache_res = self._contains_cache.get(entity)
-    if cache_res is None:
-      cache_res = self._contains_cache[entity] = (
-          self.db_cursor.execute(
-            self.node_exists_stmt,
-            (entity,)
-          )
-          .fetchone()[0]
-          == 1  # EXISTS returns 0 or 1
+    res = self._cache.get(entity, "Missing")
+    if res == "Missing":
+      dl = (
+          self.db_cursor
+          .execute(self.select_neighbors_stmt, (entity,))
+          .fetchone()
       )
-    return cache_res
+      if dl is not None:
+        dl = set(json.loads(dl[0]))
+      res = self._cache[entity] = dl
+    return res is not None
 
   def __getitem__(self, entity:str)->Set[str]:
     assert self.db_cursor is not None, "__getitem__ called outside of with"
-    cache_res = self._item_cache.get(entity)
-    if cache_res is None:
-      cache_res = self._item_cache[entity] = set(
-          json.loads(
-            self.db_cursor.execute(
-              self.select_neighbors_stmt,
-              (entity,)
-            )
-            .fetchone()[0]
-        )
-      )
-    return cache_res
+    assert entity in self
+    return self._cache[entity]
 
   def _config_connection(self)->None:
     self.db_conn.execute('PRAGMA journal_mode = OFF')

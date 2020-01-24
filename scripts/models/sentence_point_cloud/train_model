@@ -16,7 +16,8 @@ if [[ ! -z "$1" ]]; then
     --positives-per-batch 256 \
     --neg-scramble-rate 7 \
     --transformer-layers 4 \
-    --transformer-heads 8
+    --transformer-heads 8 \
+    --train-fraction 0.01
 else
 
   NODEFILE=$PBS_NODEFILE

@@ -31,6 +31,7 @@ if __name__ == "__main__":
       nb_gpu_nodes=args.train_num_machines if args.distributed else 1,
       distributed_backend='ddp' if args.distributed else None,
       train_percent_check=args.train_fraction,
+      val_percent_check=args.train_fraction,
       track_grad_norm=2 if args.debug else -1,
       overfit_pct=0.01 if args.debug else 0,
       weights_summary='full',

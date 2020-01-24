@@ -84,11 +84,15 @@ class PointCloudDataset(torch.utils.data.Dataset):
 
   def __getitem__(self, idx:int)->PointCloudObservation:
     name = self.sentence_names[idx]
-    valid_neighbors = [
-        n for n in self.graph_index[name] if n[0] == self.neigh_type
-    ]
-    if len(valid_neighbors) > self.max_neighbors:
-      valid_neighbors = random.sample(valid_neighbors, self.max_neighbors)
+    if name not in self.graph_index:
+      print("ERROR WITH", name)
+      valid_neighbors = []
+    else:
+      valid_neighbors = [
+          n for n in self.graph_index[name] if n[0] == self.neigh_type
+      ]
+      if len(valid_neighbors) > self.max_neighbors:
+        valid_neighbors = random.sample(valid_neighbors, self.max_neighbors)
     return PointCloudObservation(
         lemma_embeddings=[
           self.embedding_index[n] for n in valid_neighbors

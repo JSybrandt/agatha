@@ -8,7 +8,7 @@ from pymoliere.ml.point_cloud_evaluator.dataset import (
     collate_point_clouds,
 )
 from pymoliere.ml.util.embedding_index import PreloadedEmbeddingIndex
-from pymoliere.util.sqlite3_graph import PreloadedSqlite3Graph, Sqlite3Graph
+from pymoliere.util.sqlite3_graph import Sqlite3Graph
 from sklearn.metrics import (
     average_precision_score,
     roc_auc_score,
@@ -29,7 +29,7 @@ class PointCloudEvaluator(pl.LightningModule):
         entity_types="l"
     )
 
-    graph_index = PreloadedSqlite3Graph(self.hparams.sqlite_graph).__enter__()
+    graph_index = Sqlite3Graph(self.hparams.sqlite_graph).__enter__()
 
     # Data set
     all_sentences = PointCloudDataset(

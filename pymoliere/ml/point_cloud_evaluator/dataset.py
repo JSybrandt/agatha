@@ -78,11 +78,14 @@ class PointCloudDataset(torch.utils.data.Dataset):
     self.embedding_index = embedding_index
     self.graph_index = graph_index
     self.sentence_names = EntityIndex(entity_dir, source_type)
+    self.first_call = True
 
   def __len__(self):
     return len(self.sentence_names)
 
   def __getitem__(self, idx:int)->PointCloudObservation:
+    if self.first_call:
+      self.graph_index.__enter__()
     name = self.sentence_names[idx]
     if name not in self.graph_index:
       print("ERROR WITH", name)

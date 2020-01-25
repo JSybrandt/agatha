@@ -17,7 +17,7 @@ if [[ ! -z "$1" ]]; then
     --neg-scramble-rate 7 \
     --transformer-layers 4 \
     --transformer-heads 8 \
-    --train-fraction 0.01
+    --train-fraction 0.005
 else
 
   NODEFILE=$PBS_NODEFILE

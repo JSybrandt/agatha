@@ -195,6 +195,8 @@ class HypothesisPredictor(pl.LightningModule):
         neg_scrambles_per=self.hparams.neg_scramble_rate,
         neg_swaps_per=self.hparams.neg_swap_rate,
         neighbors_per_term=self.hparams.neighbors_per_term,
+        graph_index=self.graph_index,
+        embedding_index=self.embedding_index,
     )
     return torch.utils.data.DataLoader(
         dataset=self.training_data,
@@ -202,7 +204,7 @@ class HypothesisPredictor(pl.LightningModule):
         sampler=sampler,
         batch_size=self.hparams.positives_per_batch,
         collate_fn=collate,
-        num_workers=4,
+        num_workers=3,
     )
 
   @pl.data_loader
@@ -348,3 +350,4 @@ class HypothesisPredictor(pl.LightningModule):
         rank=proc_rank,
         world_size=world_size*self.hparams.train_num_machines
     )
+

@@ -50,14 +50,15 @@ else
       --sqlite-graph-path $SEMMEDDB_GRAPH                             \
       --model-ckpt-dir $MODEL_CKPT_DIR                                \
       --margin 0.1 \
+      --dim 512 \
       --transformer-ff-dim 1024 \
       --transformer-layers 4 \
-      --transformer-heads 8 \
+      --transformer-heads 16 \
       --positives-per-batch 20                                        \
       --neg-swap-rate 30                                              \
       --neg-scramble-rate 10                                          \
-      --neighbors-per-term 20                                         \
-      --train-fraction 0.1                                            \
+      --neighbors-per-term 15                                         \
+      --train-fraction 0.01                                           \
       --validation-fraction 0.01                                      \
       --test-data-dir $TEST_BENCHMARK
 

@@ -5,7 +5,7 @@ from pymoliere.ml.util.embedding_index import (
 from pymoliere.util import database_util as dbu
 from pathlib import Path
 import torch
-from typing import Dict, Tuple, Any, List
+from typing import Dict, Tuple, Any, List, Set
 import random
 from copy import deepcopy
 from itertools import chain
@@ -23,6 +23,8 @@ class HypothesisTensors:
 
 @dataclass
 class PredicateObservation:
+  subject_name:str
+  object_name:str
   subject_embedding:np.array
   object_embedding:np.array
   subject_neighbor_embeddings:List[np.array]
@@ -79,6 +81,8 @@ def generate_predicate_observation(
         obj, subj, neighbors_per_term, graph_index
     )
     return PredicateObservation(
+        subject_name=subj,
+        object_name=obj,
         subject_embedding=embedding_index[subj],
         object_embedding=embedding_index[obj],
         subject_neighbor_embeddings=[
@@ -206,6 +210,8 @@ def generate_negative_scramble_batch(
   # Create a negative sample for each positive
   for _ in positive_samples:
     negative_samples.append(PredicateObservation(
+      subject_name=None,  # these fields will not be used in the to-tensors
+      object_name=None,
       subject_embedding=random.choice(all_entities),
       object_embedding=random.choice(all_entities),
       subject_neighbor_embeddings=[
@@ -220,22 +226,51 @@ def generate_negative_scramble_batch(
     ))
   return observations_to_tensors(negative_samples)
 
+def neighbor_entities(predicates:List[str])->Set[str]:
+  res = set()
+  for pred in predicates:
+    s, _, o = PredicateLoader.parse_predicate_name(pred)
+    res.add(s)
+    res.add(o)
+  return res
+
 def generate_negative_swap_batch(
-    positive_samples:List[PredicateObservation]
+    positive_samples:List[PredicateObservation],
+    neighbors_per_term:int,
+    graph_index:Sqlite3Graph,
+    embedding_index:EmbeddingIndex,
 )->HypothesisTensors:
   negative_samples = []
-  sample_indices = list(range(len(positive_samples)))
+  all_entities = set()
+  for s in positive_samples:
+    all_entities.add(s.subject_name)
+    all_entities.add(s.object_name)
+  all_entities = list(all_entities)
+
   for _ in positive_samples:
-    sidx = oidx = random.choice(sample_indices)
-    while oidx == sidx:
-      oidx = random.choice(sample_indices)
+    subject_name = random.choice(all_entities)
+    # Note that subj_name is in invalid_partners
+    invalid_partnerns = neighbor_entities(graph_index[subject_name])
+    object_name = random.choice(all_entities)
+    while object_name in invalid_partnerns:
+      object_name = random.choice(all_entities)
+    subj_neigh = _sample_relevant_neighbors(
+        subject_name, object_name, neighbors_per_term, graph_index
+    )
+    obj_neigh = _sample_relevant_neighbors(
+        object_name, subject_name, neighbors_per_term, graph_index
+    )
     negative_samples.append(PredicateObservation(
-      subject_embedding=positive_samples[sidx].subject_embedding,
-      object_embedding=positive_samples[oidx].object_embedding,
-      subject_neighbor_embeddings=\
-          positive_samples[sidx].subject_neighbor_embeddings,
-      object_neighbor_embeddings=\
-          positive_samples[oidx].object_neighbor_embeddings,
+      subject_name=subject_name,
+      object_name=object_name,
+      subject_embedding=embedding_index[subject_name],
+      object_embedding=embedding_index[object_name],
+      subject_neighbor_embeddings=[
+        embedding_index[n] for n in subj_neigh
+      ],
+      object_neighbor_embeddings=[
+        embedding_index[n] for n in obj_neigh
+      ],
       label=0,
     ))
   return observations_to_tensors(negative_samples)
@@ -245,6 +280,8 @@ def predicate_collate(
     neg_scrambles_per:int,
     neg_swaps_per:int,
     neighbors_per_term:int,
+    graph_index:Sqlite3Graph,
+    embedding_index:EmbeddingIndex,
 )->List[HypothesisTensors]:
   """
   Outputs a list of comparisons. The FIRST element of the list is the
@@ -261,7 +298,11 @@ def predicate_collate(
     ]
   if neg_swaps_per > 0:
     res += [
-      generate_negative_swap_batch(positive_samples)
-      for _ in range(neg_swaps_per)
+      generate_negative_swap_batch(
+        positive_samples,
+        neighbors_per_term,
+        graph_index,
+        embedding_index
+      ) for _ in range(neg_swaps_per)
     ]
   return res

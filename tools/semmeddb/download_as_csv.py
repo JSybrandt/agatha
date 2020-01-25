@@ -20,9 +20,11 @@ QUERY="""
       p.subject_cui AS subj_ids,
       p.subject_name AS subj_names,
       a.subject_text AS subj_text,
+      p.subject_semtype AS subj_type,
       p.object_cui AS obj_ids,
       p.object_name AS obj_names,
-      a.object_text AS obj_text
+      a.object_text AS obj_text,
+      p.object_semtype AS obj_type
   FROM
     PREDICATION AS p
       JOIN SENTENCE AS s ON p.sentence_id = s.sentence_id
@@ -33,7 +35,8 @@ QUERY="""
 """
 FIELD_NAMES = [
   'date', 'pmid', 'sent_idx', 'ti_or_ab', 'pred_type', 'subj_ids',
-  'subj_names', 'subj_text', 'obj_ids', 'obj_names', 'obj_text',
+  'subj_names', 'subj_text', 'subj_type', 'obj_ids', 'obj_names', 'obj_text',
+  'obj_type',
 ]
 
 DATE_FORMAT = "%Y-%m-%d"

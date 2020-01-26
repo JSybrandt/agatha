@@ -175,6 +175,7 @@ def group_and_filter_parsed_sentences(
     sentences:Iterable[Record]
 )->Iterable[Record]:
   # use pmid:version to index
+  print("STARTING")
   abstracts = {}
   for sentence in sentences:
     # The abstract must contain at least three sentences. This discards

@@ -78,7 +78,12 @@ class HypothesisPredictor(pl.LightningModule):
       self.hparams.dim, 1
     )
     # Extra
-    self.loss_fn = torch.nn.MarginRankingLoss(margin=self.hparams.margin)
+    # backwards compatability
+    if hasattr(self.hparams, "margin"):
+      margin = self.hparams.margin
+    else:
+      margin = 0.1
+    self.loss_fn = torch.nn.MarginRankingLoss(margin=margin)
 
   def _tensors_to_device(self, b:HypothesisTensors)->HypothesisTensors:
     device = next(self.parameters()).device
@@ -184,27 +189,30 @@ class HypothesisPredictor(pl.LightningModule):
   def test_end(self, outputs):
     return self._on_end(outputs)
 
-  def _config_dl(self, dataset):
-    shuffle=True
-    sampler=None
-    if self.hparams.distributed:
-      shuffle=False
-      sampler=torch.utils.data.distributed.DistributedSampler(dataset)
-    collate = lambda batch: predicate_collate(
-        positive_samples=batch,
+  def _predicate_collate(self, positive_samples):
+    return predicate_collate(
+        positive_samples,
         neg_scrambles_per=self.hparams.neg_scramble_rate,
         neg_swaps_per=self.hparams.neg_swap_rate,
         neighbors_per_term=self.hparams.neighbors_per_term,
         graph_index=self.graph_index,
         embedding_index=self.embedding_index,
     )
+
+  def _config_dl(self, dataset):
+    shuffle=True
+    sampler=None
+    if self.hparams.distributed:
+      shuffle=False
+      sampler=torch.utils.data.distributed.DistributedSampler(dataset)
     return torch.utils.data.DataLoader(
         dataset=self.training_data,
         shuffle=shuffle,
         sampler=sampler,
         batch_size=self.hparams.positives_per_batch,
-        collate_fn=collate,
-        num_workers=3,
+        collate_fn=self._predicate_collate,
+        pin_memory=True,
+        #num_workers=2,
     )
 
   @pl.data_loader

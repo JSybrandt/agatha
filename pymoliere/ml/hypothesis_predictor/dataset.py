@@ -226,13 +226,16 @@ def generate_negative_scramble_batch(
     ))
   return observations_to_tensors(negative_samples)
 
-def neighbor_entities(predicates:List[str])->Set[str]:
-  res = set()
-  for pred in predicates:
-    s, _, o = PredicateLoader.parse_predicate_name(pred)
-    res.add(s)
-    res.add(o)
-  return res
+def get_valid_negatives(entities:List[str], graph:Sqlite3Graph)->Set[Tuple[str, str]]:
+  ent2neg_partners = {}
+  for ent in entities:
+    pos = set()
+    for predicate in graph[ent]:
+      s, _, o = PredicateLoader.parse_predicate_name(predicate)
+      pos.add(s)
+      pos.add(o)
+    ent2neg_partners[ent] = [e for e in entities if e not in pos]
+  return ent2neg_partners
 
 def generate_negative_swap_batch(
     positive_samples:List[PredicateObservation],
@@ -247,13 +250,11 @@ def generate_negative_swap_batch(
     all_entities.add(s.object_name)
   all_entities = list(all_entities)
 
+  ent2neg_partners = get_valid_negatives(all_entities, graph_index)
+
   for _ in positive_samples:
     subject_name = random.choice(all_entities)
-    # Note that subj_name is in invalid_partners
-    invalid_partnerns = neighbor_entities(graph_index[subject_name])
-    object_name = random.choice(all_entities)
-    while object_name in invalid_partnerns:
-      object_name = random.choice(all_entities)
+    object_name = random.choice(ent2neg_partners[subject_name])
     subj_neigh = _sample_relevant_neighbors(
         subject_name, object_name, neighbors_per_term, graph_index
     )

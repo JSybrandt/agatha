@@ -17,6 +17,7 @@ from pymoliere.ml.util.kv_store_dataset import KVStoreDictDataset
 
 class AbstractGenerator(pl.LightningModule):
   def __init__(self, hparams:Namespace):
+    print(hparams)
     super(AbstractGenerator, self).__init__()
     self.hparams = hparams
     self.init_tokenizer()

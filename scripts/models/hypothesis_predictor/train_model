@@ -23,7 +23,6 @@ if [ -z "$1" ]; then
     --ungroup \
     -j 1 \
     """
-      sleep {}
       echo Starting {}
       python3 -m pymoliere.ml.hypothesis_predictor                      \
         --entity-dir $ENTITIES                                          \
@@ -31,13 +30,20 @@ if [ -z "$1" ]; then
         --sqlite-embedding-path $EMB_LOC_DB                             \
         --sqlite-graph-path $SEMMEDDB_GRAPH                             \
         --model-ckpt-dir $MODEL_CKPT_DIR                                \
-        --positives-per-batch 400                                       \
-        --neg-swap-rate 7                                               \
-        --neg-scramble-rate 0                                           \
-        --neighbors-per-term 10                                         \
-        --test-data-dir $TEST_BENCHMARK                                 \
-        --train-num-machines $NUM_NODES                                 \
-        --train-fraction 0.1                                            \
+        --margin 0.1 \
+        --dim 512 \
+        --transformer-ff-dim 1024 \
+        --transformer-layers 4 \
+        --transformer-heads 16 \
+        --positives-per-batch 15                                        \
+        --neg-swap-rate 30                                              \
+        --neg-scramble-rate 10                                          \
+        --neighbors-per-term 15                                         \
+        --train-fraction 0.005                                           \
+        --validation-fraction 0.01                                      \
+        --test-data-dir $TEST_BENCHMARK \
+        --lr 0.01 \
+        --train-num-machines $NUM_NODES \
         --distributed
     """ ::: $(seq $NUM_NODES)
 
@@ -54,12 +60,13 @@ else
       --transformer-ff-dim 1024 \
       --transformer-layers 4 \
       --transformer-heads 16 \
-      --positives-per-batch 20                                        \
+      --positives-per-batch 30                                        \
       --neg-swap-rate 30                                              \
       --neg-scramble-rate 10                                          \
       --neighbors-per-term 15                                         \
-      --train-fraction 0.01                                           \
+      --train-fraction 0.005                                           \
       --validation-fraction 0.01                                      \
-      --test-data-dir $TEST_BENCHMARK
+      --test-data-dir $TEST_BENCHMARK \
+      --lr 0.01
 
 fi

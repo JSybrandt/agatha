@@ -17,6 +17,7 @@ def get_sqlite_files(base_dir:Path)->List[Path]:
 
 class KVStoreDictDataset(Dataset):
   def __init__(self, db_dir:Path):
+    db_dir = Path(db_dir)
     super(KVStoreDictDataset, self).__init__()
     assert db_dir.is_dir(), "Must supply a dir"
     self.db_paths = get_sqlite_files(db_dir)

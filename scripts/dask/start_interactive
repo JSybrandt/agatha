@@ -1,7 +1,8 @@
 #!/bin/bash
 
-THREADS=${1:-16}
-MEM=${2:-60GB}
+PROCS=${1:-1}
+THREADS=${2:-16}
+MEM=${3:-60GB}
 
 DASK_WORKER_LOCAL=/tmp/__dask__
 DASK_WORKER_SHARED=/scratch4/$USER/__dask__
@@ -37,7 +38,7 @@ parallel \
     echo Starting {} on \$HOSTNAME
     dask-worker \
       $HOSTNAME:$DASK_PORT \
-      --nprocs 1 \
+      --nprocs $PROCS \
       --nthreads $THREADS \
       --memory-limit $MEM \
       --local-directory $DASK_WORKER_LOCAL \

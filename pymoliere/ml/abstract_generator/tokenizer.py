@@ -44,6 +44,8 @@ class AbstractGeneratorTokenizer(object):
       extra_data_path:Path,
       lowercase:bool,
   ):
+    tokenizer_model_path = Path(tokenizer_model_path)
+    extra_data_path = Path(extra_data_path)
     assert tokenizer_model_path.is_file()
     assert extra_data_path.is_file()
 

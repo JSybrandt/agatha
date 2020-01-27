@@ -38,11 +38,9 @@ def get_model_from_config(
     return AbstractGenerator.load_from_checkpoint(config.restore_from_checkpoint)
   else:
     return AbstractGenerator(Namespace(
-        tokenizer_kwargs=dict(
-          tokenizer_model_path=tokenizer_model_path,
-          extra_data_path=extra_data_path,
-          lowercase=config.lowercase,
-        ),
+        tokenizer_model_path=str(tokenizer_model_path),
+        extra_data_path=str(extra_data_path),
+        lowercase=config.lowercase,
         embedding_dim=config.embedding_dim,
         max_text_length=config.text_length,
         num_attention_heads=config.num_attention_heads,
@@ -50,11 +48,12 @@ def get_model_from_config(
         num_decoder_layers=config.num_decoder_layers,
         intermediate_dropout=0.1,
         intermediate_feedforward_dim=config.hidden_fc_size,
-        training_data_dir=paths["training_db_dir"],
+        training_data_dir=str(paths["training_db_dir"]),
         batch_size=config.sys.batch_size,
         warmup_steps=config.num_warmup_steps,
         learning_rate=config.sys.learning_rate,
         dataset_workers=4,
+        train_num_machines=config.num_nodes,
     ))
 
 def get_device(config:cpb.AbstractGeneratorConfig)->torch.device:
@@ -68,22 +67,22 @@ def train(config:cpb.AbstractGeneratorConfig):
   model = get_model_from_config(config)
 
   print("Configuring trainer")
-  logger = TestTubeLogger(
-      save_dir=paths['model_root_dir'],
-      version=config.checkpoint_version,
-  )
-  # DEFAULTS used by the Trainer
-  checkpoint_callback = ModelCheckpoint(
-    filepath=paths["model_root_dir"],
-    save_best_only=False,
-    verbose=True,
-    monitor='loss',
-    mode='min',
-    prefix=''
-  )
+  # logger = TestTubeLogger(
+      # save_dir=paths['model_root_dir'],
+      # version=config.checkpoint_version,
+  # )
+  # # DEFAULTS used by the Trainer
+  # checkpoint_callback = ModelCheckpoint(
+    # filepath=paths["model_root_dir"],
+    # save_best_only=False,
+    # verbose=True,
+    # monitor='loss',
+    # mode='min',
+    # prefix=''
+  # )
 
   trainer = Trainer(
-      logger=logger,
+      #logger=logger,
       fast_dev_run=config.debug,
       gradient_clip_val=config.gradient_clip_val,
       default_save_path=paths['model_root_dir'],
@@ -93,7 +92,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       accumulate_grad_batches=config.accumulate_batches,
       early_stop_callback=None,
       train_percent_check=config.training_fraction,
-      checkpoint_callback=checkpoint_callback,
+      #checkpoint_callback=checkpoint_callback,
   )
   print("Training!")
   trainer.fit(model)

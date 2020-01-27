@@ -81,7 +81,9 @@ class AbstractGenerator(pl.LightningModule):
   def init_tokenizer(self):
     if not hasattr(self, "tokenizer"):
       self.tokenizer = AbstractGeneratorTokenizer(
-          **self.hparams.tokenizer_kwargs
+          tokenizer_model_path=self.hparams.tokenizer_model_path,
+          extra_data_path=self.hparams.extra_data_path,
+          lowercase=self.hparams.lowercase,
       )
 
 
@@ -212,7 +214,11 @@ class AbstractGenerator(pl.LightningModule):
     abstracts = KVStoreDictDataset(self.hparams.training_data_dir)
     encoder = datasets.EncodedAbstracts(
         abstract_ds=abstracts,
-        tokenizer_kwargs=self.hparams.tokenizer_kwargs,
+        tokenizer_kwargs=dict(
+            tokenizer_model_path=self.hparams.tokenizer_model_path,
+            extra_data_path=self.hparams.extra_data_path,
+            lowercase=self.hparams.lowercase,
+        ),
         max_text_length=self.hparams.max_text_length+1, # add one because we shift
         max_mesh_length=self.hparams.max_text_length-1, # remove one because year
     )
@@ -259,5 +265,5 @@ class AbstractGenerator(pl.LightningModule):
     torch.distributed.init_process_group(
         'gloo',
         rank=proc_rank,
-        world_size=world_size
+        world_size=world_size*self.hparams.train_num_machines
     )

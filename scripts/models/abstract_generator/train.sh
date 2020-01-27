@@ -4,26 +4,36 @@
 #PBS -e /dev/null
 #PBS -N train_ab_gen
 
-NODEFILE=$PBS_NODEFILE
-if [[ ! -f "$NODEFILE" ]]; then
-  NODEFILE=/home/jsybran/.nodefile
-fi
-if [[ ! -f "$NODEFILE" ]]; then
-  echo "Must supply a nodefile"
-  exit 1
-fi
 
-NUM_NODES=$(wc -l < $NODEFILE)
-echo Starting on $NUM_NODES nodes
+if [ ! -z "$1" ]; then
+  echo "Debug"
+  python3 -m pymoliere.ml.abstract_generator \
+    /zfs/safrolab/users/jsybran/pymoliere/configs/abstract_generator.conf \
+    --num_nodes 1
+else
 
-parallel \
-  --sshloginfile "$NODEFILE" \
-  --ungroup \
-  -j 1 \
-  """
-    echo Starting {} on \$HOSTNAME
-    python3 \
-      -m pymoliere.ml.abstract_generator \
-      /zfs/safrolab/users/jsybran/pymoliere/configs/abstract_generator.conf \
-      --num_nodes $NUM_NODES
-  """ ::: $(seq $NUM_NODES)
+  NODEFILE=$PBS_NODEFILE
+  if [[ ! -f "$NODEFILE" ]]; then
+    NODEFILE=/home/jsybran/.nodefile
+  fi
+  if [[ ! -f "$NODEFILE" ]]; then
+    echo "Must supply a nodefile"
+    exit 1
+  fi
+
+  NUM_NODES=$(wc -l < $NODEFILE)
+  echo Starting on $NUM_NODES nodes
+
+  parallel \
+    --sshloginfile "$NODEFILE" \
+    --ungroup \
+    -j 1 \
+    """
+      echo Starting {} on \$HOSTNAME
+      python3 \
+        -m pymoliere.ml.abstract_generator \
+        /zfs/safrolab/users/jsybran/pymoliere/configs/abstract_generator.conf \
+        --num_nodes $NUM_NODES
+    """ ::: $(seq $NUM_NODES)
+
+fi

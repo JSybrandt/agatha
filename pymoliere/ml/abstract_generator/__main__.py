@@ -1,26 +1,14 @@
 from argparse import Namespace
-import json
-from nltk.tokenize import sent_tokenize
-import os
 from pathlib import Path
-import pickle
 from pymoliere.config import config_pb2 as cpb, proto_util
 from pymoliere.ml.abstract_generator.abstract_generator import AbstractGenerator
 from pymoliere.ml.abstract_generator.generation_util import evaluate, name_thy_self
-from pymoliere.ml.abstract_generator.misc_util import OrderedIndex
 from pymoliere.ml.abstract_generator.path_util import get_paths
 from pymoliere.ml.abstract_generator.prep_training_data import prep, extract_predicates
-from pymoliere.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.logging import TestTubeLogger
 import random
-import sentencepiece as spm
-from sqlitedict import SqliteDict
-import sys
 import torch
-from tqdm import tqdm
-from typing import Iterable, List, Dict
 
 
 # Eval added as an alias for evaluate
@@ -67,32 +55,25 @@ def train(config:cpb.AbstractGeneratorConfig):
   model = get_model_from_config(config)
 
   print("Configuring trainer")
-  # logger = TestTubeLogger(
-      # save_dir=paths['model_root_dir'],
-      # version=config.checkpoint_version,
-  # )
-  # # DEFAULTS used by the Trainer
-  # checkpoint_callback = ModelCheckpoint(
-    # filepath=paths["model_root_dir"],
-    # save_best_only=False,
-    # verbose=True,
-    # monitor='loss',
-    # mode='min',
-    # prefix=''
-  # )
+  # DEFAULTS used by the Trainer
+  checkpoint_callback = ModelCheckpoint(
+    filepath=paths["model_root_dir"],
+    verbose=True,
+    monitor='val_loss',
+    mode='min',
+    prefix=''
+  )
 
   trainer = Trainer(
-      #logger=logger,
-      fast_dev_run=config.debug,
       gradient_clip_val=config.gradient_clip_val,
-      default_save_path=paths['model_root_dir'],
       gpus=-1,
       nb_gpu_nodes=config.num_nodes if config.HasField("num_nodes") else 1,
       distributed_backend='ddp',
       accumulate_grad_batches=config.accumulate_batches,
-      early_stop_callback=None,
       train_percent_check=config.training_fraction,
-      #checkpoint_callback=checkpoint_callback,
+      weights_summary='full',
+      default_save_path=paths["model_root_dir"],
+      checkpoint_callback=checkpoint_callback,
   )
   print("Training!")
   trainer.fit(model)

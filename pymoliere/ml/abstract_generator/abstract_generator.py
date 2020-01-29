@@ -66,6 +66,27 @@ class AbstractGenerator(pl.LightningModule):
     self.softmax = torch.nn.LogSoftmax(dim=2)
     self.loss_fn = torch.nn.NLLLoss()
 
+    # datasets
+    abstracts = KVStoreDictDataset(self.hparams.training_data_dir)
+    encoder = datasets.EncodedAbstracts(
+        abstract_ds=abstracts,
+        tokenizer_kwargs=dict(
+            tokenizer_model_path=self.hparams.tokenizer_model_path,
+            extra_data_path=self.hparams.extra_data_path,
+            lowercase=self.hparams.lowercase,
+        ),
+        max_text_length=self.hparams.max_text_length+1, # add one because we shift
+        max_mesh_length=self.hparams.max_text_length-1, # remove one because year
+    )
+
+    self.hparams.validation_fraction = 0.005
+    val_size = int(len(encoder)*self.hparams.validation_fraction)
+    train_size = len(encoder) - val_size
+    # split the dataset in two uneven parts
+    self.training_data, self.val_data = torch.utils.data.random_split(
+        encoder, [train_size, val_size]
+    )
+
   # These three functions are needed to not pickle the tokenizer
   def __getstate__(self):
     # We need to exclude the tokenizer
@@ -204,34 +225,43 @@ class AbstractGenerator(pl.LightningModule):
         'log': metrics,
     }
 
+  def validation_step(self, batch, batch_idx):
+    metrics = self.training_step(batch, batch_idx)["log"]
+    metrics["val_loss"] = metrics["loss"]
+    return metrics
+
   def _collate(self, batch):
     return datasets.shift_text_features_for_training(
         datasets.collate_encoded_abstracts(batch)
     )
-  @pl.data_loader
-  def train_dataloader(self):
+
+  def _get_dl(self, dataset):
     self.init_tokenizer()
-    abstracts = KVStoreDictDataset(self.hparams.training_data_dir)
-    encoder = datasets.EncodedAbstracts(
-        abstract_ds=abstracts,
-        tokenizer_kwargs=dict(
-            tokenizer_model_path=self.hparams.tokenizer_model_path,
-            extra_data_path=self.hparams.extra_data_path,
-            lowercase=self.hparams.lowercase,
-        ),
-        max_text_length=self.hparams.max_text_length+1, # add one because we shift
-        max_mesh_length=self.hparams.max_text_length-1, # remove one because year
-    )
-    sampler=torch.utils.data.distributed.DistributedSampler(encoder)
+    sampler=torch.utils.data.distributed.DistributedSampler(dataset)
     loader = torch.utils.data.DataLoader(
-        dataset=encoder,
+        dataset=dataset,
         sampler=sampler,
         batch_size=self.hparams.batch_size,
         collate_fn=self._collate,
-        #num_workers=self.hparams.dataset_workers,
     )
     return loader
 
+  @pl.data_loader
+  def train_dataloader(self):
+    return self._get_dl(self.training_data)
+
+  @pl.data_loader
+  def val_dataloader(self):
+    return self._get_dl(self.val_data)
+
+  def _on_end(self, outputs):
+    metrics = {}
+    for metric in outputs[0]:
+      metrics[metric] = torch.stack([x[metric] for x in outputs]).mean()
+    return metrics
+
+  def validation_end(self, outputs):
+    return self._on_end(outputs)
 
   def configure_optimizers(self):
     optimizer = Lamb(

@@ -12,7 +12,6 @@ import itertools
 import json
 import sys
 import dask
-from tqdm import tqdm
 from pymoliere.util.sqlite3_graph import Sqlite3Graph
 from pymoliere.util.sqlite3_bow import Sqlite3Bow
 
@@ -82,7 +81,7 @@ if __name__ == "__main__":
     print("Downloading Sentence Text for all", len(sentence_ids), "sentences")
     # List[List[str]]
     text_corpus = [
-        bow[s] for s in tqdm(sentence_ids) if s in bow
+        bow[s] for s in sentence_ids if s in bow
     ]
 
   print("Identifying potential query-specific stopwords")
@@ -93,17 +92,11 @@ if __name__ == "__main__":
       t for t, c in term2doc_freq.items()
       if c < min_support
   }
-  stopwords_over = {
-      t for t, c in term2doc_freq.items()
-      if c > max_support
-  }
   print(f"\t- {len(stopwords_under)} words occur less than {min_support} times")
-  print(f"\t- {len(stopwords_over)} words occur more than {max_support} times")
-  stopwords = stopwords_under.union(stopwords_over)
   sentence_ids, text_corpus = bow_util.filter_words(
       keys=sentence_ids,
       text_corpus=text_corpus,
-      stopwords=stopwords,
+      stopwords=stopwords_under,
   )
   print(f"\t- Reduced to {len(text_corpus)} documents")
   assert len(sentence_ids) == len(text_corpus)

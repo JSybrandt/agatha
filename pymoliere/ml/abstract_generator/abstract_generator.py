@@ -66,6 +66,10 @@ class AbstractGenerator(pl.LightningModule):
     self.softmax = torch.nn.LogSoftmax(dim=2)
     self.loss_fn = torch.nn.NLLLoss()
 
+    self.training_data = []
+    self.val_data = []
+
+  def init_datasets(self):
     # datasets
     abstracts = KVStoreDictDataset(self.hparams.training_data_dir)
     encoder = datasets.EncodedAbstracts(

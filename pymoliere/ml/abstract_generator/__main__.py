@@ -75,6 +75,7 @@ def train(config:cpb.AbstractGeneratorConfig):
       default_save_path=paths["model_root_dir"],
       checkpoint_callback=checkpoint_callback,
   )
+  model.init_datasets()
   print("Training!")
   trainer.fit(model)
 

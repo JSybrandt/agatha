@@ -15,7 +15,7 @@ LIBS+=-lsqlite3
 LIB_PATHS=
 LIB_PATHS+=-L/software/sqlite/3.21.0/lib
 
-EX=bow_json_to_sqlite
+EX=sent_json_to_sqlite
 
 $(EX): main.cc
 	$(CC) $(FLAGS) $(LIB_PATHS) -o $@ $(INCLUDES) $< $(LIBS)

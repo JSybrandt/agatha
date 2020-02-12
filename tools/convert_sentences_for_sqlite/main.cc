@@ -18,19 +18,27 @@ namespace fs = std::filesystem;
 namespace sql = sqlite_orm;
 
 
-struct BowEntry {
+struct SentenceEntry {
   std::string id;
   std::string json_encoded_bow;
-  BowEntry(std::string i, std::string j):id(i), json_encoded_bow(j){};
+  std::string text;
+  SentenceEntry(
+      const std::string& i,
+      const std::string& j,
+      const std::string k
+  ):
+    id(i),
+    json_encoded_bow(j),
+    text(k){};
 };
 
-std::list<BowEntry> parse_json_file(const fs::path& json_path){
-  std::list<BowEntry> res;
+std::list<SentenceEntry> parse_json_file(const fs::path& json_path){
+  std::list<SentenceEntry> res;
   std::fstream json_file(json_path, std::ios::in);
   std::string line;
   while(getline(json_file, line)){
     json id_bow = json::parse(line);
-    res.emplace_back(id_bow["id"], id_bow["bow"].dump());
+    res.emplace_back(id_bow["id"], id_bow["bow"].dump(), id_bow["sent_text"]);
   }
   json_file.close();
   return res;
@@ -65,10 +73,10 @@ int main(int argc, char** argv){
 
   std::cout << "Loading all bow" << std::endl;
   int num_finished = 0;
-  std::list<BowEntry> bag_entries;
+  std::list<SentenceEntry> bag_entries;
   #pragma omp parallel for schedule(dynamic)
   for(size_t i = 0; i < all_json_files.size(); ++i){
-    std::list<BowEntry> local_bags = parse_json_file(all_json_files[i]);
+    std::list<SentenceEntry> local_bags = parse_json_file(all_json_files[i]);
     #pragma omp critical
     {
       bag_entries.splice(bag_entries.end(), local_bags);
@@ -82,8 +90,9 @@ int main(int argc, char** argv){
       sqlite_path,
       sql::make_table(
         "sentences",
-        sql::make_column("id", &BowEntry::id),
-        sql::make_column("bow", &BowEntry::json_encoded_bow)
+        sql::make_column("id", &SentenceEntry::id),
+        sql::make_column("bow", &SentenceEntry::json_encoded_bow),
+        sql::make_column("text", &SentenceEntry::text)
       )
   );
   storage.sync_schema();

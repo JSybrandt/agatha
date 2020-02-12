@@ -14,10 +14,12 @@ if [[ ! -z "$1" ]]; then
     --entity-dir $ENTITIES \
     --embedding-dir $EMBEDDINGS \
     --positives-per-batch 256 \
-    --neg-scramble-rate 7 \
+    --neg-easy-rate 3 \
+    --neg-hard-rate 4 \
+    --neg-delete-rate 4 \
     --transformer-layers 4 \
     --transformer-heads 8 \
-    --train-fraction 0.005
+    --train-fraction 0.005 
 else
 
   NODEFILE=$PBS_NODEFILE

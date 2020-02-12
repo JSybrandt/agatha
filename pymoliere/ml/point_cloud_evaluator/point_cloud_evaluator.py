@@ -142,7 +142,9 @@ class PointCloudEvaluator(pl.LightningModule):
       sampler=torch.utils.data.distributed.DistributedSampler(dataset)
     collate = lambda batch: collate_point_clouds(
         positive_examples=batch,
-        neg_scrambles_per=self.hparams.neg_scramble_rate,
+        full_scrambles_per=self.hparams.neg_easy_rate,
+        fractional_scrambles_per=self.hparams.neg_hard_rate,
+        deletes_per=self.hparams.neg_delete_rate,
     )
     return torch.utils.data.DataLoader(
         dataset=self.training_data,
@@ -150,7 +152,7 @@ class PointCloudEvaluator(pl.LightningModule):
         sampler=sampler,
         batch_size=self.hparams.positives_per_batch,
         collate_fn=collate,
-        num_workers=4,
+        #num_workers=4,
     )
 
   @pl.data_loader
@@ -257,10 +259,22 @@ class PointCloudEvaluator(pl.LightningModule):
         default=512,
     )
     parser.add_argument(
-        "--neg-scramble-rate",
+        "--neg-easy-rate",
         type=int,
         default=10,
         help="A negative scramble draws the cloud sets randomly from batch"
+    )
+    parser.add_argument(
+        "--neg-hard-rate",
+        type=int,
+        default=10,
+        help="A negative scramble draws the cloud sets randomly from batch"
+    )
+    parser.add_argument(
+        "--neg-delete-rate",
+        type=int,
+        default=10,
+        help="A negative delete removes lemmas from the batch"
     )
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--distributed", action="store_true")

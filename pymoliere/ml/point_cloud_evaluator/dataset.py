@@ -17,28 +17,40 @@ class PointCloudTensors:
   lemmas:torch.FloatTensor
 
 def pointclouds_to_tensors(
-    samples:List[PointCloudObservation]
+    samples:List[PointCloudObservation],
 )->PointCloudTensors:
   return PointCloudTensors(
       # Seq Leng X Batch size X emb dim
-      lemmas=torch.nn.utils.rnn.pad_sequence([
-        torch.FloatTensor(s.lemma_embeddings) for s in samples
-      ]),
+      lemmas=torch.nn.utils.rnn.pad_sequence(
+        [torch.FloatTensor(s.lemma_embeddings) for s in samples]
+      ),
   )
 
 def sample_lemma(examples:List[PointCloudObservation]):
   return random.choice(random.choice(examples).lemma_embeddings)
 
-def generate_negative_scramble_batch(
-    positive_examples:List[PointCloudObservation]
+def generate_neg_batch(
+    positive_examples:List[PointCloudObservation],
+    scramble_prob:float=0.0,
+    drop_prob:float=0.0,
 )->PointCloudTensors:
+  def get_lemma_emb(pos_ref):
+    lemma_embeddings=[
+      (
+        sample_lemma(positive_examples)
+        if random.random() < scramble_prob else
+        emb
+      )
+      for emb in pos_ref.lemma_embeddings
+      if random.random() >= drop_prob
+    ]
+    if len(lemma_embeddings) == 0:
+      lemma_embeddings = [sample_lemma(positive_examples)]
+    return lemma_embeddings
+
   return pointclouds_to_tensors([
       PointCloudObservation(
-        # generate a random set of equal length
-        lemma_embeddings=[
-          sample_lemma(positive_examples)
-          for _ in pos_ref.lemma_embeddings
-        ]
+        lemma_embeddings=get_lemma_emb(pos_ref)
       )
       # Duplicate the sizes from each positive example
       for pos_ref in positive_examples
@@ -46,18 +58,23 @@ def generate_negative_scramble_batch(
 
 def collate_point_clouds(
     positive_examples:List[PointCloudObservation],
-    neg_scrambles_per:int,
+    full_scrambles_per:int,
+    fractional_scrambles_per:int,
+    deletes_per:int,
 )->List[PointCloudTensors]:
   """
   The first one is the positive sample, the rest are negatives
   """
-  assert neg_scrambles_per > 0
   positive_examples = [
       p for p in positive_examples if len(p.lemma_embeddings) > 0
   ]
   res = [pointclouds_to_tensors(positive_examples)]
-  for _ in range(neg_scrambles_per):
-    res.append(generate_negative_scramble_batch(positive_examples))
+  for _ in range(full_scrambles_per):
+    res.append(generate_neg_batch(positive_examples, scramble_prob=1.0))
+  for _ in range(fractional_scrambles_per):
+    res.append(generate_neg_batch(positive_examples, scramble_prob=0.1))
+  for _ in range(deletes_per):
+    res.append(generate_neg_batch(positive_examples, drop_prob=0.5))
   return res
 
 

@@ -1,7 +1,7 @@
 from distutils.command.build_py import build_py as _build_py
 from distutils.command.clean import clean as _clean
 from distutils.spawn import find_executable
-from pymoliere import __VERSION__
+from agatha import __VERSION__
 from setuptools import setup, Extension
 from setuptools.command.install import install as _install
 import os
@@ -10,9 +10,9 @@ import sys
 
 
 proto_src_files = [
-    "pymoliere/config/config.proto",
-    "pymoliere/query/query.proto",
-    "pymoliere/ml/abstract_generator/sentencepiece.proto"
+    "agatha/config/config.proto",
+    "agatha/query/query.proto",
+    "agatha/ml/abstract_generator/sentencepiece.proto"
 ]
 
 
@@ -83,9 +83,9 @@ class Install(_install):
 
 
 setup(
-    name='PyMoliere',
+    name='Agatha',
     version=__VERSION__,
-    packages=['pymoliere',],
+    packages=['agatha',],
     license='Creative Commons Attribution-Noncommercial-Share Alike license',
     long_description=open('README.md').read(),
     cmdclass={ 'clean': clean, 'build_py': build_py, "install":Install },
@@ -94,7 +94,7 @@ setup(
       "bokeh",
       "dask",
       "distributed",
-      "faiss-gpu",
+      "faiss-cpu",
       "filelock",
       "fsspec",
       "gensim",
@@ -108,7 +108,6 @@ setup(
       "paramiko",
       "plotille",
       "protobuf",
-      "pygsheets"
       "pygsheets",
       "pymongo",
       "pymysql",

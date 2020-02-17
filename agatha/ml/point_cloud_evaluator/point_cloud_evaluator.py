@@ -1,7 +1,6 @@
 import torch
 import pytorch_lightning as pl
 from argparse import Namespace, ArgumentParser
-from pathlib import Path
 from agatha.ml.point_cloud_evaluator.dataset import (
     PointCloudTensors,
     PointCloudDataset,

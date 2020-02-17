@@ -1,5 +1,5 @@
 import dask.bag as dbag
-from typing import Callable, Set, Iterable, List
+from typing import Callable, Iterable, List
 import networkx as nx
 from agatha.util.misc_util import Record
 from math import log

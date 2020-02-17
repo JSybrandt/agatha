@@ -1,5 +1,4 @@
 from argparse import Namespace
-from pathlib import Path
 from agatha.config import config_pb2 as cpb, proto_util
 from agatha.ml.abstract_generator.abstract_generator import AbstractGenerator
 from agatha.ml.abstract_generator.generation_util import evaluate, name_thy_self
@@ -7,7 +6,6 @@ from agatha.ml.abstract_generator.path_util import get_paths
 from agatha.ml.abstract_generator.prep_training_data import prep, extract_predicates
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
-import random
 import torch
 
 

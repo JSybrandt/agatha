@@ -8,13 +8,11 @@ from agatha.ml.hypothesis_predictor.dataset import (
     TestPredicateLoader,
     HypothesisTensors,
 )
-from typing import Dict, Any, List, Tuple
-from pathlib import Path
+from typing import List, Tuple
 from agatha.ml.abstract_generator.lamb_optimizer import Lamb
 from agatha.ml.util.embedding_index import EmbeddingIndex, PreloadedEmbeddingIndex
 from agatha.ml.util.entity_index import EntityIndex
 import agatha.util.database_util as dbu
-from copy import deepcopy
 from agatha.util.sqlite3_graph import Sqlite3Graph, PreloadedSqlite3Graph
 from sklearn.metrics import (
     average_precision_score,

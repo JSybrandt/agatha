@@ -2,7 +2,6 @@ from agatha.ml.abstract_generator.abstract_generator import (
     AbstractGenerator,
 )
 from copy import deepcopy
-import json
 import numpy as np
 from pathlib import Path
 import pickle
@@ -15,7 +14,7 @@ from agatha.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
 from agatha.util.misc_util import Record
 import re
 import torch
-from typing import Tuple, List, Iterable, Dict, Any
+from typing import Any, Dict, Iterable, Tuple
 import spacy
 import math
 try:

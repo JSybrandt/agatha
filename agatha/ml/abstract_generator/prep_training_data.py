@@ -13,7 +13,7 @@ import random
 import sentencepiece as spm
 from sqlitedict import SqliteDict
 import string
-from typing import Iterable, List, Dict, Optional
+from typing import Iterable, Optional
 from agatha.construct import dask_process_global as dpg
 
 def extract_predicates(config:cpb.AbstractGeneratorConfig):

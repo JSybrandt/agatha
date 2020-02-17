@@ -1,7 +1,6 @@
-from typing import Dict, List, Tuple, Optional, Set
+from typing import List, Optional, Set, Tuple
 from pathlib import Path
 from dataclasses import dataclass
-from copy import copy
 import json
 import numpy as np
 import h5py

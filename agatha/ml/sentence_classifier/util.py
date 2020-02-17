@@ -4,7 +4,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 import numpy as np
-from typing import List, Tuple, Any, Iterable
+from typing import Iterable, List, Tuple
 
 # NamedTuples did not play well with distributed pickles
 class TrainingData():

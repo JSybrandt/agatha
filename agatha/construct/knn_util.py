@@ -3,7 +3,7 @@ import dask.bag as dbag
 import faiss
 from pathlib import Path
 import numpy as np
-from typing import Iterable, List, Dict, Any, Callable, Optional, Tuple
+from typing import Iterable, List, Tuple
 from agatha.construct import (
     embedding_util,
     file_util,
@@ -18,8 +18,6 @@ from agatha.util.misc_util import Record
 import dask
 import networkx as nx
 from agatha.construct import dask_process_global as dpg
-import pickle
-from copy import copy
 
 
 ################################################################################

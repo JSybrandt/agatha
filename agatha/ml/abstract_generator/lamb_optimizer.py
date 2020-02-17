@@ -3,8 +3,6 @@
 
 """Lamb optimizer."""
 
-import collections
-import math
 
 import torch
 from torch.optim import Optimizer

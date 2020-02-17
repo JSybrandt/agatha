@@ -1,6 +1,5 @@
 import pytorch_lightning as pl
 from argparse import ArgumentParser
-from pathlib import Path
 from agatha.ml.hypothesis_predictor.hypothesis_predictor import (
     HypothesisPredictor
 )

@@ -59,7 +59,6 @@ def put(records:Iterable[Record], collection:str, **kwargs)->None:
       db[collection].insert(r)
     except pymongo.errors.InvalidOperation as e:
       print("Encountered non-fatal issue:",  e)
-      pass
 
 
 def get(

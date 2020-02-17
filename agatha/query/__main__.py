@@ -7,10 +7,7 @@ from agatha.config import config_pb2 as cpb, proto_util
 from agatha.query import path_util, bow_util
 from agatha.query import query_pb2 as qpb
 from agatha.util import database_util
-from typing import List, Set, Tuple
 import itertools
-import json
-import sys
 import dask
 from agatha.util.sqlite3_graph import Sqlite3Graph
 from agatha.util.sqlite3_bow import Sqlite3Bow

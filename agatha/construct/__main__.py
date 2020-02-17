@@ -20,7 +20,6 @@ from agatha.ml.sentence_classifier import (
     SentenceClassifier,
     LABEL2IDX as SENT_TYPE_SET,
 )
-from copy import copy
 from pathlib import Path
 import dask
 import dask.bag as dbag

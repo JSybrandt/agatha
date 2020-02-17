@@ -4,10 +4,8 @@ from pathlib import Path
 from agatha.construct import dask_process_global as dpg
 from agatha.util import database_util, misc_util
 from agatha.util.misc_util import Record
-from typing import List, Tuple, Any, Optional, Dict, Callable, Iterable, Set
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 import dask.bag as dbag
-import logging
-import math
 import spacy
 from dask import delayed
 import networkx as nx

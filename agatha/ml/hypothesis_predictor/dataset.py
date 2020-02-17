@@ -5,9 +5,8 @@ from agatha.ml.util.embedding_index import (
 from agatha.util import database_util as dbu
 from pathlib import Path
 import torch
-from typing import Dict, Tuple, Any, List, Set
+from typing import List, Set, Tuple
 import random
-from copy import deepcopy
 from itertools import chain
 from agatha.util.sqlite3_graph import Sqlite3Graph
 from dataclasses import dataclass

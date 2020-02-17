@@ -1,8 +1,7 @@
 import pickle
 import sentencepiece as spm
-from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Any, Dict
+from typing import Any, Dict, List
 from agatha.ml.abstract_generator.sentencepiece_pb2 import SentencePieceText
 from agatha.ml.abstract_generator.misc_util import (
     OrderedIndex,

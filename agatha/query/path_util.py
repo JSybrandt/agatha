@@ -1,9 +1,8 @@
-from typing import List, Optional, Tuple, Iterable, Set, Callable, Any
+from typing import Any, Callable, Iterable, List, Optional, Tuple
 from agatha.util import database_util
 from heapdict import heapdict
 import networkx as nx
 import numpy as np
-import heapq
 import pymongo
 from copy import copy
 from tqdm import tqdm

@@ -3,7 +3,6 @@ from pathlib import Path
 import json
 from typing import Set
 from math import log2
-from agatha.util.misc_util import iter_to_batches
 
 class Sqlite3Graph(object):
   def __init__(self, db_path:Path):

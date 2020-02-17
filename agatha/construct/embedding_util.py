@@ -1,4 +1,3 @@
-from dask.distributed import Lock
 from pathlib import Path
 from agatha.construct import dask_process_global as dpg
 from agatha.ml.sentence_classifier import (
@@ -13,9 +12,6 @@ from transformers import (
 )
 from torch.nn.utils.rnn import pad_sequence
 from typing import Tuple, Iterable, ClassVar
-import dask.bag as dbag
-import dask.dataframe as ddf
-import numpy as np
 import torch
 
 def get_pytorch_device_initalizer(

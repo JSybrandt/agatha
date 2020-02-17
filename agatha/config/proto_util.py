@@ -5,7 +5,6 @@ wraps multiple proto parsers, as well as parse_args_into_proto, which loads and
 augments a proto from the command line.
 """
 
-from agatha.config import config_pb2 as cpb
 from google.protobuf import (
   json_format,
   text_format,

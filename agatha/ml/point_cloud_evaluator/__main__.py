@@ -4,8 +4,6 @@ from agatha.ml.point_cloud_evaluator.point_cloud_evaluator import (
     PointCloudEvaluator,
 )
 from pathlib import Path
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.logging import TestTubeLogger
 
 if __name__ == "__main__":
   parser = ArgumentParser()

@@ -8,7 +8,6 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 import dask.bag as dbag
 import spacy
 from dask import delayed
-import networkx as nx
 
 # More details : https://spacy.io/api/annotation
 INTERESTING_POS_TAGS = {

@@ -10,10 +10,8 @@ from agatha.ml.hypothesis_predictor.dataset import (
 )
 from typing import List, Tuple
 from agatha.ml.abstract_generator.lamb_optimizer import Lamb
-from agatha.ml.util.embedding_index import EmbeddingIndex, PreloadedEmbeddingIndex
-from agatha.ml.util.entity_index import EntityIndex
-import agatha.util.database_util as dbu
-from agatha.util.sqlite3_graph import Sqlite3Graph, PreloadedSqlite3Graph
+from agatha.ml.util.embedding_index import PreloadedEmbeddingIndex
+from agatha.util.sqlite3_graph import PreloadedSqlite3Graph
 from sklearn.metrics import (
     average_precision_score,
     roc_auc_score,

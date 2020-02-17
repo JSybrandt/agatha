@@ -1,11 +1,10 @@
-import dask
 import dask.bag as dbag
 from dask.distributed import Client
 from pathlib import Path
 import pickle
 from agatha.config import config_pb2 as cpb
-from agatha.construct import dask_checkpoint, file_util, text_util, ftp_util
-from agatha.ml.abstract_generator.misc_util import OrderedIndex, items_to_ordered_index
+from agatha.construct import dask_checkpoint, file_util
+from agatha.ml.abstract_generator.misc_util import items_to_ordered_index
 from agatha.ml.abstract_generator.path_util import get_paths
 from agatha.ml.abstract_generator import predicate_util
 from agatha.util.misc_util import Record

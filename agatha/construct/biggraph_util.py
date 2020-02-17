@@ -3,12 +3,10 @@ import dask.bag as dbag
 from pathlib import Path
 from typing import Any, Dict, Set
 from agatha.util import database_util, misc_util
-import networkx  as nx
 from collections import defaultdict
-from itertools import chain, permutations, product
+from itertools import product
 import json
 import h5py
-import pandas as pd
 import pickle
 import random
 import string

@@ -1,5 +1,4 @@
 import torch
-from sqlitedict  import SqliteDict
 from torch.utils.data import Dataset
 from agatha.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
 import random

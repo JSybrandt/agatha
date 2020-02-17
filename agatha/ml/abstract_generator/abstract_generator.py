@@ -1,5 +1,4 @@
 import torch
-import sentencepiece as spm
 import math
 import pytorch_lightning as pl
 from agatha.ml.abstract_generator import datasets

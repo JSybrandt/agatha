@@ -1,8 +1,6 @@
 import torch
 from agatha.util.misc_util import Record
 import torch
-from torch import nn
-from torch.nn import functional as F
 import numpy as np
 from typing import Iterable, List, Tuple
 

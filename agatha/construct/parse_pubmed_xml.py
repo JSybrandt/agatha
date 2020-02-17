@@ -1,10 +1,7 @@
-from dask.delayed import delayed
-from dask.distributed import Client
 from lxml import etree
 from pathlib import Path
 from agatha.construct.file_util import copy_to_local_scratch
 from typing import List
-import dask.bag as dbag
 import gzip
 from agatha.util.misc_util import Record
 import re

@@ -65,3 +65,6 @@ paramiko
 # Used to make sure some things are working. Not as many unit tests as we
 # should have.
 pytest
+
+# Used to run the semmeddb tool
+fire

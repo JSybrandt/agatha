@@ -2,7 +2,7 @@ import dask
 import dask.bag as dbag
 from pathlib import Path
 from typing import Any, Dict, Set
-from agatha.util import database_util, misc_util
+from agatha.util import entity_types, misc_util
 from collections import defaultdict
 from itertools import product
 import json
@@ -29,10 +29,10 @@ def get_biggraph_config(config_path:Path)->Dict[Any, Any]:
 
 def get_valid_entity_symbols()->Set[str]:
   symbols = set(map(
-    lambda name: getattr(database_util, name),
-    filter(lambda name: name.endswith("_TYPE"), dir(database_util))
+    lambda name: getattr(entity_types, name),
+    filter(lambda name: name.endswith("_TYPE"), dir(entity_types))
   ))
-  # Check to make sure nothing weird happened in the database_util
+  # Check to make sure nothing weird happened in the entity_types
   for ent_name in symbols:
     assert len(ent_name) == 1, \
         "Database util has an unexpected value ending in _TYPE"

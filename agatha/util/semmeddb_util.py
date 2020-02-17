@@ -6,7 +6,7 @@ from collections import defaultdict
 from tqdm import tqdm
 from copy import copy
 from itertools import product
-from agatha.util.database_util import PREDICATE_TYPE
+from agatha.util.entity_types import PREDICATE_TYPE
 
 # Used to distinguish a reg string from %Y-%m-%d
 Datestr = str

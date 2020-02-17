@@ -1,0 +1,67 @@
+# None of the following requirements are necessary to use Agatha.
+# If you wish to construct the system yourself, or if you want to
+# Replicate our experiments, then you should:
+# pip install -r requirements.txt
+
+################################################################################
+# Required to Construct the Semantic Network ###################################
+################################################################################
+
+faiss-cpu
+fsspec
+lxml
+networkx
+nltk
+pandas
+pymongo
+spacy
+transformers
+
+# Required by the semmeddb conversion tool
+pymysql
+
+################################################################################
+# Required for Topic Model Queries #############################################
+################################################################################
+
+gensim
+networkx
+
+################################################################################
+# Required for Replication - Agatha ############################################
+################################################################################
+
+scispacy
+spacy
+
+# en_core_sci_lg
+https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.2.4/en_core_sci_lg-0.2.4.tar.gz
+
+################################################################################
+# Required for Replication - CBAG ##############################################
+################################################################################
+
+predpatt
+scispacy
+spacy
+spacy_conll
+
+# Used to store generated abstracts online
+pygsheets
+
+# en_ner_bionlp13cg_md
+https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.2.4/en_ner_bionlp13cg_md-0.2.4.tar.gz
+
+################################################################################
+# Quality of Life ##############################################################
+################################################################################
+
+# Dask web interface uses this.
+bokeh
+
+# Dask-ssh, which spawns a dask cluster, uses this
+paramiko
+
+# Used to make sure some things are working. Not as many unit tests as we
+# should have.
+pytest

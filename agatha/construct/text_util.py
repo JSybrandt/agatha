@@ -2,7 +2,7 @@ from copy import copy
 from nltk.tokenize import sent_tokenize
 from pathlib import Path
 from agatha.construct import dask_process_global as dpg
-from agatha.util import database_util, misc_util
+from agatha.util import entity_types, misc_util
 from agatha.util.misc_util import Record
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 import dask.bag as dbag
@@ -34,13 +34,13 @@ def get_sentence_id(
     version:int,
     sent_idx:int,
 )->str:
-  typ = database_util.SENTENCE_TYPE
+  typ = entity_types.SENTENCE_TYPE
   return f"{typ}:{pmid}:{version}:{sent_idx}"
 
 def token_to_id(
     token:Record,
 )->str:
-  typ = database_util.LEMMA_TYPE
+  typ = entity_types.LEMMA_TYPE
   lem = token["lemma"]
   pos = token["pos"]
   return f"{typ}:{pos}:{lem}".lower()
@@ -55,7 +55,7 @@ def entity_to_id(
       sentence=sentence,
       token_field=token_field
   )
-  typ = database_util.ENTITY_TYPE
+  typ = entity_types.ENTITY_TYPE
   return f"{typ}:{ent}".lower()
 
 def get_entity_text(
@@ -71,13 +71,13 @@ def get_entity_text(
 def mesh_to_id(
     mesh_code:str,
 )->str:
-  typ = database_util.MESH_TERM_TYPE
+  typ = entity_types.MESH_TERM_TYPE
   return f"{typ}:{mesh_code}".lower()
 
 def ngram_to_id(
     ngram_text:str,
 )->str:
-  typ = database_util.NGRAM_TYPE
+  typ = entity_types.NGRAM_TYPE
   return f"{typ}:{ngram_text}".lower()
 
 ################################################################################

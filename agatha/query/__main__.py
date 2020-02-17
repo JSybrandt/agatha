@@ -5,7 +5,7 @@ from pprint import pprint
 from agatha.config import config_pb2 as cpb, proto_util
 from agatha.query import path_util, bow_util
 from agatha.query import query_pb2 as qpb
-from agatha.util import database_util
+from agatha.util import entity_types
 from agatha.util.sqlite3_graph import Sqlite3Graph
 from agatha.util.sqlite3_bow import Sqlite3Bow
 
@@ -63,7 +63,7 @@ if __name__ == "__main__":
         path_util.get_nearby_nodes(
           graph_index=graph_index,
           source=path_node,
-          key_type=database_util.SENTENCE_TYPE,
+          key_type=entity_types.SENTENCE_TYPE,
           max_result_size=config.max_sentences_per_path_elem,
           max_degree=config.max_degree,
           cached_graph=cached_graph,

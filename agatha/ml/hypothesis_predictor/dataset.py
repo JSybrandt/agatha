@@ -2,7 +2,7 @@ from agatha.ml.util.entity_index import EntityIndex
 from agatha.ml.util.embedding_index import (
     PreloadedEmbeddingIndex, EmbeddingIndex
 )
-from agatha.util import database_util as dbu
+from agatha.util import entity_types as et
 from pathlib import Path
 import torch
 from typing import List, Set, Tuple
@@ -102,7 +102,7 @@ class PredicateLoader(torch.utils.data.Dataset):
       neighbors_per_term:int,
   ):
     self.predicate_index = EntityIndex(
-        entity_dir, entity_type=dbu.PREDICATE_TYPE
+        entity_dir, entity_type=et.PREDICATE_TYPE
     )
     self.embedding_index = embedding_index
     self.graph_index = graph_index
@@ -112,7 +112,7 @@ class PredicateLoader(torch.utils.data.Dataset):
   def parse_predicate_name(predicate_name:str)->Tuple[str, str, str]:
     components = predicate_name.split(":")
     assert len(components) == 4
-    assert components[0] == dbu.PREDICATE_TYPE
+    assert components[0] == et.PREDICATE_TYPE
     return components[1:]
 
   def __len__(self):
@@ -121,8 +121,8 @@ class PredicateLoader(torch.utils.data.Dataset):
   def __getitem__(self, idx:int)->PredicateObservation:
     predicate = self.predicate_index[idx]
     subj, _, obj = self.parse_predicate_name(predicate)
-    subj = f"{dbu.MESH_TERM_TYPE}:{subj}"
-    obj = f"{dbu.MESH_TERM_TYPE}:{obj}"
+    subj = f"{et.MESH_TERM_TYPE}:{subj}"
+    obj = f"{et.MESH_TERM_TYPE}:{obj}"
     return generate_predicate_observation(
         subj, obj, self.neighbors_per_term, self.graph_index,
         self.embedding_index, 1
@@ -159,8 +159,8 @@ class TestPredicateLoader(torch.utils.data.Dataset):
 
   def __getitem__(self, idx:int)->PredicateObservation:
     subj, obj, label = self.subjs_objs_labels[idx]
-    subj = f"{dbu.MESH_TERM_TYPE}:{subj}"
-    obj = f"{dbu.MESH_TERM_TYPE}:{obj}"
+    subj = f"{et.MESH_TERM_TYPE}:{subj}"
+    obj = f"{et.MESH_TERM_TYPE}:{obj}"
     return generate_predicate_observation(
         subj, obj, self.neighbors_per_term, self.graph_index,
         self.embedding_index, 1

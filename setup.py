@@ -95,6 +95,7 @@ setup(
       "cloudpickle",
       "dask",
       "distributed",
+      "gdown",  # Needed to download pretrained models
       "h5py",
       "numpy",
       "protobuf",

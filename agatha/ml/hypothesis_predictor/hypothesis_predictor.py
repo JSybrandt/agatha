@@ -7,11 +7,23 @@ from agatha.ml.hypothesis_predictor.dataset import (
     predicate_collate,
     TestPredicateLoader,
     HypothesisTensors,
+    observations_to_tensors,
+    generate_predicate_observation,
 )
 from typing import List, Tuple
+from agatha.util.entity_types import UMLS_TERM_TYPE, PREDICATE_TYPE
 from agatha.ml.abstract_generator.lamb_optimizer import Lamb
-from agatha.ml.util.embedding_index import PreloadedEmbeddingIndex
-from agatha.util.sqlite3_graph import PreloadedSqlite3Graph
+from agatha.ml.util.embedding_index import (
+    PreloadedEmbeddingIndex,
+    EmbeddingIndex,
+    PreloadedEmbeddingLocationIndex,
+)
+from agatha.util.sqlite3_graph import (
+    PreloadedSqlite3Graph,
+    Sqlite3Graph,
+)
+from agatha.util.misc_util import iter_to_batches
+from pathlib import Path
 from sklearn.metrics import (
     average_precision_score,
     roc_auc_score,
@@ -22,38 +34,6 @@ class HypothesisPredictor(pl.LightningModule):
     super(HypothesisPredictor, self).__init__()
     self.hparams = hparams
     assert self.hparams.neighbors_per_term > 0
-    # Helper data structures
-    self.embedding_index = PreloadedEmbeddingIndex(
-        embedding_dir=self.hparams.embedding_dir,
-        #emb_loc_db_path=self.hparams.sqlite_embedding_path,
-        entity_dir=self.hparams.entity_dir,
-        entity_types="mp"
-    )
-    self.graph_index = PreloadedSqlite3Graph(
-        self.hparams.sqlite_graph_path
-    ).__enter__()
-
-    # All predicates, will split
-    predicates = PredicateLoader(
-      embedding_index=self.embedding_index,
-      graph_index=self.graph_index,
-      entity_dir=self.hparams.entity_dir,
-      neighbors_per_term=self.hparams.neighbors_per_term,
-    )
-    # Validation samples
-    val_size = int(len(predicates)*self.hparams.validation_fraction)
-    train_size = len(predicates) - val_size
-    # split the dataset in two uneven parts
-    self.training_data, self.val_data = torch.utils.data.random_split(
-        predicates, [train_size, val_size]
-    )
-    # configure test
-    self.test_data = TestPredicateLoader(
-        self.hparams.test_data_dir,
-        self.embedding_index,
-        self.graph_index,
-        self.hparams.neighbors_per_term,
-    )
     # Layers
     # This is going to transform into {-1, 1}
     self.embedding_transformation = torch.nn.Linear(
@@ -74,12 +54,101 @@ class HypothesisPredictor(pl.LightningModule):
       self.hparams.dim, 1
     )
     # Extra
-    # backwards compatability
+    # backwards compatibility
     if hasattr(self.hparams, "margin"):
       margin = self.hparams.margin
     else:
       margin = 0.1
     self.loss_fn = torch.nn.MarginRankingLoss(margin=margin)
+    self.hparams.batch_size = self.hparams.positives_per_batch * (
+        self.hparams.neg_swap_rate + self.hparams.neg_scramble_rate
+    )
+
+  def _check_file_paths(self, preload=False)->None:
+    MSG = "Consider running model.set_data_root(...)"
+    def assert_dir(path):
+      path = Path(path)
+      assert path.is_dir(), f"Failed to find directory: {path}. {MSG}"
+    def assert_file(path):
+      path = Path(path)
+      assert path.is_file(), f"Failed to find file: {path}. {MSG}"
+    assert_dir(self.hparams.embedding_dir)
+    if preload:
+      assert_dir(self.hparams.entity_dir)
+    assert_file(self.hparams.sqlite_graph_path)
+    assert_file(self.hparams.sqlite_embedding_location)
+    self._is_forward_ready = False
+
+  def set_data_root(self, root_dir:Path)->None:
+    root_dir = Path(root_dir)
+    self.hparams.embedding_dir = str(root_dir.joinpath("embeddings"))
+    self.hparams.entity_dir = str(root_dir.joinpath("entities"))
+    self.hparams.sqlite_graph_path = str(
+        root_dir
+        .joinpath("helper_databases")
+        .joinpath("graph_predicate_subset.sqlite3")
+    )
+    self.hparams.sqlite_embedding_location = str(
+        root_dir
+        .joinpath("helper_databases")
+        .joinpath("embedding_location_subset.sqlite3")
+    )
+    self._check_file_paths()
+
+  def __enter__(self)->None:
+    self.init()
+    return self
+
+  def __exit__(self, exc_type, exc_value, traceback):
+    self.deinit()
+    return False # Don't want to handle exceptions
+
+  def deinit(self)->None:
+    try:
+      self.embedding_index.__exit__(None, None, None)
+    except Exception:
+      pass
+    try:
+      self.graph_index.__exit__(None, None, None)
+    except Exception:
+      pass
+
+  def init(self)->None:
+    self._check_file_paths()
+    self.embedding_index = EmbeddingIndex(
+        embedding_dir=self.hparams.embedding_dir,
+        embedding_location_db_path=self.hparams.sqlite_embedding_location,
+    ).__enter__()
+    self.graph_index = Sqlite3Graph(self.hparams.sqlite_graph_path).__enter__()
+    self._is_forward_ready = True
+
+  def init_preload(self)->None:
+    self._check_file_paths(preload=True)
+    # Helper data structures
+    self.embedding_index = PreloadedEmbeddingIndex(
+        embedding_dir=self.hparams.embedding_dir,
+        entity_dir=self.hparams.entity_dir,
+        entity_types=UMLS_TERM_TYPE+PREDICATE_TYPE
+    )
+    self.graph_index = PreloadedSqlite3Graph(
+        self.hparams.sqlite_graph_path
+    ).__enter__()
+
+    # All predicates, will split
+    predicates = PredicateLoader(
+      embedding_index=self.embedding_index,
+      graph_index=self.graph_index,
+      entity_dir=self.hparams.entity_dir,
+      neighbors_per_term=self.hparams.neighbors_per_term,
+    )
+    # Validation samples
+    val_size = int(len(predicates)*self.hparams.validation_fraction)
+    train_size = len(predicates) - val_size
+    # split the dataset in two uneven parts
+    self.training_data, self.val_data = torch.utils.data.random_split(
+        predicates, [train_size, val_size]
+    )
+    self._is_forward_ready = True
 
   def _tensors_to_device(self, b:HypothesisTensors)->HypothesisTensors:
     device = next(self.parameters()).device
@@ -91,7 +160,27 @@ class HypothesisPredictor(pl.LightningModule):
         label=b.label.to(device),
     )
 
+  def predict_from_terms(
+      self, term_pairs:List[Tuple[str, str]]
+  )->List[float]:
+    assert self._is_forward_ready, "Must run model.init()"
+    res = []
+    for pair_batch in iter_to_batches(term_pairs, self.hparams.batch_size):
+      model_input = observations_to_tensors([
+          generate_predicate_observation(
+            subj=subj,
+            obj=obj,
+            neighbors_per_term=self.hparams.neighbors_per_term,
+            graph_index=self.graph_index,
+            embedding_index=self.embedding_index,
+          )
+          for subj, obj in term_pairs
+      ])
+      res += list(self.forward(model_input).detach().numpy())
+    return res
+
   def forward(self, batch:HypothesisTensors)->torch.FloatTensor:
+    assert self._is_forward_ready, "Must run model.init()"
     # seq X batch X dim
     stacked_embeddings = torch.cat([
       batch.subject_embedding.unsqueeze(0),
@@ -168,11 +257,6 @@ class HypothesisPredictor(pl.LightningModule):
     metrics["val_loss"] = metrics["loss"]
     return metrics
 
-  def test_step(self, batch, batch_idx):
-    return self.training_step(batch, batch_idx)["log"]
-    metrics["test_loss"] = metrics["loss"]
-    return metrics
-
   def _on_end(self, outputs):
     metrics = {}
     for metric in outputs[0]:
@@ -180,9 +264,6 @@ class HypothesisPredictor(pl.LightningModule):
     return metrics
 
   def validation_end(self, outputs):
-    return self._on_end(outputs)
-
-  def test_end(self, outputs):
     return self._on_end(outputs)
 
   def _predicate_collate(self, positive_samples):
@@ -219,9 +300,6 @@ class HypothesisPredictor(pl.LightningModule):
   def val_dataloader(self):
     return self._config_dl(self.val_data)
 
-  @pl.data_loader
-  def test_dataloader(self):
-    return self._config_dl(self.test_data)
 
   def configure_optimizers(self):
     return Lamb(
@@ -267,10 +345,6 @@ class HypothesisPredictor(pl.LightningModule):
     parser.add_argument(
         "--entity-dir",
         help="Location of the directory containing json and count files."
-    )
-    parser.add_argument(
-        "--test-data-dir",
-        help="Directory containing published.txt and noise.txt"
     )
     parser.add_argument(
         "--positives-per-batch",

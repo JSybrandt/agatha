@@ -153,13 +153,15 @@ class EmbeddingIndex(object):
   def __init__(
       self,
       embedding_dir:Path,
-      emb_loc_db_path:Path,
+      embedding_location_db_path:Path,
       emb_ver:str=None
   ):
     embedding_dir = Path(embedding_dir)
-    emb_loc_db_path = Path(emb_loc_db_path)
+    embedding_location_db_path = Path(embedding_location_db_path)
     # Setup entity->location index index
-    self.embedding_location_index = EmbeddingLocationIndex(emb_loc_db_path)
+    self.embedding_location_index = EmbeddingLocationIndex(
+        embedding_location_db_path
+    )
     self.inside_context_mngr = False
 
     # This dir holds embedding files

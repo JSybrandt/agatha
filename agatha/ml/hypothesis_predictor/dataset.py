@@ -11,6 +11,7 @@ from itertools import chain
 from agatha.util.sqlite3_graph import Sqlite3Graph
 from dataclasses import dataclass
 import numpy as np
+from agatha.util.entity_types import to_graph_key, UMLS_TERM_TYPE
 
 @dataclass
 class HypothesisTensors:
@@ -64,7 +65,6 @@ def _sample_relevant_neighbors(
   else:
     return random.sample(items, neighbors_per_term)
 
-
 def generate_predicate_observation(
     subj:str,
     obj:str,
@@ -72,26 +72,28 @@ def generate_predicate_observation(
     graph_index:Sqlite3Graph,
     embedding_index:EmbeddingIndex,
     label:int=1,
-):
-    subj_neigh = _sample_relevant_neighbors(
-        subj, obj, neighbors_per_term, graph_index
-    )
-    obj_neigh = _sample_relevant_neighbors(
-        obj, subj, neighbors_per_term, graph_index
-    )
-    return PredicateObservation(
-        subject_name=subj,
-        object_name=obj,
-        subject_embedding=embedding_index[subj],
-        object_embedding=embedding_index[obj],
-        subject_neighbor_embeddings=[
-          embedding_index[n] for n in subj_neigh
-        ],
-        object_neighbor_embeddings=[
-          embedding_index[n] for n in obj_neigh
-        ],
-        label=label
-    )
+)->PredicateObservation:
+  subj = to_graph_key(subj, UMLS_TERM_TYPE)
+  obj = to_graph_key(obj, UMLS_TERM_TYPE)
+  subj_neigh = _sample_relevant_neighbors(
+      subj, obj, neighbors_per_term, graph_index
+  )
+  obj_neigh = _sample_relevant_neighbors(
+      obj, subj, neighbors_per_term, graph_index
+  )
+  return PredicateObservation(
+      subject_name=subj,
+      object_name=obj,
+      subject_embedding=embedding_index[subj],
+      object_embedding=embedding_index[obj],
+      subject_neighbor_embeddings=[
+        embedding_index[n] for n in subj_neigh
+      ],
+      object_neighbor_embeddings=[
+        embedding_index[n] for n in obj_neigh
+      ],
+      label=label
+  )
 
 class PredicateLoader(torch.utils.data.Dataset):
   def __init__(

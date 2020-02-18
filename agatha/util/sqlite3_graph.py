@@ -39,7 +39,7 @@ class Sqlite3Graph(object):
 
   def __getitem__(self, entity:str)->Set[str]:
     assert self.db_cursor is not None, "__getitem__ called outside of with"
-    assert entity in self
+    assert entity in self, f"Failed to find {entity}"
     return self._cache[entity]
 
   def _config_connection(self)->None:

@@ -21,78 +21,17 @@ class EmbeddingLocation:
     if self.row_idx is not None:
       yield self.row_idx
 
-class PreloadedEmbeddingLocationIndex(object):
-  def __init__(self, entity_dir:Path, entity_types:str):
-    entity_dir = Path(entity_dir)
-    assert entity_dir.is_dir()
-    print("Loading embedding locations")
-    self.entity_paths = list(chain.from_iterable(map(
-      lambda typ: entity_dir.glob(f"entity_names_{typ}_*.json"),
-      entity_types
-    )))
-    self.loc2names = {
-        tuple(self.parse_entity_name_path(path)): self.load_names(path)
-        for path in self.entity_paths
-    }
-    self.name2emb_loc = {}
-    for (entity_type, partition_idx), names in self.loc2names.items():
-      for local_idx, name in enumerate(names):
-        self.name2emb_loc[name] = EmbeddingLocation(
-            entity_type=entity_type,
-            partition_idx=partition_idx,
-            row_idx=local_idx,
-        )
-    assert len(self.name2emb_loc) > 0, "No entity names"
-
-  def __len__(self)->int:
-    return len(self.name2emb_loc)
-
-  def __getitem__(self, name:str)->EmbeddingLocation:
-    return self.name2emb_loc[name]
-
-  def __contains__(self, name:str)->bool:
-    return name in self.name2emb_loc
-
-  def get_name(self, loc:EmbeddingLocation)->str:
-    return self.loc2names[(loc.entity_type, loc.partition_idx)][loc.row_idx]
-
-  @staticmethod
-  def parse_entity_name_path(entity_name_path:Path)->EmbeddingLocation:
-    ent_typ, part_idx = entity_name_path.stem.split("_")[-2:]
-    return EmbeddingLocation(
-        entity_type=ent_typ,
-        partition_idx=int(part_idx),
-    )
-
-  @staticmethod
-  def load_names(entity_name_path:Path)->List[str]:
-    with open(entity_name_path) as json_file:
-      return json.load(json_file)
-
-  @staticmethod
-  def parse_entity_names(
-      entity_name_path:Path
-  )->Iterable[Tuple[str, EmbeddingLocation]]:
-    base_el = (
-        PreloadedEmbeddingLocationIndex
-        .parse_entity_name_path(entity_name_path)
-    )
-    for local_idx, name in enumerate():
-      yield (
-          name,
-          EmbeddingLocation(
-            entity_type=base_el.entity_type,
-            partition_idx=base_el.partition_idx,
-            row_idx=local_idx
-          )
-      )
-
 
 class EmbeddingLocationIndex(object):
   """
   This class manages pulling embedding locations from the sqlite3 database
   """
-  def __init__(self, db_path:Path, db_name:str="embedding_locations"):
+  def __init__(self,
+      db_path:Path,
+      db_name:str="embedding_locations",
+      preload=False
+  ):
+    self.preload=preload
     db_path = Path(db_path)
     assert db_path.is_file(), "Invalid path to database."
     self.db_path = db_path
@@ -135,11 +74,26 @@ class EmbeddingLocationIndex(object):
 
   def __enter__(self):
     self.db_conn = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
-    self.db_conn.row_factory = self._query_to_emb_loc
     self.db_conn.execute('PRAGMA journal_mode = OFF')
     self.db_conn.execute('PRAGMA synchronous = OFF')
     self.db_conn.execute('PRAGMA cache_size = 100000')
     self.db_conn.execute('PRAGMA temp_store = MEMORY')
+
+    if self.preload:
+      self._cache = {
+          entity: EmbeddingLocation(
+                    entity_type=entity_type,
+                    partition_idx=partition_idx,
+                    row_idx=row_idx
+                  )
+          for entity, entity_type, partition_idx, row_idx
+          in self.db_conn.execute(f"""
+            SELECT entity, entity_type, partition_idx, row_idx
+            FROM {self.db_name};
+          """).fetchall()
+      }
+
+    self.db_conn.row_factory = self._query_to_emb_loc
     self.db_cursor = self.db_conn.cursor()
     return self
 
@@ -227,15 +181,15 @@ class PreloadedEmbeddingIndex(object):
   def __init__(
       self,
       embedding_dir:Path,
-      entity_dir:Path,
+      embedding_location_db_path:Path,
       entity_types:str,  # one char per ent
       emb_ver:str=None,
   ):
     embedding_dir=Path(embedding_dir)
-    entity_dir=Path(entity_dir)
-    self.entity_index = PreloadedEmbeddingLocationIndex(
-        entity_dir, entity_types
-    )
+    self.entity_index = EmbeddingLocationIndex(
+        embedding_location_db_path,
+        preload=True,
+    ).__enter__()
 
     # Setup embedding version
     valid_emb_ver = EmbeddingIndex.load_embedding_versions(embedding_dir)

@@ -100,12 +100,11 @@ class PredicateLoader(torch.utils.data.Dataset):
       self,
       embedding_index:EmbeddingIndex,
       graph_index:Sqlite3Graph,
+      predicate_index:EntityIndex,
       entity_dir:Path,
       neighbors_per_term:int,
   ):
-    self.predicate_index = EntityIndex(
-        entity_dir, entity_type=et.PREDICATE_TYPE
-    )
+    self.predicate_index=predicate_index
     self.embedding_index = embedding_index
     self.graph_index = graph_index
     self.neighbors_per_term = neighbors_per_term

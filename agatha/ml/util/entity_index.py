@@ -48,5 +48,3 @@ class EntityIndex(object):
         self.path_idx2names[path_idx] = json.load(f)
 
     return self.path_idx2names[path_idx][global_idx-self.prefix_count[path_idx]]
-
-

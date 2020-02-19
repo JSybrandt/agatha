@@ -16,7 +16,6 @@ from agatha.ml.abstract_generator.lamb_optimizer import Lamb
 from agatha.ml.util.embedding_index import (
     PreloadedEmbeddingIndex,
     EmbeddingIndex,
-    PreloadedEmbeddingLocationIndex,
 )
 from agatha.util.sqlite3_graph import (
     PreloadedSqlite3Graph,
@@ -64,7 +63,7 @@ class HypothesisPredictor(pl.LightningModule):
         self.hparams.neg_swap_rate + self.hparams.neg_scramble_rate
     )
 
-  def _check_file_paths(self, preload=False)->None:
+  def _check_file_paths(self)->None:
     MSG = "Consider running model.set_data_root(...)"
     def assert_dir(path):
       path = Path(path)
@@ -73,8 +72,6 @@ class HypothesisPredictor(pl.LightningModule):
       path = Path(path)
       assert path.is_file(), f"Failed to find file: {path}. {MSG}"
     assert_dir(self.hparams.embedding_dir)
-    if preload:
-      assert_dir(self.hparams.entity_dir)
     assert_file(self.hparams.sqlite_graph_path)
     assert_file(self.hparams.sqlite_embedding_location)
     self._is_forward_ready = False
@@ -82,7 +79,6 @@ class HypothesisPredictor(pl.LightningModule):
   def set_data_root(self, root_dir:Path)->None:
     root_dir = Path(root_dir)
     self.hparams.embedding_dir = str(root_dir.joinpath("embeddings"))
-    self.hparams.entity_dir = str(root_dir.joinpath("entities"))
     self.hparams.sqlite_graph_path = str(
         root_dir
         .joinpath("helper_databases")
@@ -123,22 +119,28 @@ class HypothesisPredictor(pl.LightningModule):
     self._is_forward_ready = True
 
   def init_preload(self)->None:
-    self._check_file_paths(preload=True)
+    self._check_file_paths()
+    print("Loading all graph and embedding helper data. Will take a minute.")
     # Helper data structures
     self.embedding_index = PreloadedEmbeddingIndex(
         embedding_dir=self.hparams.embedding_dir,
-        entity_dir=self.hparams.entity_dir,
+        embedding_location_db_path=self.hparams.sqlite_embedding_location,
         entity_types=UMLS_TERM_TYPE+PREDICATE_TYPE
     )
     self.graph_index = PreloadedSqlite3Graph(
         self.hparams.sqlite_graph_path
     ).__enter__()
 
+    self._is_forward_ready = True
+
+  def init_training_datasets()->None:
+    if not self._is_forward_ready:
+      self.init_preload()
     # All predicates, will split
     predicates = PredicateLoader(
       embedding_index=self.embedding_index,
       graph_index=self.graph_index,
-      entity_dir=self.hparams.entity_dir,
+      predicate_index=self.embedding_index,
       neighbors_per_term=self.hparams.neighbors_per_term,
     )
     # Validation samples
@@ -148,7 +150,7 @@ class HypothesisPredictor(pl.LightningModule):
     self.training_data, self.val_data = torch.utils.data.random_split(
         predicates, [train_size, val_size]
     )
-    self._is_forward_ready = True
+
 
   def _tensors_to_device(self, b:HypothesisTensors)->HypothesisTensors:
     device = next(self.parameters()).device
@@ -176,7 +178,7 @@ class HypothesisPredictor(pl.LightningModule):
           )
           for subj, obj in term_pairs
       ])
-      res += list(self.forward(model_input).detach().numpy())
+      res += list(self.forward(model_input).cpu().detach().numpy())
     return res
 
   def forward(self, batch:HypothesisTensors)->torch.FloatTensor:

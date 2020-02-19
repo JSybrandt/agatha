@@ -84,7 +84,7 @@ model.init()
 # Now we can run queries specifying two umls terms! Note, this process has some
 # random smapling involved, so your result might not look exactly like what we
 # show here.
-# Kewords:
+# Keywords:
 #   Cancer: C0006826
 #   Tobacco: C0040329
 model.predict_from_terms([("C0006826", "C0040329")])

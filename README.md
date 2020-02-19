@@ -2,18 +2,59 @@
 
 [Docs remain a work in progress]
 
-# Installing Agatha to Run Pretrained Models
+# Replicate 2015 Validation Experiments
 
-Note: Models have not yet been posted.
+In [our paper][paper_link] we present state-of-the-art performance numbers
+across a range of recent biomedical discoveries across popular biomedical
+sub-domains. We trained the Agatha system using only data published prior to
+2015, and supply the necessary subset of that data in an easy-to-replicate
+package. Note, the full release is also available for those wishing to tinker
+further. Here's how to get started.
 
-In order to run our experiments yourself, you can pip install this repo:
+Setup a conda environment
+
+```
+conda create -n agatha python=3.8
+conda activate agatha
+```
+
+Install PyTorch. We need a version >= 1.4, but different systems will require
+different cuda library versions. We installed PyTorch using this command:
+
+```
+conda install pytorch cudatoolkit=9.2 -c pytorch
+```
+
+Install Agatha. This comes along with the dependencies necessary to run the
+pretrained model.
 
 ```
 pip install git+https://github.com/JSybrandt/agatha.git
 ```
 
-All python modules to load the supplied checkpoints and run your own experiments
-will be loaded.
+
+Now we can download the 2015 hypothesis prediction subset. We recommend the tool
+`gdown` that comes along with Agatha to download our 38.5GB
+file. If you don't want to use that tool, you can download the same file from
+your browser via [this link][2015_model_link].
+
+```
+# Remeber where you place your file
+cd <AGATHA_DATA_DIR>
+# This will place 2015_hypothesis_predictor_512.tar.gz in AGATHA_DATA_DIR
+gdown --id 1Tka7zPF0PdG7yvGOGOXuEsAtRLLimXmP
+# Unzip the download
+tar -zxvf 2015_hypothesis_predictor_512.tar.gz
+```
+
+We can now load the Agatha model in python. After loading, we need to inform the
+model of where it can find its helper data. By default it looks in the current
+working directory.
+
+```python3
+import torch
+torch.load(<AGATHA_DATA_DIR>/model.pt)
+```
 
 # Installing Agatha for Development
 
@@ -85,3 +126,8 @@ You can then switch to your agatha environment, with modules loaded, by running:
 ```
 source ~/prep_agatha_env
 ```
+
+
+[paper_link]:https://arxiv.org/abs/2002.05635
+[2015_model_link]:https://drive.google.com/uc?id=1Tka7zPF0PdG7yvGOGOXuEsAtRLLimXmP
+

@@ -103,7 +103,6 @@ setup(
       "sklearn", # needed to run Agatha predictor
       "sqlitedict", # needed for CBAG
       "torch",
-      "torchvision",
       "tqdm",
     ],
 )

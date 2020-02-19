@@ -41,7 +41,7 @@ https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.2.4/en_core_sci_l
 # Required for Replication - CBAG ##############################################
 ################################################################################
 
-predpatt
+git+https://github.com/hltcoe/PredPatt.git
 scispacy
 spacy
 spacy_conll
@@ -65,6 +65,12 @@ paramiko
 # Used to make sure some things are working. Not as many unit tests as we
 # should have.
 pytest
+
+################################################################################
+# Needed to run tools and create plots #########################################
+################################################################################
+
+matplotlib
 
 # Used to run the semmeddb tool
 fire

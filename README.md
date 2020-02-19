@@ -23,6 +23,13 @@ different cuda library versions. We installed PyTorch using this command:
 conda install pytorch cudatoolkit=9.2 -c pytorch
 ```
 
+We use protobufs to help configure aspects of the Agatha pipeline, if you don't
+already have protoc installed, you can pull it in through conda.
+
+```
+conda install -c anaconda protobuf
+```
+
 __Temporary:__ Due to incorrectly configured dependencies of pytorch-lightning
 for version 0.6.0, we have to install their latest release manually for the
 time-being.

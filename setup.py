@@ -2,7 +2,7 @@ from distutils.command.build_py import build_py as _build_py
 from distutils.command.clean import clean as _clean
 from distutils.spawn import find_executable
 from agatha import __VERSION__
-from setuptools import setup, Extension
+from setuptools import setup, Extension, find_packages
 from setuptools.command.install import install as _install
 import os
 import subprocess
@@ -85,9 +85,14 @@ class Install(_install):
 setup(
     name='Agatha',
     version=__VERSION__,
-    packages=['agatha',],
-    license='Creative Commons Attribution-Noncommercial-Share Alike license',
+    author="Justin Sybrandt",
+    author_email="jsybran@clemson.edu",
+    description=("Automatic Graph-mining And Transformer based "
+                 "Hypothesis generation Approach"),
+    packages=find_packages(),
+    url="https://github.com/JSybrandt/agatha",
     long_description=open('README.md').read(),
+    long_description_content_type="text/markdown",
     cmdclass={ 'clean': clean, 'build_py': build_py, "install":Install },
     setup_requires=["nltk"],
     install_requires=[

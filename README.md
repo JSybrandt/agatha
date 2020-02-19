@@ -109,7 +109,7 @@ within the Agatha semantic graph. The result are a list of predicates in the
 following json file: `./benchmarks/all_pairs_top_20_types.json`
 
 The json predicate file has the following schema:
-```json
+```
 {
   "<type1>:<type2>": [
     {

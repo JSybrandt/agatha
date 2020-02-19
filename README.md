@@ -118,7 +118,7 @@ The json predicate file has the following schema:
       "label": 0 or 1
     },
     ...
-  ]
+  ],
   ...
 }
 ```
@@ -156,6 +156,10 @@ with torch.no_grad():
     ])
 ```
 
+Note that the order of resulting scores will be the same as the order of the
+input predicates per-type. Using the `label` field of each predicate, we can
+then compare how the ranking critera correlates with the true connections `1`
+and the undisovered connections `0`.
 
 # Installing Agatha for Development
 

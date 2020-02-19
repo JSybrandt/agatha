@@ -25,6 +25,7 @@ different cuda library versions. We installed PyTorch using this command:
 conda install pytorch cudatoolkit=9.2 -c pytorch
 ```
 
+
 Install Agatha. This comes along with the dependencies necessary to run the
 pretrained model.
 

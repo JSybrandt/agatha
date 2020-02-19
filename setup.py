@@ -97,12 +97,18 @@ setup(
       "gdown",  # Needed to download pretrained models
       "h5py",
       "numpy",
+      "pandas",
       "protobuf",
-      "pytorch-lightning",
+      # "pytorch-lightning", This is disabled until PL fixes their deps
       "sentencepiece",  # needed to run CBAG
       "sklearn", # needed to run Agatha predictor
       "sqlitedict", # needed for CBAG
       "torch",
       "tqdm",
     ],
+    dependency_links=[
+      # This replaces the pytorch-lightning until their next version
+      'http://github.com/PyTorchLightning/pytorch-lightning'
+      '/master#egg=package-1.0'
+    ]
 )

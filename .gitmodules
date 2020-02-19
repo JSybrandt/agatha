@@ -3,19 +3,19 @@
 	url = https://github.com/Franck-Dernoncourt/pubmed-rct.git
 [submodule "externals/HighFive"]
 	path = externals/HighFive
-	url = https://github.com:BlueBrain/HighFive.git
+	url = https://github.com/BlueBrain/HighFive.git
 [submodule "externals/json"]
 	path = externals/json
-	url = https://github.com:nlohmann/json.git
+	url = https://github.com/nlohmann/json.git
 [submodule "externals/argparse"]
 	path = externals/argparse
-	url = https://github.com:p-ranav/argparse.git
+	url = https://github.com/p-ranav/argparse.git
 [submodule "externals/sqlite_orm"]
 	path = externals/sqlite_orm
-	url = https://github.com:fnc12/sqlite_orm.git
+	url = https://github.com/fnc12/sqlite_orm.git
 [submodule "externals/pbar"]
 	path = externals/include/pbar
-	url = https://github.com:Jvanrhijn/pbar.git
+	url = https://github.com/Jvanrhijn/pbar.git
 [submodule "externals/cppitertools"]
 	path = externals/include/cppitertools
-	url =  https://github.com:ryanhaining/cppitertools.git
+	url =  https://github.com/ryanhaining/cppitertools.git

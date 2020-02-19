@@ -44,7 +44,9 @@ pretrained model. Note, we're aware of a pip warning produced by this install
 method, we're working on providing a easier pip-installable wheel.
 
 ```
-pip install git+https://github.com/JSybrandt/agatha.git
+cd <AGATHA_INSTALL_DIR>
+git clone https://github.com/JSybrandt/agatha.git .
+pip install -e .
 ```
 
 Now we can download the 2015 hypothesis prediction subset.  Note, at the time of
@@ -52,7 +54,8 @@ writing, we only provide a 2015 validation version of Agatha. We are in the
 process of preparing an up-to-date 2020 version.  We recommend the tool `gdown`
 that comes along with Agatha to download our 38.5GB file. If you don't want to
 use that tool, you can download the same file from your browser via [this
-link][2015_model_link].
+link][2015_model_link]. We recommend you place this somewhere within
+`<AGATHA_INSTALL_DIR>/data`.
 
 ```
 # Remeber where you place your file

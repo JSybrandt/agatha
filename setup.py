@@ -85,7 +85,6 @@ class Install(_install):
 setup(
     name='Agatha',
     version=__VERSION__,
-    python_version='>=3.7',
     packages=['agatha',],
     license='Creative Commons Attribution-Noncommercial-Share Alike license',
     long_description=open('README.md').read(),

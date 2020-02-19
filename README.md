@@ -1,7 +1,5 @@
 ![logo](https://github.com/JSybrandt/agatha/blob/master/logo.png?raw=true)
 
-[Docs remain a work in progress]
-
 # Install Agatha to use pretrained models
 
 In [our paper][paper_link] we present state-of-the-art performance numbers

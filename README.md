@@ -197,31 +197,22 @@ module load gcc/8.3.0          \
             mpc/0.8.1
 ```
 
-Second, setup an anaconda environment for Agatha:
-```
-conda create -n agatha python=3.8
-conda activate agatha
-```
+Now follow the above list of installation instructions, beginning with creating
+a conda environment, through cloning the git repo, and ending with `pip install
+-e .`.
 
-Third, install pytorch. Note, because of limitations on palmetto, you're going
-to need to stick with the cudatoolkit 9.2 version.
-```
-conda install pytorch torchvision cudatoolkit=9.2 -c pytorch
-```
+At this point, we can install all the additional dependencies required to
+construct the Agatha semantic graph and train the transformer model. To do so,
+return to the `AGATHA_INSTALL_DIR` and install `requirements.txt`.
 
-Fourth, we can clone and install the _full_ version of Agatha.
 ```
-# Downloads agatha source
-git clone https://github.com/JSybrandt/agatha.git
-cd agatha
-# Installs the agatha module
-pip install -e .
+cd <AGATHA_INSTALL_DIR>
 # Installs the developer requirements
 pip install -r requirements.txt
 ```
 
-Now you should be ready to roll! I recommend you create the following file
-somewhere like `~/prep_agatha_env`:
+Now you should be ready to roll! I recommend you create the following file in
+order to handle all the module loading and preparation.
 
 ```
 # Remove current modules (if any)
@@ -236,12 +227,6 @@ export CPLUS_INCLUDE_PATH=$CPLUS_INCLUDE_PATH:/software/hdf5/1.10.5/include
 # Load python modules
 conda activate agatha
 ```
-
-You can then switch to your agatha environment, with modules loaded, by running:
-```
-source ~/prep_agatha_env
-```
-
 
 [paper_link]:https://arxiv.org/abs/2002.05635
 [2015_model_link]:https://drive.google.com/uc?id=1Tka7zPF0PdG7yvGOGOXuEsAtRLLimXmP

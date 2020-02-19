@@ -113,7 +113,6 @@ setup(
     ],
     dependency_links=[
       # This replaces the pytorch-lightning until their next version
-      'http://github.com/PyTorchLightning/pytorch-lightning'
-      '/master#egg=package-1.0'
+      'http://github.com/PyTorchLightning/pytorch-lightning/master'
     ]
 )

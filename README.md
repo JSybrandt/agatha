@@ -25,9 +25,18 @@ different cuda library versions. We installed PyTorch using this command:
 conda install pytorch cudatoolkit=9.2 -c pytorch
 ```
 
+__Temporary:__ Due to incorrectly configured dependencies of pytorch-lightning
+for version 0.6.0, we have to install their latest release manually for the
+time-being.
+
+```
+pip install git+https://github.com/PyTorchLightning/pytorch-lightning.git
+```
+
 
 Install Agatha. This comes along with the dependencies necessary to run the
-pretrained model.
+pretrained model. Note, we're aware of a pip warning produced by this install
+method, we're working on providing a easier pip-installable wheel.
 
 ```
 pip install git+https://github.com/JSybrandt/agatha.git
@@ -44,7 +53,7 @@ your browser via [this link][2015_model_link].
 cd <AGATHA_DATA_DIR>
 # This will place 2015_hypothesis_predictor_512.tar.gz in AGATHA_DATA_DIR
 gdown --id 1Tka7zPF0PdG7yvGOGOXuEsAtRLLimXmP
-# Unzip the download
+# Unzip the download, creates hypothesis_predictor_512/...
 tar -zxvf 2015_hypothesis_predictor_512.tar.gz
 ```
 
@@ -53,8 +62,42 @@ model of where it can find its helper data. By default it looks in the current
 working directory.
 
 ```python3
+# We need to load the pretrained agatha model.
 import torch
-torch.load(<AGATHA_DATA_DIR>/model.pt)
+torch.load("<AGATHA_DATA_DIR>/hypothesis_predictor_512/model.pt")
+
+# We need to tell the model abouts its helper data.
+model.set_data_root("<AGATHA_DATA_DIR>/hypothesis_predictor_512/")
+
+# We need to setup the internal datastructures around that helper data.
+# Note, if we are going to run a big-batch of queryies, we could also use:
+# model.init_preload()
+model.init()
+
+# Now we can run queries specifying two umls terms! Note, this process has some
+# random smapling involved, so your result might not look exactly like what we
+# show here.
+# Kewords:
+#   Cancer: C0006826
+#   Tobacco: C0040329
+model.predict_from_terms([("C0006826", "C0040329")])
+>>> [0.78358984]
+
+# Kewords:
+#   Cancer: C0006826
+#   Tobacco: C0040329
+model.predict_from_terms([("C0006826", "C0040329")])
+>>> [0.78358984]
+
+# If you want to run loads of queries, we recommend first using
+# model.init_preload(), and then the following syntax. Note that
+# predict_from_terms will automatically compute in batches of size:
+# model.hparams.batch_size.
+queries = [("C###", "C###"), ("C###", "C###"), ..., ("C###", "C###")]
+model = model.eval()
+model = model.cuda()
+with torch.no_grad():
+  predictions = model.predict_from_terms(queries)
 ```
 
 # Installing Agatha for Development

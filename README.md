@@ -73,7 +73,7 @@ working directory.
 ```python3
 # We need to load the pretrained agatha model.
 import torch
-torch.load("<AGATHA_DATA_DIR>/hypothesis_predictor_512/model.pt")
+model = torch.load("<AGATHA_DATA_DIR>/hypothesis_predictor_512/model.pt")
 
 # We need to tell the model abouts its helper data.
 model.set_data_root("<AGATHA_DATA_DIR>/hypothesis_predictor_512/")

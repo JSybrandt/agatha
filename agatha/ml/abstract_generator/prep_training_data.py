@@ -147,12 +147,12 @@ def prep(config:cpb.AbstractGeneratorConfig):
   assert paths["tokenizer_model_path"].is_file()
   assert paths["tokenizer_vocab_path"].is_file()
 
-  extra_data = {
+  condition_index = {
       "mesh_index": mesh_index,
       "oldest_year": oldest_year,
   }
   with open(paths["model_extra_data_path"], 'wb') as f:
-    pickle.dump(extra_data, f)
+    pickle.dump(condition_index, f)
   print("\t- Written:", paths["model_extra_data_path"])
 
   if not paths["ngram_freqs_path"].is_file():

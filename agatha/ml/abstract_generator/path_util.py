@@ -15,7 +15,7 @@ def get_paths(config:cpb.AbstractGeneratorConfig):
       scratch_root_dir.joinpath("models").joinpath("abstract_generator")
   model_path = model_root_dir.joinpath("model.pt")
   model_ckpt_dir = model_root_dir.joinpath("dask_checkpoints")
-  model_extra_data_path = model_root_dir.joinpath("extra_data.pkl")
+  model_extra_data_path = model_root_dir.joinpath("condition_index.pkl")
   tokenizer_training_data_dir = \
       model_ckpt_dir.joinpath("tokenizer_training_data")
   tokenizer_model_path = model_root_dir.joinpath("tokenizer.model")

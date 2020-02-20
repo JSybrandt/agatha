@@ -1,18 +1,20 @@
-import torch
-import math
-import pytorch_lightning as pl
 from agatha.ml.abstract_generator import datasets
 from agatha.ml.abstract_generator.lamb_optimizer import Lamb
-from argparse import Namespace
 from agatha.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
 from agatha.ml.util.kv_store_dataset import KVStoreDictDataset
+from argparse import Namespace
+from pathlib import Path
+import math
+import pytorch_lightning as pl
+import torch
 
 
 class AbstractGenerator(pl.LightningModule):
   def __init__(self, hparams:Namespace):
-    print(hparams)
     super(AbstractGenerator, self).__init__()
     self.hparams = hparams
+    self.set_data_root(".")
+    self._check_paths()
     self.init_tokenizer()
     def get_emb(num):
       return torch.nn.Embedding(
@@ -32,7 +34,6 @@ class AbstractGenerator(pl.LightningModule):
           embedding_dim=self.hparams.embedding_dim,
         )
     )
-
     self.transformer = torch.nn.Transformer(
         d_model=self.hparams.embedding_dim,
         nhead=self.hparams.num_attention_heads,
@@ -41,28 +42,45 @@ class AbstractGenerator(pl.LightningModule):
         dim_feedforward=self.hparams.intermediate_feedforward_dim,
         dropout=self.hparams.intermediate_dropout,
     )
-
     # This mask has -inf for all values that follow the target input
     # Of size (text, text)
     self.register_buffer(
         "text_attention_mask",
         self.transformer.generate_square_subsequent_mask(self.hparams.max_text_length),
     )
-
     def get_pred(num):
       return torch.nn.Linear(self.hparams.embedding_dim, num)
     self.predict_text = get_pred(self.tokenizer.len_text())
     self.predict_pos = get_pred(self.tokenizer.len_pos())
     self.predict_dep = get_pred(self.tokenizer.len_dep())
     self.predict_ent = get_pred(self.tokenizer.len_entity_label())
-
     self.softmax = torch.nn.LogSoftmax(dim=2)
     self.loss_fn = torch.nn.NLLLoss()
-
     self.training_data = []
     self.val_data = []
 
+
+  def _check_paths(self, training=False)->None:
+    MSG = "Consider running model.set_data_root(...)"
+    def ck_file(path):
+      assert Path(path).is_file(), f"Failed to find file: {path}. {MSG}"
+    def ck_dir(path):
+      assert Path(path).is_dir(), f"Failed to find file: {path}. {MSG}"
+    ck_file(self.hparams.extra_data_path)
+    ck_file(self.hparams.tokenizer_model_path)
+    if training:
+      ck_dir(self.hparams.training_data_dir)
+
+  def set_data_root(self, data_root:Path)->None:
+    data_root = Path(data_root)
+    assert data_root.is_dir()
+    self.hparams.extra_data_path = str(data_root.joinpath("condition_index.pkl"))
+    self.hparams.tokenizer_model_path= str(data_root.joinpath("tokenizer.model"))
+    self.hparams.training_data_dir = str(data_root.joinpath("training_data"))
+
+
   def init_datasets(self):
+    self._check_paths(training=True)
     # datasets
     abstracts = KVStoreDictDataset(self.hparams.training_data_dir)
     encoder = datasets.EncodedAbstracts(

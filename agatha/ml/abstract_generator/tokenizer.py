@@ -1,13 +1,15 @@
-import pickle
-import sentencepiece as spm
+from agatha.ml.abstract_generator.sentencepiece_pb2 import SentencePieceText
+from agatha.util.misc_util import Record
 from pathlib import Path
 from typing import Any, Dict, List
-from agatha.ml.abstract_generator.sentencepiece_pb2 import SentencePieceText
+import pickle
+import sentencepiece as spm
+import torch
+from collections.abc import Iterable
 from agatha.ml.abstract_generator.misc_util import (
     OrderedIndex,
     items_to_ordered_index,
 )
-from agatha.util.misc_util import Record
 
 def get_current_year():
   return 2019
@@ -246,3 +248,45 @@ class AbstractGeneratorTokenizer(object):
         working_ids.append(i-self.text_special_offset)
     substrs.append(self.subword_tokenizer.decode_ids(working_ids))
     return "".join(substrs)
+
+  def encode_for_generation(
+      self,
+      initial_text=None,
+      year=None,
+      mesh_terms=None,
+      allow_unknown_terms=False,
+  )->Dict[str, torch.LongTensor]:
+    """
+    Given initial text and condition data, produce model_in.
+    Intended use:
+      model = ...
+      model.forward(**model.tokenizer.encode_for_generation(
+        initial_text, year, terms
+      ))
+    """
+
+    text = [self.start_idx]
+    if initial_text is not None:
+      assert type(initial_text) == str
+      text += self.simple_encode_text(initial_text)
+
+    if year is None:
+      year = [get_current_year()]
+    else:
+      year = [self.encode_year(int(year))]
+
+    if mesh_terms is None:
+      mesh = []
+    else:
+      assert isinstance(mesh_terms, Iterable), "Must give list of mesh terms"
+      if not allow_unknown_terms:
+        for mesh_term in mesh_terms:
+          assert self.mesh_ord_index.has_element(mesh_term),\
+            f"Mesh index does not contain {mesh_term}"
+      mesh = [self.encode_mesh(t) for t in mesh_terms]
+
+    return dict(
+        text=torch.LongTensor(text).unsqueeze(1),
+        year=torch.LongTensor(year).unsqueeze(1),
+        mesh=torch.LongTensor(mesh).unsqueeze(1),
+    )

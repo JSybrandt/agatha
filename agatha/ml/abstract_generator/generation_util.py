@@ -1,19 +1,19 @@
 from agatha.ml.abstract_generator.abstract_generator import (
     AbstractGenerator,
 )
-from copy import deepcopy
-import numpy as np
-from pathlib import Path
-import pickle
-import pygsheets
 from agatha.config import config_pb2 as cpb
 from agatha.ml.abstract_generator import datasets
 from agatha.ml.abstract_generator.path_util import get_paths
-import re
-import torch
+from copy import deepcopy
+from pathlib import Path
 from typing import Any, Dict, Iterable, Tuple
-import spacy
 import math
+import numpy as np
+import pickle
+import pygsheets
+import re
+import spacy
+import torch
 try:
   from nlgeval import NLGEval
 except ImportError:
@@ -80,7 +80,6 @@ class MultiLogger():
         row=self.row_idx,
         values=values
     )
-
 
 def evaluate(
     config:cpb.AbstractGeneratorConfig,

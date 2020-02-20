@@ -18,12 +18,14 @@ struct GraphEntry {
 
 NodeIdx get_idx(
     const std::string& node_name,
-    std::unordered_map<std::string, NodeIdx>& node2idx
+    std::unordered_map<std::string, NodeIdx>& node2idx,
+    std::fstream& name_list
 ){
   auto idx_iter = node2idx.find(node_name);
   if(idx_iter == node2idx.end()){
     NodeIdx idx = node2idx.size();
     node2idx[node_name] = idx;
+    name_list << node_name << std::endl;
     return idx;
   } else {
     return idx_iter->second;
@@ -38,9 +40,9 @@ int main(int argc, char** argv){
   parser.add_argument("-o", "--edge_list")
         .help("The location to write edge list file")
         .action([](const std::string& s){ return fs::path(s); });
-  //parser.add_argument("-n", "--name_list")
-        //.help("The location to write names corresponding to each index")
-        //.action([](const std::string& s){ return fs::path(s); });
+  parser.add_argument("-n", "--name_list")
+        .help("The location to write names corresponding to each index")
+        .action([](const std::string& s){ return fs::path(s); });
 
   try {
     parser.parse_args(argc, argv);
@@ -53,11 +55,11 @@ int main(int argc, char** argv){
 
   fs::path graph_path = parser.get<fs::path>("--sqlite_graph");
   fs::path edge_path = parser.get<fs::path>("--edge_list");
-  //fs::path name_path = parser.get<fs::path>("--name_list");
+  fs::path name_path = parser.get<fs::path>("--name_list");
 
   assert(fs::exists(graph_path));
   assert(!fs::exists(edge_path));
-  //assert(!fs::exists(name_path));
+  assert(!fs::exists(name_path));
 
   auto storage = sql::make_storage(
       graph_path,
@@ -73,11 +75,12 @@ int main(int argc, char** argv){
   unsigned long long count = 0;
   std::unordered_map<std::string, NodeIdx> node2idx;
   std::fstream edge_list(edge_path, std::ios::out);
+  std::fstream name_list(name_path, std::ios::out);
   for(GraphEntry& entry : storage.iterate<GraphEntry>()){
     json neighbors = json::parse(entry.neighbors);
-    NodeIdx node_idx = get_idx(entry.node, node2idx);
+    NodeIdx node_idx = get_idx(entry.node, node2idx, name_list);
     for(const std::string& neigh : neighbors){
-      NodeIdx neigh_idx = get_idx(neigh, node2idx);
+      NodeIdx neigh_idx = get_idx(neigh, node2idx, name_list);
       edge_list << node_idx << " " << neigh_idx << " " << 1 << std::endl;
     }
     ++count;
@@ -85,5 +88,6 @@ int main(int argc, char** argv){
       std::cout << count << "/" << total_size << std::endl;
   }
   edge_list.close();
+  name_list.close();
   return 0;
 }

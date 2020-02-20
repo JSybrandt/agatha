@@ -21,7 +21,7 @@ the `gdown` utility that comes along with the Agatha install:
 # Remeber where you place your file
 cd <AGATHA_DATA_DIR>
 # This will place cbag.tar.gz in AGATHA_DATA_DIR
-gdown --id 1ISr-YfLew8Sy8O3aR5z8z-nFNEK57iz4
+gdown --id 19645oQA6MSnmV8tV2J_meF3iI2Puj41A
 # Unzip the download, creates the "model" directory
 tar -zxvf cbag.tar.gz
 ```
@@ -68,23 +68,24 @@ new_abstract = generation_util.generate_new_text(
     # generation going until the end-of-abstract token.
     gen_whole_abstract=True,
 )
->>>'a high-level model for glucose in vitro. the potential concentration for use
->>>in man has to be established to define the contribution of glucose. the
->>>mechanism of action of glucose on glucose metabolism is studied by
->>>determining several biological variables. it could be found that glucose
->>>transport in tissues can be determined by a continuous washout of a single
->>>cycle and a time range of concentration from 20 to 200 ms for glucose. as is
->>>not based on guanidine (atp) in the concentration range of 3-11 mg, glucose
->>>release was studied by examining the relationship between (i) glucose uptake
->>>and (ii) glucose uptake into the medium. for this experiment the observed
->>>concentration dependent release of glucose into organs and is particularly
->>>proportional to ph in a time series to 20 hr. a second set of proteins
->>>(septic and -orylsulfonyl) has been found to be independent of saturation the
->>>blood glucose concentration of brain glucose. the isolol ratio for glucose is
->>>decreased in acid conditions and not temperature. the pernicu temperature
->>>difference of energy was further higher than that of insulin. in the presence
->>>of glucose, however, the maximum transport is still large.'
+
+>>>"""
+   [In this study], we have investigated the effect of oxidative changes in
+   metabolism of 6-ketoformate (bohd)--increases, glucose, glucose and glucose
+   on glucose, glucose content, and glucose metabolism. the metabolism of
+   2-deoxy-d-d-glucose was studied using a quantitative assay of glucose
+   metabolism. this reaction had been observed when the presence of these
+   glucose groups was increased or not observed. the effect of temperature,
+   glucose-water, glucose-, potassium-glucose, and glucose was observed, as
+   evidenced by the rate of glucose uptake by the in vitro and in vivo glucose
+   production. on the other hand, the rate constant was increased, and a slower
+   apparent life. the physiological decline in the number of glucose-free
+   glucose groups was observed only after glucose-water treatment, while
+   lactate-free metabolism was preserved. the metabolism of in vivo glucose
+   with the same heat level is affected by glucose-water utilization but not by
+   the in vitro glucose transport process.
+   """
 ```
 
-[model_link]:https://drive.google.com/file/d/1ISr-YfLew8Sy8O3aR5z8z-nFNEK57iz4/view?usp=sharing
+[model_link]:https://drive.google.com/open?id=19645oQA6MSnmV8tV2J_meF3iI2Puj41A
 [base_agatha_link]:https://github.com/JSybrandt/agatha

@@ -1,9 +1,5 @@
 from pathlib import Path
 from agatha.construct import dask_process_global as dpg
-from agatha.ml.sentence_classifier import (
-    record_to_sentence_classifier_input,
-    sentence_classifier_output_to_labels,
-)
 from agatha.util.misc_util import Record
 from agatha.util.misc_util import iter_to_batches
 from transformers import (
@@ -59,29 +55,6 @@ def get_pretrained_model_initializer(
     model.eval()
     return model
   return f"embedding_util:{name}", _init
-
-
-def apply_sentence_classifier_to_part(
-    records:Iterable[Record],
-    batch_size:int,
-    sentence_classifier_name="sentence_classifier",
-    predicted_type_suffix=":pred",
-    sentence_type_field="sent_type",
-)->Iterable[Record]:
-  device = dpg.get("embedding_util:device")
-  model = dpg.get(f"embedding_util:{sentence_classifier_name}")
-
-  res = []
-  for rec_batch in iter_to_batches(records, batch_size):
-    model_input = torch.stack(
-        [record_to_sentence_classifier_input(r) for r in rec_batch]
-    ).to(device)
-    predicted_labels = sentence_classifier_output_to_labels(model(model_input))
-    for r, lbl in zip(rec_batch, predicted_labels):
-      r[sentence_type_field] = lbl+predicted_type_suffix
-      res.append(r)
-  print(len(res))
-  return res
 
 
 def embed_records(

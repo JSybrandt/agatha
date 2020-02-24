@@ -16,10 +16,6 @@ from agatha.construct import (
 )
 from agatha.util import misc_util, database_util
 from dask.distributed import Client
-from agatha.ml.sentence_classifier import (
-    SentenceClassifier,
-    LABEL2IDX as SENT_TYPE_SET,
-)
 from pathlib import Path
 import dask
 import dask.bag as dbag
@@ -110,12 +106,6 @@ if __name__ == "__main__":
   preloader.register(*knn_util.get_faiss_index_initializer(
       faiss_index_path=faiss_index_path,
   ))
-  if config.pretrained.HasField("sentence_classifier_path"):
-    preloader.register(*embedding_util.get_pretrained_model_initializer(
-      name="sentence_classifier",
-      model_class=SentenceClassifier,
-      data_dir=Path(config.pretrained.sentence_classifier_path)
-    ))
   dpg.add_global_preloader(client=dask_client, preloader=preloader)
 
   if config.cluster.clear_checkpoints:
@@ -276,31 +266,6 @@ if __name__ == "__main__":
   )
   ckpt("sentences_with_embedding")
   final_sentence_records = sentences_with_embedding
-
-  if config.pretrained.HasField("sentence_classifier_path"):
-    labeled_sentences = (
-        final_sentence_records
-        .filter(
-          lambda r: r["sent_type"] in SENT_TYPE_SET
-        )
-    )
-    predicted_sentences = (
-        final_sentence_records
-        .filter(
-          lambda r: r["sent_type"] not in SENT_TYPE_SET
-        )
-        .map_partitions(
-          embedding_util.apply_sentence_classifier_to_part,
-          # --
-          batch_size=config.sys.batch_size
-        )
-    )
-    sentences_with_predicted_types = dbag.concat([
-      labeled_sentences,
-      predicted_sentences,
-    ])
-    ckpt("sentences_with_predicted_types")
-    final_sentence_records = sentences_with_predicted_types
 
   hash_and_embedding = (
       final_sentence_records

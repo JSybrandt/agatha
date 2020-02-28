@@ -140,9 +140,6 @@ message ConstructConfig {
   // this value. Used to help prepare data for the ML process.
   optional string stop_after_ckpt = 10;
   optional PretrainedModelConfig pretrained = 11;
-
-  // If set, produce mongo data files, that can  be loaded with mongoimport
-  optional bool export_for_mongo = 12 [default=false];
   // Date string in form of YYYY-MM-DD. e.g. 2015-01-01
   // This is the first date NOT included.
   optional string cut_date = 14;

@@ -71,15 +71,15 @@ if __name__ == "__main__":
   _, checkpoint_dir = scratch("dask_checkpoints")
   faiss_index_path = faiss_index_dir.joinpath("final.index")
   # This directory holds the information necessary to import the mongo database
-  _, mongo_data_dir = scratch("mongo_data")
+  _, res_data_dir = scratch("data")
 
   # export directories
   # This one will hold edge tsv data
-  mongo_graph_dir = mongo_data_dir.joinpath("graph")
-  mongo_graph_dir.mkdir(parents=True, exist_ok=True)
+  res_graph_dir = res_data_dir.joinpath("graph")
+  res_graph_dir.mkdir(parents=True, exist_ok=True)
   # This one will hold sentences stored as json dumps
-  mongo_sentences_dir = mongo_data_dir.joinpath("sentences")
-  mongo_sentences_dir.mkdir(parents=True, exist_ok=True)
+  res_sentence_dir = res_data_dir.joinpath("sentences")
+  res_sentence_dir.mkdir(parents=True, exist_ok=True)
 
   # Initialize Helper Objects ###
   print("Registering Helper Objects")
@@ -326,17 +326,16 @@ if __name__ == "__main__":
       sentence_edges_adj,
       nearest_neighbors_edges,
   ])
-  if config.export_for_mongo:
-    print("Writing edges to database dump")
-    (
-        all_subgraph_partitions
-        .map_partitions(graph_util.nxgraphs_to_tsv_edge_list)
-        .to_textfiles(f"{mongo_graph_dir}/*.tsv")
-    )
+  print("Writing edges to database dump")
+  (
+      all_subgraph_partitions
+      .map_partitions(graph_util.nxgraphs_to_tsv_edge_list)
+      .to_textfiles(f"{res_graph_dir}/*.tsv")
+  )
 
-    print("Writing sentences to database dump")
-    (
-        sentences_with_bow
-        .map(json.dumps)
-        .to_textfiles(f"{mongo_sentences_dir}/*.json")
-    )
+  print("Writing sentences to database dump")
+  (
+      sentences_with_bow
+      .map(json.dumps)
+      .to_textfiles(f"{res_sentence_dir}/*.json")
+  )

@@ -203,6 +203,7 @@ def get_frequent_ngrams(
     max_ngram_length:int,
     min_ngram_support:int,
     min_ngram_support_per_partition:int,
+    ngram_sample_rate:float,
     token_field:str="tokens",
     ngram_field:str="ngrams"
 )->dbag.Bag:
@@ -291,11 +292,11 @@ def get_frequent_ngrams(
       return rec
     return analyzed_sentences.map(init_nothing)
   else:
-    ngram2count = analyzed_sentences.map_partitions(
-        part_to_ngram_counts
-    ).fold(
-        misc_util.merge_counts,
-        initial={}
+    ngram2count = (
+        analyzed_sentences
+        .random_sample(ngram_sample_rate)
+        .map_partitions(part_to_ngram_counts)
+        .fold(misc_util.merge_counts, initial={})
     )
     ngram_model = delayed(valid_ngrams)(ngram2count)
     return analyzed_sentences.map(parse_ngrams, ngram_model=ngram_model)

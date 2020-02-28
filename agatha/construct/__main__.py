@@ -204,6 +204,7 @@ if __name__ == "__main__":
       min_ngram_support=config.phrases.min_ngram_support,
       min_ngram_support_per_partition=\
           config.phrases.min_ngram_support_per_partition,
+      ngram_sample_rate=config.phrases.ngram_sample_rate,
   )
   ckpt("sentences_with_ngrams")
 

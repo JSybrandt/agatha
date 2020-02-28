@@ -51,13 +51,15 @@ message TextParserConfig {
 message NGramConfig {
   // When performing n-gram mining, how long should a potential n-gram be?
   // Set less than j to disable n-gram mining
-  optional int32 max_ngram_length = 1 [default=3];
+  optional int32 max_ngram_length = 1 [default=4];
   // Number of times an n-gram must occur before its determined to be real
-  optional int32 min_ngram_support = 2 [default=100];
+  optional int32 min_ngram_support = 2 [default=20];
   // Number of times an n-gram must occur in a single partition in order to
   // count.  This is an approximation factor, because otherwise we're going to
   // communicate a ton of bad ngrams.
-  optional int32 min_ngram_support_per_partition = 3 [default=2];
+  optional int32 min_ngram_support_per_partition = 3 [default=5];
+  // How much of the text should we look at when mining ngrams?
+  optional float ngram_sample_rate = 4 [default=0.33];
 }
 
 message KnnConfig {

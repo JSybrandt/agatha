@@ -135,14 +135,17 @@ def train_distributed_knn(
     )
 
     # Train initial index, store result in init_index_path
-    init_index_path = dask.delayed(train_initial_index)(
-      training_data=training_data,
-      num_centroids=num_centroids,
-      num_probes=num_probes,
-      num_quantizers=num_quantizers,
-      bits_per_quantizer=bits_per_quantizer,
-      output_path=init_index_path,
+    init_index_path = dask.compute(
+        dask.delayed(train_initial_index)(
+          training_data=training_data,
+          num_centroids=num_centroids,
+          num_probes=num_probes,
+          num_quantizers=num_quantizers,
+          bits_per_quantizer=bits_per_quantizer,
+          output_path=init_index_path,
+        )
     )
+
 
   # For each partition, load embeddings to idx
   partial_idx_paths = []
@@ -215,6 +218,10 @@ def train_initial_index(
   Choosing an index is hard:
   https://github.com/facebookresearch/faiss/wiki/Index-IO,-index-factory,-cloning-and-hyper-parameter-tuning
   """
+  print("Training Initial Index!")
+  print("Training Initial Index!")
+  print("Training Initial Index!")
+  print("Training Initial Index!")
   data = np.vstack([
     b.astype(dtype=np.float32) for b in training_data
   ])

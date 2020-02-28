@@ -143,9 +143,6 @@ message ConstructConfig {
 
   // If set, produce mongo data files, that can  be loaded with mongoimport
   optional bool export_for_mongo = 12 [default=false];
-  // If set, use the information provided in a pytorch_big_graph config to
-  // process the semantic graph for embedding
-  optional string export_with_big_graph_config = 13;
   // Date string in form of YYYY-MM-DD. e.g. 2015-01-01
   // This is the first date NOT included.
   optional string cut_date = 14;

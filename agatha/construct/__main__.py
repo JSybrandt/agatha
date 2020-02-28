@@ -3,7 +3,6 @@ from agatha.config import (
     proto_util,
 )
 from agatha.construct import (
-    biggraph_util,
     dask_checkpoint,
     dask_process_global as dpg,
     embedding_util,
@@ -341,16 +340,3 @@ if __name__ == "__main__":
         .map(json.dumps)
         .to_textfiles(f"{mongo_sentences_dir}/*.json")
     )
-
-  if config.HasField("export_with_big_graph_config"):
-    print("Processing graph for Pytorch BigGraph")
-    pbg_config = biggraph_util.get_biggraph_config(
-        Path(config.export_with_big_graph_config)
-    )
-    biggraph_util.export_graph_for_biggraph(
-        pbg_config,
-        all_subgraph_partitions
-    )
-
-
-

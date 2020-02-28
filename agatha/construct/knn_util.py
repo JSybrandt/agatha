@@ -13,8 +13,8 @@ from agatha.util.misc_util import (
     hash_str_to_int64,
     flatten_list
 )
-from agatha.util import database_util
 from agatha.util.misc_util import Record
+from agatha.util import sqlite3_lookup
 import dask
 import networkx as nx
 from agatha.construct import dask_process_global as dpg
@@ -36,16 +36,17 @@ def get_faiss_index_initializer(
 
 def nearest_neighbors_network_from_index(
     hash_and_embedding:dbag.Bag,
-    inverted_index_collection:str,
+    hash2name_db:Path,
     batch_size:int,
     num_neighbors:int,
     faiss_index_name="final",
     weight:float=1.0,
 )->Iterable[nx.Graph]:
   """
-  Applies faiss and runs results through inverted index. Requires
-  knn_util:faiss_index and knn_util:inverted_index to be initialized.
+  Applies faiss and runs results through inverted index.
   """
+  assert hash2name_db.is_file(), "Missing hash2name sqlite3 db."
+
   def apply_faiss_to_edges(
       hash_and_embedding:Iterable[Record],
   )->Iterable[nx.Graph]:
@@ -53,40 +54,26 @@ def nearest_neighbors_network_from_index(
     # The only reason we need parts_written_to_db is to make sure that the
     # writing happens before this point
     index = dpg.get(f"knn_util:faiss_{faiss_index_name}")
-    inverted_index = {}
 
     graph = nx.Graph()
-    for batch in iter_to_batches(hash_and_embedding, batch_size):
-      hashes, embeddings = records_to_ids_and_embeddings(
-          records=batch,
-      )
-      _, neighs_per_root = index.search(embeddings, num_neighbors)
-
-      hashes = hashes.tolist() + flatten_list(neighs_per_root.tolist())
-      hashes = list(set(hashes) - set(inverted_index.keys()))
-
-      graph_keys = database_util.get(
-          values=hashes,
-          collection=inverted_index_collection,
-          field_name="hash",
-          desired_fields=["strid"]
-      )
-      for k, v in zip(hashes, graph_keys):
-        inverted_index[k] = v["strid"]
-
-      # Create records
-      for root_idx, neigh_indices in zip(hashes, neighs_per_root):
-        root = inverted_index[root_idx]
-        if root is None:
-          continue
-        for neigh_idx in neigh_indices:
-          if neigh_idx == root_idx:
+    with Sqlite3LookupTable(hash2name_db) as hash2name:
+      for batch in iter_to_batches(hash_and_embedding, batch_size):
+        hashes, embeddings = to_hash_and_embedding(records=batch)
+        _, neighs_per_root = index.search(embeddings, num_neighbors)
+        hashes = hashes.tolist() + flatten_list(neighs_per_root.tolist())
+        # Create records
+        for root_hash, neigh_indices in zip(hashes, neighs_per_root):
+          root_name = hash2name[root_hash]
+          if root_name is None:
             continue
-          neigh = inverted_index[neigh_idx]
-          if neigh is None:
-            continue
-          graph.add_edge(root, neigh, weight=weight)
-          graph.add_edge(neigh, root, weight=weight)
+          for neigh_hash in neigh_indices:
+            if neigh_hash == root_hash:
+              continue
+            neigh_name = hash2name[neigh_hash]
+            if neigh_name is None:
+              continue
+            graph.add_edge(root_name, neigh_name, weight=weight)
+            graph.add_edge(neigh_name, root_name, weight=weight)
     return [graph]
 
   return hash_and_embedding.map_partitions(apply_faiss_to_edges)
@@ -114,7 +101,7 @@ def train_distributed_knn(
 
   @param hash_and_embedding: bag of hash value and embedding values
   @param text_field: input text field that we embed.
-  @param id_field: output id field we use to store number ids
+  @param id_field: output id field we use to store number hashes
   @param batch_size: number of sentences per batch
   @param num_centroids: number of voronoi cells in approx nn
   @param num_probes: number of cells to consider when querying
@@ -249,29 +236,23 @@ def add_points_to_index(
     init_index_path:Path,
     batch_size:int,
     output_path:Path,
-    embedding_field:str="embedding",
-    id_field:str="id",
 )->Path:
   "Loads an initial index, adds the partition to the index, and writes result"
   index = faiss.read_index(str(init_index_path))
   assert index.is_trained
 
   for batch in iter_to_batches(records, batch_size):
-    ids, embeddings = records_to_ids_and_embeddings(
-        records=batch,
-        id_field=id_field,
-        embedding_field=embedding_field
-    )
-    index.add_with_ids(embeddings, ids)
+    hashes, embeddings = to_hash_and_embedding(records=batch)
+    index.add_with_ids(embeddings, hashes)
   faiss.write_index(index, str(output_path))
   return output_path
 
-def records_to_ids_and_embeddings(
+def to_hash_and_embedding(
     records:Iterable[Record],
     id_field:str="id",
     embedding_field:str="embedding",
 )->Tuple[np.ndarray, np.ndarray]:
-  ids = np.array(
+  hashes = np.array(
       list(map(lambda r:r[id_field], records)),
       dtype=np.int64
   )
@@ -279,4 +260,4 @@ def records_to_ids_and_embeddings(
       list(map(lambda r:r[embedding_field], records)),
       dtype=np.float32
   )
-  return ids, embeddings
+  return hashes, embeddings

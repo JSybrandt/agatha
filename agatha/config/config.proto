@@ -25,13 +25,6 @@ message ClusterConfig {
   optional bool disable_checkpoints = 8 [default=false];
 }
 
-// The properties of a mongodb database
-message DatabaseConfig {
-  optional string address = 1;
-  optional int32 port = 2 [default=27017];
-  // The database name used in mongo
-  optional string name = 3 [default="agatha"];
-}
 
 message TextParserConfig {
   optional string scispacy_version = 1;
@@ -127,7 +120,6 @@ message MySqlConfig {
 message ConstructConfig {
   // Details about the ray cluster
   optional ClusterConfig cluster = 1;
-  optional DatabaseConfig db = 2;
   // Details about the medline distribution to download.
   optional FtpSource ftp = 3;
   optional TextParserConfig parser = 4;
@@ -143,6 +135,8 @@ message ConstructConfig {
   // Date string in form of YYYY-MM-DD. e.g. 2015-01-01
   // This is the first date NOT included.
   optional string cut_date = 14;
+  // The root dir of the git repo
+  optional string install_dir = 15 [default="./"];
 }
 
 // Config used to query the network.

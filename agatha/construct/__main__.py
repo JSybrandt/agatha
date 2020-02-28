@@ -13,7 +13,7 @@ from agatha.construct import (
     parse_pubmed_xml,
     text_util,
 )
-from agatha.util import misc_util, database_util
+from agatha.util import misc_util, sqlite3_lookup
 from dask.distributed import Client
 from pathlib import Path
 import dask
@@ -68,11 +68,12 @@ if __name__ == "__main__":
   print("Prepping scratch directories")
   download_local, download_shared = scratch("download_pubmed")
   _, faiss_index_dir = scratch("faiss_index")
+  _, hash2name_dir = scratch("hash_to_name")
   _, checkpoint_dir = scratch("dask_checkpoints")
-  faiss_index_path = faiss_index_dir.joinpath("final.index")
-  # This directory holds the information necessary to import the mongo database
-  _, res_data_dir = scratch("data")
 
+  faiss_index_path = faiss_index_dir.joinpath("final.index")
+
+  _, res_data_dir = scratch("processed_data")
   # export directories
   # This one will hold edge tsv data
   res_graph_dir = res_data_dir.joinpath("graph")
@@ -84,11 +85,6 @@ if __name__ == "__main__":
   # Initialize Helper Objects ###
   print("Registering Helper Objects")
   preloader = dpg.WorkerPreloader()
-  preloader.register(*database_util.database_initializer(
-      address=config.db.address,
-      port=config.db.port,
-      name=config.db.name,
-  ))
   preloader.register(*text_util.get_scispacy_initalizer(
       scispacy_version=config.parser.scispacy_version,
   ))
@@ -278,6 +274,23 @@ if __name__ == "__main__":
   )
   ckpt("hash_and_embedding")
 
+  print("Creating Hash2Name Database")
+  hash_and_name = (
+      sentences
+      .map(lambda rec: {
+        "name": rec["id"],
+        "hash": misc_util.hash_str_to_int(rec["id"]),
+      })
+  )
+  hash2name_db = hash2name_dir.joinpath("hash2name.sqlite3")
+  sqlite3_lookup.create_lookup_table(
+    record_bag=hash_and_name,
+    key_field="hash",
+    value_field="name",
+    database_path=hash2name_db,
+    intermediate_data_dir=hash2name_dir,
+    agatha_install_path=config.install_dir,
+  )
 
   # Now we can distribute the knn training
   if not faiss_index_path.is_file():
@@ -296,23 +309,9 @@ if __name__ == "__main__":
   else:
     print("Using existing Faiss Index")
 
-  hash_and_id = (
-      sentences
-      .map(lambda rec: {
-        "strid": rec["id"],
-        "hash": misc_util.hash_str_to_int(rec["id"]),
-      })
-  )
-  write_hash_and_id = database_util.put_bag(
-      bag=hash_and_id,
-      collection="inverted_index",
-      indexed_field_name="hash",
-  )
-  ckpt("write_hash_and_id")
-
   nearest_neighbors_edges = knn_util.nearest_neighbors_network_from_index(
       hash_and_embedding=hash_and_embedding,
-      inverted_index_collection="inverted_index",
+      hash2name_db=hash2name_db,
       batch_size=config.sys.batch_size,
       num_neighbors=config.sentence_knn.num_neighbors,
   )

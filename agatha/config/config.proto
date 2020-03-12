@@ -137,6 +137,11 @@ message ConstructConfig {
   optional string cut_date = 14;
   // The root dir of the git repo
   optional string install_dir = 15 [default="./"];
+  // If set, we will NOT filter for only english abstracts.
+  optional bool allow_nonenglish_abstracts = 16 [default=false];
+  // If set, we will NOT check against the pubmed FTP server, instead we will
+  // use whatever is inside {shared_scratch}/download_medline
+  optional bool skip_ftp_download= 17 [default=false];
 }
 
 // Config used to query the network.

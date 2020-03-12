@@ -128,18 +128,24 @@ if __name__ == "__main__":
 
 
   # Download all of pubmed. ####
-  print("Downloading pubmed XML Files")
-  with ftp_util.ftp_connect(
-      address=config.ftp.address,
-      workdir=config.ftp.workdir,
-  ) as conn:
-    # Downloads new files if not already present in shared
-    xml_paths = ftp_util.ftp_retreive_all(
-        conn=conn,
-        pattern="^.*\.xml\.gz$",
-        directory=download_shared,
-        show_progress=True,
-    )
+  if not config.skip_ftp_download:
+    print("Downloading pubmed XML Files")
+    with ftp_util.ftp_connect(
+        address=config.ftp.address,
+        workdir=config.ftp.workdir,
+    ) as conn:
+      # Downloads new files if not already present in shared
+      xml_paths = ftp_util.ftp_retreive_all(
+          conn=conn,
+          pattern="^.*\.xml\.gz$",
+          directory=download_shared,
+          show_progress=True,
+      )
+  else:
+    print(f"Skipping FTP download, using {download_shared}/*.xml.gz instead")
+    assert download_shared.is_dir(), f"Cannot find {download_shared}"
+    xml_paths = list(download_shared.glob("*.xml.gz"))
+    assert len(xml_paths) > 0, f"No .xml.gz files inside {download_shared}"
 
   ##############################################################################
 
@@ -155,10 +161,13 @@ if __name__ == "__main__":
       xml_path=p,
     )
     for p in xml_paths
-  ]).filter(
-    # Only take the english ones
-    lambda r: r["language"]=="eng"
-  )
+  ])
+
+  if not config.allow_nonenglish_abstracts:
+    medline_documents = medline_documents.filter(
+      # Only take the english ones
+      lambda r: r["language"]=="eng"
+    )
 
   if config.HasField("cut_date"):
     # This will fail if the cut-date is not a valid string

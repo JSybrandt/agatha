@@ -45,7 +45,7 @@ def nearest_neighbors_network_from_index(
   """
   Applies faiss and runs results through inverted index.
   """
-  assert hash2name_db.is_file(), "Missing hash2name sqlite3 db."
+  assert hash2name_db.is_file(), "Missing hash2names sqlite3 db."
 
   def apply_faiss_to_edges(
       hash_and_embedding:Iterable[Record],
@@ -56,24 +56,20 @@ def nearest_neighbors_network_from_index(
     index = dpg.get(f"knn_util:faiss_{faiss_index_name}")
 
     graph = nx.Graph()
-    with Sqlite3LookupTable(hash2name_db) as hash2name:
+    with sqlite3_lookup.Sqlite3LookupTable(hash2name_db) as hash2names:
       for batch in iter_to_batches(hash_and_embedding, batch_size):
         hashes, embeddings = to_hash_and_embedding(records=batch)
         _, neighs_per_root = index.search(embeddings, num_neighbors)
         hashes = hashes.tolist() + flatten_list(neighs_per_root.tolist())
         # Create records
         for root_hash, neigh_indices in zip(hashes, neighs_per_root):
-          root_name = hash2name[root_hash]
-          if root_name is None:
-            continue
-          for neigh_hash in neigh_indices:
-            if neigh_hash == root_hash:
-              continue
-            neigh_name = hash2name[neigh_hash]
-            if neigh_name is None:
-              continue
-            graph.add_edge(root_name, neigh_name, weight=weight)
-            graph.add_edge(neigh_name, root_name, weight=weight)
+          if root_hash in hash2names:
+            for root_name in hash2names[root_hash]:
+              for neigh_hash in neigh_indices:
+                if neigh_hash != root_hash and neigh_hash in hash2names:
+                  for neigh_name in hash2names[neigh_hash]:
+                    graph.add_edge(root_name, neigh_name, weight=weight)
+                    graph.add_edge(neigh_name, root_name, weight=weight)
     return [graph]
 
   return hash_and_embedding.map_partitions(apply_faiss_to_edges)
@@ -114,6 +110,7 @@ def train_distributed_knn(
   init_index_path = shared_scratch_dir.joinpath("init.index")
 
   if not init_index_path.is_file():
+    print("\t- Constructing initial index:", init_index_path)
     # First off, we need to get a representative sample for faiss training
     training_data = hash_and_embedding.random_sample(
         prob=training_sample_prob
@@ -132,6 +129,8 @@ def train_distributed_knn(
           output_path=init_index_path,
         )
     )
+  else:
+    print("\t- Using initial index:", init_index_path)
 
 
   # For each partition, load embeddings to idx

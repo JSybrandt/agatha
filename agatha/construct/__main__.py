@@ -294,7 +294,7 @@ if __name__ == "__main__":
 
   # Now we can distribute the knn training
   if not faiss_index_path.is_file():
-    print("Training Faiss Index")
+    print("Training Faiss Index:", faiss_index_path)
     knn_util.train_distributed_knn(
         hash_and_embedding=hash_and_embedding,
         batch_size=config.sys.batch_size,

@@ -34,15 +34,6 @@ already have protoc installed, you can pull it in through conda.
 conda install -c anaconda protobuf
 ```
 
-__Temporary:__ Due to incorrectly configured dependencies of pytorch-lightning
-for version 0.6.0, we have to install their latest release manually for the
-time-being.
-
-```
-pip install git+https://github.com/PyTorchLightning/pytorch-lightning.git
-```
-
-
 Install Agatha. This comes along with the dependencies necessary to run the
 pretrained model. Note, we're aware of a pip warning produced by this install
 method, we're working on providing a easier pip-installable wheel.

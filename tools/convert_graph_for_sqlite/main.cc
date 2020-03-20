@@ -73,7 +73,7 @@ int main(int argc, char** argv){
         .action([](const std::string& s){ return fs::path(s); });
   parser.add_argument("--filter-relation")
         .help("String, where each character is a selected entity")
-        .default_value("");
+        .default_value(std::string(""));
   try {
     parser.parse_args(argc, argv);
   }

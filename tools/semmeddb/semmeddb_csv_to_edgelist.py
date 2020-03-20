@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 from fire import Fire
 from pathlib import Path
-from pymoliere.util import semmeddb_util as sm
-from pymoliere.util import database_util as db_util
+from agatha.util import semmeddb_util as sm
+from agatha.util import entity_types as typs
 from typing import Iterable
 
 def get_sentence_key(predicate:sm.Predicate)->str:
   # version 1
   return "{TYP}:{pmid}:1:{sent}".format(
-      TYP=db_util.SENTENCE_TYPE,
+      TYP=typs.SENTENCE_TYPE,
       pmid=predicate["pmid"],
       sent=predicate["sent_idx"],
   ).lower()
 
 def get_mesh_key(predicate:sm.Predicate, id_field:str)->str:
   return "{TYP}:{val}".format(
-      TYP=db_util.MESH_TERM_TYPE,
+      TYP=typs.MESH_TERM_TYPE,
       val=predicate[id_field],
   ).lower()
 
@@ -54,6 +54,7 @@ def main(
       pred_key = sm.predicate_to_key(predicate)
       for neigh in get_adjacent_names(predicate):
         tsv_file.write(f"{pred_key}\t{neigh}\t{edge_weight}\n")
+        tsv_file.write(f"{neigh}\t{pred_key}\t{edge_weight}\n")
 
 
 

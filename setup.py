@@ -104,7 +104,7 @@ setup(
       "numpy",
       "pandas",
       "protobuf",
-      # "pytorch-lightning", This is disabled until PL fixes their deps
+       "pytorch-lightning",
       "sentencepiece",  # needed to run CBAG
       "sklearn", # needed to run Agatha predictor
       "sqlitedict", # needed for CBAG

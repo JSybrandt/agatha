@@ -11,7 +11,12 @@ from itertools import chain
 from agatha.util.sqlite3_graph import Sqlite3Graph
 from dataclasses import dataclass
 import numpy as np
-from agatha.util.entity_types import to_graph_key, UMLS_TERM_TYPE
+from agatha.util.entity_types import (
+    to_graph_key,
+    UMLS_TERM_TYPE,
+    PREDICATE_TYPE,
+)
+import json
 
 @dataclass
 class HypothesisTensors:
@@ -100,14 +105,31 @@ class PredicateLoader(torch.utils.data.Dataset):
       self,
       embedding_index:EmbeddingIndex,
       graph_index:Sqlite3Graph,
-      predicate_index:EntityIndex,
-      entity_dir:Path,
+      predicates:List[str],
       neighbors_per_term:int,
+      entity_dir:Path,
   ):
-    self.predicate_index=predicate_index
+    self.predicates=PredicateLoader.get_all_predicates(entity_dir)
     self.embedding_index = embedding_index
     self.graph_index = graph_index
     self.neighbors_per_term = neighbors_per_term
+
+  @staticmethod
+  def get_all_predicates(entity_dir:Path)->List[str]:
+    print("Loading all predicate names")
+    entity_dir = Path(entity_dir)
+    assert entity_dir.is_dir()
+    res = []
+    predicate_name_files = list(
+        entity_dir.glob(f"entity_names_{PREDICATE_TYPE}*")
+    )
+    assert len(predicate_name_files) > 0, "Failed to find predicate files"
+    for predicate_name_file in predicate_name_files:
+      with open(predicate_name_file) as f:
+        res += json.load(f)
+    assert len(res) > 0, "Failed to load any predicates"
+    print("Found", len(res))
+    return res
 
   @staticmethod
   def parse_predicate_name(predicate_name:str)->Tuple[str, str, str]:
@@ -117,10 +139,10 @@ class PredicateLoader(torch.utils.data.Dataset):
     return components[1:]
 
   def __len__(self):
-    return len(self.predicate_index)
+    return len(self.predicates)
 
   def __getitem__(self, idx:int)->PredicateObservation:
-    predicate = self.predicate_index[idx]
+    predicate = self.predicates[idx]
     subj, _, obj = self.parse_predicate_name(predicate)
     subj = f"{et.MESH_TERM_TYPE}:{subj}"
     obj = f"{et.MESH_TERM_TYPE}:{obj}"

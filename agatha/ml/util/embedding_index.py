@@ -97,6 +97,13 @@ class EmbeddingLocationIndex(object):
     self.db_cursor = self.db_conn.cursor()
     return self
 
+  def get_names_of_type(self, typ_char:str)->List[str]:
+    res = []
+    for ent, val in self._cache.items():
+      if val is not None and ent[0] == typ_char:
+        res.append(ent)
+    return res
+
   def __exit__(self, exc_type, exc_value, traceback):
     self.db_conn.close()
     self.db_conn = None
@@ -114,7 +121,7 @@ class EmbeddingIndex(object):
     embedding_location_db_path = Path(embedding_location_db_path)
     # Setup entity->location index index
     self.embedding_location_index = EmbeddingLocationIndex(
-        embedding_location_db_path
+        embedding_location_db_path,
     )
     self.inside_context_mngr = False
 

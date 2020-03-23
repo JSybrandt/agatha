@@ -32,6 +32,7 @@ if __name__ == "__main__":
   )
   model = HypothesisPredictor(args)
   if args.mode == "train":
+    model.init_training_datasets()
     trainer.fit(model)
   elif args.mode == "test":
     trainer.test(model)

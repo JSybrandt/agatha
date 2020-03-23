@@ -73,7 +73,7 @@ class HypothesisPredictor(pl.LightningModule):
       assert path.is_file(), f"Failed to find file: {path}. {MSG}"
     assert_dir(self.hparams.embedding_dir)
     assert_file(self.hparams.sqlite_graph_path)
-    assert_file(self.hparams.sqlite_embedding_location)
+    assert_file(self.hparams.sqlite_embedding_path)
     self._is_forward_ready = False
 
   def set_data_root(self, root_dir:Path)->None:
@@ -84,7 +84,7 @@ class HypothesisPredictor(pl.LightningModule):
         .joinpath("helper_databases")
         .joinpath("graph_predicate_subset.sqlite3")
     )
-    self.hparams.sqlite_embedding_location = str(
+    self.hparams.sqlite_embedding_path = str(
         root_dir
         .joinpath("helper_databases")
         .joinpath("embedding_location_subset.sqlite3")
@@ -113,7 +113,7 @@ class HypothesisPredictor(pl.LightningModule):
     self._check_file_paths()
     self.embedding_index = EmbeddingIndex(
         embedding_dir=self.hparams.embedding_dir,
-        embedding_location_db_path=self.hparams.sqlite_embedding_location,
+        embedding_location_db_path=self.hparams.sqlite_embedding_path,
     ).__enter__()
     self.graph_index = Sqlite3Graph(self.hparams.sqlite_graph_path).__enter__()
     self._is_forward_ready = True
@@ -124,7 +124,7 @@ class HypothesisPredictor(pl.LightningModule):
     # Helper data structures
     self.embedding_index = PreloadedEmbeddingIndex(
         embedding_dir=self.hparams.embedding_dir,
-        embedding_location_db_path=self.hparams.sqlite_embedding_location,
+        embedding_location_db_path=self.hparams.sqlite_embedding_path,
         entity_types=UMLS_TERM_TYPE+PREDICATE_TYPE
     )
     self.graph_index = PreloadedSqlite3Graph(
@@ -133,15 +133,16 @@ class HypothesisPredictor(pl.LightningModule):
 
     self._is_forward_ready = True
 
-  def init_training_datasets()->None:
-    if not self._is_forward_ready:
-      self.init_preload()
+  def init_training_datasets(self)->None:
+    #self.init()
+    self.init_preload()
     # All predicates, will split
     predicates = PredicateLoader(
       embedding_index=self.embedding_index,
       graph_index=self.graph_index,
-      predicate_index=self.embedding_index,
+      predicates=self.embedding_index.embedding_location_index.get_names_of_type(PREDICATE_TYPE),
       neighbors_per_term=self.hparams.neighbors_per_term,
+      entity_dir=self.hparams.entity_dir,
     )
     # Validation samples
     val_size = int(len(predicates)*self.hparams.validation_fraction)
@@ -294,11 +295,9 @@ class HypothesisPredictor(pl.LightningModule):
         #num_workers=2,
     )
 
-  @pl.data_loader
   def train_dataloader(self):
     return self._config_dl(self.training_data)
 
-  @pl.data_loader
   def val_dataloader(self):
     return self._config_dl(self.val_data)
 

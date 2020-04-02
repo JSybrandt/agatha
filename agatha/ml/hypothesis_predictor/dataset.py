@@ -105,7 +105,6 @@ class PredicateLoader(torch.utils.data.Dataset):
       self,
       embedding_index:EmbeddingIndex,
       graph_index:Sqlite3Graph,
-      predicates:List[str],
       neighbors_per_term:int,
       entity_dir:Path,
   ):

@@ -80,7 +80,6 @@ if __name__ == "__main__":
 
   print("Identifying potential query-specific stopwords")
   min_support = config.topic_model.min_support_count
-  max_support = int(config.topic_model.max_support_fraction*len(text_corpus))
   term2doc_freq = bow_util.get_document_frequencies(text_corpus)
   stopwords_under = {
       t for t, c in term2doc_freq.items()

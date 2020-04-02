@@ -140,7 +140,6 @@ class HypothesisPredictor(pl.LightningModule):
     predicates = PredicateLoader(
       embedding_index=self.embedding_index,
       graph_index=self.graph_index,
-      predicates=self.embedding_index.embedding_location_index.get_names_of_type(PREDICATE_TYPE),
       neighbors_per_term=self.hparams.neighbors_per_term,
       entity_dir=self.hparams.entity_dir,
     )
@@ -249,14 +248,10 @@ class HypothesisPredictor(pl.LightningModule):
     for k in metrics:
       if not torch.isfinite(metrics[k]):
         metrics[k] = torch.zeros(1)
-    return {
-        'loss': metrics["loss"],
-        'progress_bar': metrics,
-        'log': metrics,
-    }
+    return metrics
 
   def validation_step(self, batch, batch_idx):
-    metrics = self.training_step(batch, batch_idx)["log"]
+    metrics = self.training_step(batch, batch_idx)
     metrics["val_loss"] = metrics["loss"]
     return metrics
 

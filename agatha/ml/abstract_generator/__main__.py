@@ -1,5 +1,6 @@
 from argparse import Namespace
-from agatha.config import config_pb2 as cpb, proto_util
+from agatha.config import config_pb2 as cpb
+from agatha.util import proto_util
 from agatha.ml.abstract_generator.abstract_generator import AbstractGenerator
 from agatha.ml.abstract_generator.generation_util import evaluate, name_thy_self
 from agatha.ml.abstract_generator.path_util import get_paths

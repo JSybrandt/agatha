@@ -1,9 +1,7 @@
 # Ensures that the config is loaded and manipuated correctly.
 
-from agatha.config import (
-    config_pb2 as cpb,
-    proto_util,
-)
+from agatha.config import config_pb2 as cpb
+from agatha.util import proto_util
 from tempfile import TemporaryDirectory
 from pathlib import Path
 from argparse import Namespace

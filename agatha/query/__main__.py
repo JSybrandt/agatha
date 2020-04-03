@@ -2,10 +2,10 @@ from gensim.corpora import Dictionary
 from gensim.models.ldamulticore import LdaMulticore
 from pathlib import Path
 from pprint import pprint
-from agatha.config import config_pb2 as cpb, proto_util
+from agatha.config import config_pb2 as cpb
 from agatha.query import path_util, bow_util
 from agatha.query import query_pb2 as qpb
-from agatha.util import entity_types
+from agatha.util import entity_types, proto_util
 from agatha.util.sqlite3_graph import Sqlite3Graph
 from agatha.util.sqlite3_bow import Sqlite3Bow
 

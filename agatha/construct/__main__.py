@@ -1,6 +1,5 @@
 from agatha.config import (
     config_pb2 as cpb,
-    proto_util,
 )
 from agatha.construct import (
     dask_checkpoint,
@@ -13,7 +12,11 @@ from agatha.construct import (
     parse_pubmed_xml,
     text_util,
 )
-from agatha.util import misc_util, sqlite3_lookup
+from agatha.util import (
+    misc_util,
+    sqlite3_lookup,
+    proto_util,
+)
 from dask.distributed import Client
 from pathlib import Path
 import dask

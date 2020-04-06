@@ -1,0 +1,293 @@
+{
+    "paper_id": "871466e53b6e81c3c0ce94a39d2d8237df89419a",
+    "metadata": {
+        "title": "Hundreds of severe pediatric COVID-19 infections in Wuhan prior to the lockdown",
+        "authors": [
+            {
+                "first": "Zhanwei",
+                "middle": [],
+                "last": "Du",
+                "suffix": "",
+                "affiliation": {
+                    "laboratory": "",
+                    "institution": "The University of Texas at Austin",
+                    "location": {
+                        "postCode": "78712",
+                        "settlement": "Austin",
+                        "region": "Texas"
+                    }
+                },
+                "email": ""
+            },
+            {
+                "first": "Ciara",
+                "middle": [],
+                "last": "Nugent",
+                "suffix": "",
+                "affiliation": {
+                    "laboratory": "",
+                    "institution": "The University of Texas at Austin",
+                    "location": {
+                        "postCode": "78712",
+                        "settlement": "Austin",
+                        "region": "Texas"
+                    }
+                },
+                "email": ""
+            },
+            {
+                "first": "Benjamin",
+                "middle": [
+                    "John"
+                ],
+                "last": "Cowling",
+                "suffix": "",
+                "affiliation": {
+                    "laboratory": "",
+                    "institution": "The University of Hong Kong",
+                    "location": {
+                        "settlement": "Hong Kong SAR",
+                        "country": "China"
+                    }
+                },
+                "email": ""
+            },
+            {
+                "first": "Lauren",
+                "middle": [
+                    "Ancel"
+                ],
+                "last": "Meyers",
+                "suffix": "",
+                "affiliation": {
+                    "laboratory": "",
+                    "institution": "The University of Texas at Austin",
+                    "location": {
+                        "postCode": "78712",
+                        "settlement": "Austin",
+                        "region": "Texas"
+                    }
+                },
+                "email": ""
+            }
+        ]
+    },
+    "abstract": [],
+    "body_text": [
+        {
+            "text": "retrospective surveillance study 3 identified six children who had been hospitalized for COVID-19 in one of three central Wuhan hospitals between January 7th and January 15th. Given that Wuhan has over 395 other hospitals, there may have been far more severe pediatric cases than reported.",
+            "cite_spans": [],
+            "ref_spans": [],
+            "section": ""
+        },
+        {
+            "text": "There were six and 43 children out of 336 who tested positive for COVID-19 and influenza, respectively among all pediatric admissions during the 9-day period 3 Children are strikingly absent from COVID-19 reports and limited data suggest that pediatric infections are overwhelmingly mild 5 . Thus, our estimates for hundreds of severe pediatric cases likely translates to thousands or even tens of thousands of mildly infected children, suggesting that the force of infection from children may be grossly underestimated and the infection fatality rate overestimated from confirmed case counts alone. This highlights the urgent need for more robust surveillance to gauge the true extent and severity of COVID-19 in all ages.",
+            "cite_spans": [
+                {
+                    "start": 158,
+                    "end": 159,
+                    "text": "3",
+                    "ref_id": "BIBREF2"
+                }
+            ],
+            "ref_spans": [],
+            "section": ""
+        },
+        {
+            "text": "January 7 to January 15, 2020 . A retrospective study identified five hospitalized pediatric cases of COVID-19 from four central districts of Wuhan 3 and one from the neighboring Huanshi district 3 . We estimate that there were a total of 313 [95% CI: 171-520] severe (hospitalized) cases of COVID-19 in children during that nine-day period across the 13 central districts of Wuhan. Across districts our estimates range from four [95% CI: 0-9] in suburban Hannan to 38 [95% CI: 19-68] in central Hongshan as indicated by shading (Table S1 ).",
+            "cite_spans": [
+                {
+                    "start": 196,
+                    "end": 197,
+                    "text": "3",
+                    "ref_id": "BIBREF2"
+                }
+            ],
+            "ref_spans": [
+                {
+                    "start": 529,
+                    "end": 538,
+                    "text": "(Table S1",
+                    "ref_id": null
+                }
+            ],
+            "section": "Figure. Estimated COVID-19 pediatric hospitalizations (under age 17) in the 13 districts of Wuhan from"
+        }
+    ],
+    "bib_entries": {
+        "BIBREF0": {
+            "ref_id": "b0",
+            "title": "Early Transmission Dynamics in Wuhan, China, of Novel Coronavirus-Infected Pneumonia",
+            "authors": [
+                {
+                    "first": "Q",
+                    "middle": [],
+                    "last": "Li",
+                    "suffix": ""
+                },
+                {
+                    "first": "X",
+                    "middle": [],
+                    "last": "Guan",
+                    "suffix": ""
+                },
+                {
+                    "first": "P",
+                    "middle": [],
+                    "last": "Wu",
+                    "suffix": ""
+                }
+            ],
+            "year": 2020,
+            "venue": "N Engl J Med",
+            "volume": "",
+            "issn": "",
+            "pages": "",
+            "other_ids": {
+                "DOI": [
+                    "10.1056/NEJMoa2001316"
+                ]
+            }
+        },
+        "BIBREF1": {
+            "ref_id": "b1",
+            "title": "A familial cluster of pneumonia associated with the 2019 novel coronavirus indicating person-to-person transmission: a study of a family cluster",
+            "authors": [
+                {
+                    "first": "Jf-W",
+                    "middle": [],
+                    "last": "Chan",
+                    "suffix": ""
+                },
+                {
+                    "first": "S",
+                    "middle": [],
+                    "last": "Yuan",
+                    "suffix": ""
+                },
+                {
+                    "first": "K-H",
+                    "middle": [],
+                    "last": "Kok",
+                    "suffix": ""
+                }
+            ],
+            "year": 2020,
+            "venue": "Lancet",
+            "volume": "395",
+            "issn": "",
+            "pages": "514--537",
+            "other_ids": {}
+        },
+        "BIBREF2": {
+            "ref_id": "b2",
+            "title": "Detection of Covid-19 in Children in Early",
+            "authors": [
+                {
+                    "first": "W",
+                    "middle": [],
+                    "last": "Liu",
+                    "suffix": ""
+                },
+                {
+                    "first": "Q",
+                    "middle": [],
+                    "last": "Zhang",
+                    "suffix": ""
+                },
+                {
+                    "first": "J",
+                    "middle": [],
+                    "last": "Chen",
+                    "suffix": ""
+                }
+            ],
+            "year": 2020,
+            "venue": "N Engl J Med",
+            "volume": "",
+            "issn": "",
+            "pages": "",
+            "other_ids": {
+                "DOI": [
+                    "10.1056/NEJMc2003717"
+                ]
+            }
+        },
+        "BIBREF3": {
+            "ref_id": "b3",
+            "title": "Risk for Transportation of 2019 Novel Coronavirus Disease from Wuhan to Other Cities in China. Emerging Infectious Disease journal 2020",
+            "authors": [
+                {
+                    "first": "Zhanwei",
+                    "middle": [],
+                    "last": "Du",
+                    "suffix": ""
+                },
+                {
+                    "first": "Lin",
+                    "middle": [],
+                    "last": "Wang",
+                    "suffix": ""
+                },
+                {
+                    "first": "Simon",
+                    "middle": [],
+                    "last": "Cauchemez",
+                    "suffix": ""
+                }
+            ],
+            "year": null,
+            "venue": "",
+            "volume": "26",
+            "issn": "",
+            "pages": "",
+            "other_ids": {
+                "DOI": [
+                    "10.3201/eid2605.200146"
+                ]
+            }
+        },
+        "BIBREF4": {
+            "ref_id": "b4",
+            "title": "A retrospective study of the clinical characteristics of COVID-19 infection in 26 children. Infectious Diseases (except HIV/AIDS)",
+            "authors": [
+                {
+                    "first": "A",
+                    "middle": [],
+                    "last": "Tang",
+                    "suffix": ""
+                },
+                {
+                    "first": "W",
+                    "middle": [],
+                    "last": "Xu",
+                    "suffix": ""
+                },
+                {
+                    "first": "M",
+                    "middle": [],
+                    "last": "Shen",
+                    "suffix": ""
+                }
+            ],
+            "year": 2020,
+            "venue": "",
+            "volume": "",
+            "issn": "",
+            "pages": "",
+            "other_ids": {
+                "DOI": [
+                    "10.1101/2020.03.08.20029710"
+                ]
+            }
+        }
+    },
+    "ref_entries": {
+        "FIGREF0": {
+            "text": ". By using this ratio in a detailed analysis of influenza surveillance data and COVID-19 epidemic dynamics (see Appendix), we estimate that there were 313 [95% CI: 171-520] children hospitalized for COVID-19 in Wuhan during January 7-15, 2020 (Figure). Under an epidemic doubling time of 7.31 days 4 , we estimate that there were 1105 [95% CI: 592, 1829] cumulative pediatric COVID-19 hospitalizations prior to the January 23rd lockdown, which far surpasses the 425 confirmed cases reported across all age groups, none of which were children under age 15 1 .",
+            "latex": null,
+            "type": "figure"
+        }
+    },
+    "back_matter": []
+}

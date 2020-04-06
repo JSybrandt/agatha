@@ -1,0 +1,144 @@
+syntax = "proto2";
+package agatha;
+
+// When constructing the Agatha semantic network, this is the configuration
+// schema.
+message ConstructConfig {
+
+  // Dask cluster config
+  optional ClusterConfig cluster = 1;
+
+  // MEDLINE Raw Data FTP Download
+  optional FtpSource ftp = 2;
+
+  // Conficures parsing and embedding text
+  optional TextParserConfig parser = 4;
+
+  // Configures sentence-to-sentence k-nearest-neighbors
+  optional KnnConfig sentence_knn = 5;
+
+  // Configs for machine learning models
+  optional MlConfig sys = 7;
+
+  // Used to debug runs of the construction pipeline
+  optional ConstructDebugConfig debug = 8;
+
+  // Configures the phrase mining components
+  optional NGramConfig phrases = 9;
+
+  // If set, we're going to stop the construction process once we checkpoint
+  // this value. Used to help prepare data for the ML process.
+  optional string stop_after_ckpt = 10;
+
+  // Date string in form of YYYY-MM-DD. e.g. 2015-01-01
+  // This is the first date NOT included.
+  optional string cut_date = 14;
+
+  // The root dir of the git repo. Needed to find the tools subdir
+  optional string install_dir = 15 [default="./"];
+
+  // If set, we will NOT filter for only english abstracts.
+  optional bool allow_nonenglish_abstracts = 16 [default=false];
+
+  // If set, we will NOT check against the pubmed FTP server, instead we will
+  // use whatever is inside {shared_scratch}/download_medline
+  optional bool skip_ftp_download= 17 [default=false];
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Helper Messages /////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+
+// The ClusterConfig defines the ray cluster connection param. Any
+// cluster-specific deatuls will occur here.
+message ClusterConfig {
+  // Where to connect to cluster.
+  optional string address = 1 [default="localhost"];
+  optional int32 port = 2 [default=8786];
+  // Fast scratch dir to use for intermediate storage.
+  optional string local_scratch = 3 [default="/tmp"];
+  optional string shared_scratch = 4;
+  // Restarting cluster refreshes all code, but also clears stored datasets.
+  optional bool restart = 5 [default=false];
+  optional bool run_locally = 6 [default=false];
+  optional bool clear_checkpoints = 7 [default=false];
+  optional bool disable_checkpoints = 8 [default=false];
+}
+
+
+// This is used to specify the remote location of pubmed articles.  Defaults to
+// the most recent baseline.
+message FtpSource {
+
+  // url of the ftp server
+  optional string address = 1 [default="ftp.ncbi.nlm.nih.gov"];
+
+  // The remote location to download from
+  optional string workdir = 2 [default="pubmed/baseline"];
+}
+
+
+// Used to confog
+message TextParserConfig {
+  optional string scispacy_version = 1;
+
+  // May be a path to a bert model, or any of the transformer pretrained
+  // models.  Example: "./data/scibert" or "bert-base-uncased"
+  optional string bert_model = 2 [default="allenai/scibert_scivocab_uncased"];
+
+  // Discard sentences that are too long/short. Counts # chars
+  optional int32 min_sentence_len = 3 [default=10];
+  optional int32 max_sentence_len = 4 [default=1000];
+
+  // Path to stopwords. One word per line.
+  optional string stopword_list = 5;
+
+  // The BERT model will error out if given a too-long sequence.
+  // Long sequences will be truncated.
+  optional int32 max_sequence_length = 6 [default=500];
+}
+
+
+// Configures K-Nearest Neighbors thru FLANN with PQ-Quantization
+message KnnConfig {
+  optional int32 num_neighbors = 1 [default=100];
+  optional int32 num_centroids = 2 [default=2048];
+  optional int32 num_probes = 3 [default=16];
+  optional int32 num_quantizers = 4 [default=96];
+  optional int32 bits_per_quantizer = 5 [default=8];
+  // The probability that a randomly selected record is included in the inital
+  // training procedure.
+  optional float training_probability = 6 [default=0.01];
+}
+
+
+// Used to configure any machine learning system options
+message MlConfig {
+  optional int32 batch_size = 1 [default=32];
+  optional bool disable_gpu = 2 [default=false];
+}
+
+
+// Options for debug runs of the construction pipeline
+message ConstructDebugConfig {
+  optional bool enable = 1 [default=false];
+  optional float document_sample_rate = 2 [default=0.1];
+  optional int32 partition_subset_size = 3 [default=50];
+}
+
+// Used to configure phrase mining component
+message NGramConfig {
+  // When performing n-gram mining, how long should a potential n-gram be?
+  // Set less than j to disable n-gram mining
+  optional int32 max_ngram_length = 1 [default=4];
+  // Number of times an n-gram must occur before its determined to be real
+  optional int32 min_ngram_support = 2 [default=20];
+  // Number of times an n-gram must occur in a single partition in order to
+  // count.  This is an approximation factor, because otherwise we're going to
+  // communicate a ton of bad ngrams.
+  optional int32 min_ngram_support_per_partition = 3 [default=5];
+  // How much of the text should we look at when mining ngrams?
+  optional float ngram_sample_rate = 4 [default=0.33];
+}

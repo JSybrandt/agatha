@@ -2,21 +2,24 @@ from gensim.corpora import Dictionary
 from gensim.models.ldamulticore import LdaMulticore
 from pathlib import Path
 from pprint import pprint
-from agatha.config import config_pb2 as cpb
-from agatha.query import path_util, bow_util
-from agatha.query import query_pb2 as qpb
+from agatha.topic_query import (
+    path_util,
+    bow_util,
+    topic_query_result_pb2 as qpb,
+    topic_query_config_pb2 as cpb,
+)
 from agatha.util import entity_types, proto_util
 from agatha.util.sqlite3_graph import Sqlite3Graph
 from agatha.util.sqlite3_bow import Sqlite3Bow
 
 
-def assert_conf_has_field(config:cpb.QueryConfig, field:str)->None:
+def assert_conf_has_field(config:cpb.TopicQueryConfig, field:str)->None:
   if not config.HasField(field):
     raise ValueError(f"Must supply `{field}` term.")
 
 
 if __name__ == "__main__":
-  config = cpb.QueryConfig()
+  config = cpb.TopicQueryConfig()
   proto_util.parse_args_to_config_proto(config)
   print("Running agatha query with the following custom parameters:")
   print(config)

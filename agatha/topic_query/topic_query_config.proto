@@ -1,0 +1,67 @@
+syntax = "proto2";
+package agatha;
+
+// Config used to perform topic model queries
+message TopicQueryConfig {
+
+  // The first term of this query
+  optional string source = 1;
+
+  // The second term of this query
+  optional string target = 2;
+
+  // The path to the graph sqlite database used to run this query
+  optional string graph_db = 3;
+
+  // The path to the sentence sqlite database used to run this query
+  optional string bow_db = 4;
+
+  // The number of sentences that are going to be extracted per element of the
+  // shortest path between source and target
+  optional int32 max_sentences_per_path_elem = 5 [default=2000];
+
+  // Configures the LDA topic model generated from selected sentences
+  optional LdaConfig topic_model = 6;
+
+  // Configures how to get the shortest path between source and target
+  optional ShortestPathConfig path = 7;
+
+  // Where to store result proto
+  optional string result_path = 8 [default="./agatha_query_result.pb"];
+
+  // Is the query runner allows to overwrite an existing result file?
+  optional bool override = 9 [default=false];
+
+  // When downloading nodes, this is the maximum number of neighbors a new node
+  // is allows to have. High degree nodes will be downsampled to this rate. A
+  // higher value indicates a more accurate shortest path, at a longer runtime.
+  optional int32 max_degree = 10 [default=1000];
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Helper Messages /////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
+// Modifies how we perform LDA topics models
+message LdaConfig {
+  // How many topics to produce
+  optional int32 num_topics = 1 [default=20];
+
+  optional int32 random_seed = 2 [default=42];
+
+  // Number of training iterations of LDA
+  optional int32 iterations = 3 [default=50];
+
+  // Remove any word that does not occur at least X times
+  optional int32 min_support_count = 4 [default=2];
+
+  // Take the top X words per-topic, only effects output
+  optional int32 truncate_size = 7 [default=250];
+}
+
+// Modifies how to select shortest paths
+message ShortestPathConfig {
+  // Number of nodes to download at a time.
+  optional int32 node_batch = 1 [default=10];
+}

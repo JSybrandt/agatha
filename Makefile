@@ -6,7 +6,7 @@ install: build
 test: build
 	pytest -Wignore -v --durations=0 ${FLGS}
 
-build:
+build: clean
 	python3 setup.py build
 
 tools: to_graph_db to_ptbg to_sentdb to_entdb
@@ -26,7 +26,7 @@ to_entdb:
 clean:
 	python3 setup.py clean
 	rm -rf build
-	rm -rf PyMoliere.egg-info
+	rm -rf Agatha.egg-info
 	find . | grep __pycache__ | xargs rmdir
 	cd tools/write_pytoch_biggraph_ents_to_sqlite && make clean
 	cd tools/convert_sentences_for_sqlite && make clean

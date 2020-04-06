@@ -11,8 +11,10 @@ import sys
 
 proto_src_files = [
     "agatha/config/config.proto",
-    "agatha/query/query.proto",
-    "agatha/ml/abstract_generator/sentencepiece.proto"
+    "agatha/construct/construct_config.proto",
+    "agatha/ml/abstract_generator/sentencepiece.proto",
+    "agatha/topic_query/topic_query_config.proto",
+    "agatha/topic_query/topic_query_result.proto",
 ]
 
 
@@ -55,6 +57,7 @@ def generate_proto(source):
     protoc_command = [ protoc, "-I.", "--python_out=.", source ]
     if subprocess.call(protoc_command) != 0:
       sys.exit(-1)
+    print(f"Generated {output}!")
 
 class clean(_clean):
   def run(self):

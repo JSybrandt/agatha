@@ -1,6 +1,3 @@
-from agatha.config import (
-    config_pb2 as cpb,
-)
 from agatha.construct import (
     dask_checkpoint,
     dask_process_global as dpg,
@@ -11,6 +8,7 @@ from agatha.construct import (
     knn_util,
     parse_pubmed_xml,
     text_util,
+    construct_config_pb2 as cpb
 )
 from agatha.util import (
     misc_util,

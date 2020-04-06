@@ -1,4 +1,4 @@
-from agatha.query import bow_util
+from agatha.topic_query import bow_util
 
 def test_filter_words():
   keys = [1, 2, 3]

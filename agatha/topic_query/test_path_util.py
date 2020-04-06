@@ -1,4 +1,4 @@
-import agatha.query.path_util as util
+import agatha.topic_query.path_util as util
 import networkx as nx
 
 def node_sets_equal(g1:nx.Graph, g2:nx.Graph)->bool:

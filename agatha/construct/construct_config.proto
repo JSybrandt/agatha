@@ -42,7 +42,13 @@ message ConstructConfig {
 
   // If set, we will NOT check against the pubmed FTP server, instead we will
   // use whatever is inside {shared_scratch}/download_medline
-  optional bool skip_ftp_download= 17 [default=false];
+  optional bool skip_ftp_download = 17 [default=false];
+
+  // If set, pull in all of the json files contained within this directory.
+  // Expect json files to have been downloaded from
+  // https://pages.semanticscholar.org/coronavirus-research
+  optional string covid_json_dir = 18;
+
 }
 
 
@@ -51,8 +57,8 @@ message ConstructConfig {
 ////////////////////////////////////////////////////////////////////////////////
 
 
-// The ClusterConfig defines the ray cluster connection param. Any
-// cluster-specific deatuls will occur here.
+// The ClusterConfig defines the dask cluster connection param. Any
+// cluster-specific details will occur here.
 message ClusterConfig {
   // Where to connect to cluster.
   optional string address = 1 [default="localhost"];

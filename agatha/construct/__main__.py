@@ -6,9 +6,12 @@ from agatha.construct import (
     ftp_util,
     graph_util,
     knn_util,
-    parse_pubmed_xml,
     text_util,
     construct_config_pb2 as cpb
+)
+from agatha.construct.document_parsers import (
+  parse_pubmed_xml,
+  parse_covid_json,
 )
 from agatha.util import (
     misc_util,
@@ -22,6 +25,77 @@ import dask.bag as dbag
 import shutil
 import json
 from datetime import datetime
+
+
+def get_medline_documents(
+    config:cpb.ConstructConfig
+    download_shared:Path,
+)->dbag.Bag:
+  # Download all of pubmed. ####
+  if not config.skip_ftp_download:
+    print("Downloading pubmed XML Files")
+    with ftp_util.ftp_connect(
+        address=config.ftp.address,
+        workdir=config.ftp.workdir,
+    ) as conn:
+      # Downloads new files if not already present in shared
+      xml_paths = ftp_util.ftp_retreive_all(
+          conn=conn,
+          pattern="^.*\.xml\.gz$",
+          directory=download_shared,
+          show_progress=True,
+      )
+  else:
+    print(f"Skipping FTP download, using {download_shared}/*.xml.gz instead")
+    assert download_shared.is_dir(), f"Cannot find {download_shared}"
+    xml_paths = list(download_shared.glob("*.xml.gz"))
+    assert len(xml_paths) > 0, f"No .xml.gz files inside {download_shared}"
+
+  if config.debug.enable:
+    print(f"\t- Downsampling {len(xml_paths)} xml files to only "
+          f"{config.debug.partition_subset_size}.")
+    # Takes the top x (typically larger)
+    xml_paths = xml_paths[-config.debug.partition_subset_size:]
+
+  # Parse xml-files per-partition
+  medline_documents = dbag.from_delayed([
+    dask.delayed(parse_pubmed_xml.parse_zipped_pubmed_xml)(
+      xml_path=p,
+    )
+    for p in xml_paths
+  ])
+
+  if not config.allow_nonenglish_abstracts:
+    medline_documents = medline_documents.filter(
+      # Only take the english ones
+      lambda r: r["language"]=="eng"
+    )
+
+  if config.HasField("cut_date"):
+    # This will fail if the cut-date is not a valid string
+    datetime.strptime(config.cut_date, "%Y-%m-%d")
+    medline_documents = medline_documents.filter(
+        lambda r: r["date"] < config.cut_date
+    )
+
+  if config.debug.enable:
+    print("\t- Downsampling documents by "
+          f"{config.debug.document_sample_rate}")
+    medline_documents = medline_documents.random_sample(
+        config.debug.document_sample_rate,
+    )
+  return medline_documents
+
+
+def get_covid_documents(config:cpb.ConstructConfig)->dbag.Bag:
+  covid_json_dir = Path(config.covid_json_dir)
+  assert covid_json_dir.is_dir(), \
+      f"Failed to find covid_json_dir:{covid_json_dir}"
+  json_paths = list(covid_json_dir.glob("**/*.json"))
+  assert len(json_paths) > 0, "Failed to find json files in covid_json_dir."
+  json_path_bag = dbag.from_sequence(json_paths)
+  json_records = json_path_bag.map(parse_covid_json)
+  return json_records
 
 
 if __name__ == "__main__":
@@ -127,66 +201,20 @@ if __name__ == "__main__":
       print("Stopping early.")
       exit(0)
 
-
-  # Download all of pubmed. ####
-  if not config.skip_ftp_download:
-    print("Downloading pubmed XML Files")
-    with ftp_util.ftp_connect(
-        address=config.ftp.address,
-        workdir=config.ftp.workdir,
-    ) as conn:
-      # Downloads new files if not already present in shared
-      xml_paths = ftp_util.ftp_retreive_all(
-          conn=conn,
-          pattern="^.*\.xml\.gz$",
-          directory=download_shared,
-          show_progress=True,
-      )
-  else:
-    print(f"Skipping FTP download, using {download_shared}/*.xml.gz instead")
-    assert download_shared.is_dir(), f"Cannot find {download_shared}"
-    xml_paths = list(download_shared.glob("*.xml.gz"))
-    assert len(xml_paths) > 0, f"No .xml.gz files inside {download_shared}"
-
+  ##############################################################################
+  # BEGIN PIPELINE                                                             #
   ##############################################################################
 
-  if config.debug.enable:
-    print(f"\t- Downsampling {len(xml_paths)} xml files to only "
-          f"{config.debug.partition_subset_size}.")
-    # Takes the top x (typically larger)
-    xml_paths = xml_paths[-config.debug.partition_subset_size:]
-
-  # Parse xml-files per-partition
-  medline_documents = dbag.from_delayed([
-    dask.delayed(parse_pubmed_xml.parse_zipped_pubmed_xml)(
-      xml_path=p,
-    )
-    for p in xml_paths
-  ])
-
-  if not config.allow_nonenglish_abstracts:
-    medline_documents = medline_documents.filter(
-      # Only take the english ones
-      lambda r: r["language"]=="eng"
-    )
-
-  if config.HasField("cut_date"):
-    # This will fail if the cut-date is not a valid string
-    datetime.strptime(config.cut_date, "%Y-%m-%d")
-    medline_documents = medline_documents.filter(
-        lambda r: r["date"] < config.cut_date
-    )
-
-  if config.debug.enable:
-    print("\t- Downsampling documents by "
-          f"{config.debug.document_sample_rate}")
-    medline_documents = medline_documents.random_sample(
-        config.debug.document_sample_rate,
-    )
-  ckpt("medline_documents")
+  documents = get_medline_documents(config, download_shared)
+  if config.HasField("covid_json_dir"):
+    documents = dbag.concat([
+      documents,
+      get_covid_documents(config),
+    ])
+  ckpt("documents")
 
   # Split documents into sentences, filter out too-long and too-short sentences.
-  sentences = medline_documents.map_partitions(
+  sentences = documents.map_partitions(
       text_util.split_sentences,
       # --
       min_sentence_len=config.parser.min_sentence_len,

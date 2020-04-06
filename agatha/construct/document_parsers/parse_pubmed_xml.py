@@ -1,6 +1,7 @@
 from lxml import etree
 from pathlib import Path
 from agatha.construct.file_util import copy_to_local_scratch
+from agatha.construct.document_parsers import document_record
 from typing import List
 import gzip
 from agatha.util.misc_util import Record
@@ -24,19 +25,7 @@ def pubmed_xml_to_record(
   Given a PubmedArticle element, parse out all the fields we care about.
   Fields are represented as a dictionary.
   """
-  record = {
-      "pmid": None,
-      "version": None,
-      "date": None,
-      "language": None,
-      "medline_status": None,
-      "text_data": [],
-      "publication_types": [],
-      "mesh_headings": [],
-      "data_banks": [],
-      # Stores authors in order
-      "authors": [],
-  }
+  record = document_record.new_document_record()
 
   medline_cite_elem = pubmed_elem.find("MedlineCitation")
   if medline_cite_elem is not None:
@@ -154,6 +143,7 @@ def pubmed_xml_to_record(
           if record["date"] is None or record["date"] > date:
             record["date"] = xml_obj_to_date(date_elem)
 
+  document_record.assert_valid_document_record(record)
   return record
 
 

@@ -3,8 +3,8 @@ all: install tools
 install: build
 	pip install -e .
 
-test: build
-	pytest -Wignore -v --durations=0 ${FLGS}
+test:
+	pytest -Wignore -v --durations=0 agatha/
 
 build: clean
 	python3 setup.py build

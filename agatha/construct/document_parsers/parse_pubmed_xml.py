@@ -33,8 +33,8 @@ def pubmed_xml_to_record(
 
     pmid_elem = medline_cite_elem.find("PMID")
     if pmid_elem is not None:
-      record["pmid"] = int(pmid_elem.text)
-      record["version"] = int(pmid_elem.attrib["Version"])
+      record["pmid"] = str(int(pmid_elem.text))
+      record["version"] = str(int(pmid_elem.attrib["Version"]))
 
     article_elem = medline_cite_elem.find("Article")
     if article_elem is not None:

@@ -28,7 +28,7 @@ from datetime import datetime
 
 
 def get_medline_documents(
-    config:cpb.ConstructConfig
+    config:cpb.ConstructConfig,
     download_shared:Path,
 )->dbag.Bag:
   # Download all of pubmed. ####
@@ -94,7 +94,7 @@ def get_covid_documents(config:cpb.ConstructConfig)->dbag.Bag:
   json_paths = list(covid_json_dir.glob("**/*.json"))
   assert len(json_paths) > 0, "Failed to find json files in covid_json_dir."
   json_path_bag = dbag.from_sequence(json_paths)
-  json_records = json_path_bag.map(parse_covid_json)
+  json_records = json_path_bag.map(parse_covid_json.json_path_to_record)
   return json_records
 
 

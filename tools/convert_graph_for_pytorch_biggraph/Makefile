@@ -17,7 +17,7 @@ tsvs_to_ptbg: main.cc
 	$(CC) $(FLAGS) -o $@ $(INCLUDES) $< $(LIBS)
 
 clean:
-	rm tsvs_to_ptbg
+	rm -rf tsvs_to_ptbg
 
 test: tsvs_to_ptbg
 	./tsvs_to_ptbg -i test/raw -c 10 -o test/ptbg

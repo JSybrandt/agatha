@@ -21,4 +21,4 @@ $(EX): main.cc
 	$(CC) $(FLAGS) $(LIB_PATHS) -o $@ $(INCLUDES) $< $(LIBS)
 
 clean:
-	rm $(EX)
+	rm -rf $(EX)

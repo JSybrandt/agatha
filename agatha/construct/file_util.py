@@ -16,6 +16,8 @@ def get_random_ascii_str(str_len:int)->str:
 import pickle
 
 def copy_to_local_scratch(src:Path, local_scratch_dir:Path)->Path:
+  src = Path(src)
+  local_scratch_dir = Path(local_scratch_dir)
   local_scratch_dir.mkdir(parents=True, exist_ok=True)
   assert src.is_file()
   assert local_scratch_dir.is_dir()
@@ -28,6 +30,8 @@ def prep_scratches(
     shared_scratch_root:Path,
     task_name:str,
 )->Tuple[Path, Path]:
+  local_scratch_root = Path(local_scratch_root)
+  shared_scratch_root = Path(shared_scratch_root)
   local = local_scratch_root.joinpath(task_name)
   shared = shared_scratch_root.joinpath(task_name)
   local.mkdir(parents=True, exist_ok=True)
@@ -36,6 +40,7 @@ def prep_scratches(
 
 def load_to_memory(dir_path:Path, disable_pbar:bool=False)->List[Any]:
   "Performs loading right now, without dask"
+  dir_path = Path(dir_path)
   assert is_result_saved(dir_path)
   result = []
   for path in tqdm(get_part_files(dir_path), disable=disable_pbar):
@@ -47,12 +52,14 @@ def load_to_memory(dir_path:Path, disable_pbar:bool=False)->List[Any]:
 
 
 def get_part_files(dir_path:Path)->List[Path]:
+  dir_path = Path(dir_path)
   assert is_result_saved(dir_path)
   with open(dir_path.joinpath(DONE_FILE)) as f:
     return [Path(line.strip()) for line in f]
 
 
 def load_part(path:Path, allow_failure:bool=False)->List[Any]:
+  path = Path(path)
   try:
     with open(path, 'rb') as f:
       return pickle.load(f)
@@ -64,6 +71,7 @@ def load_part(path:Path, allow_failure:bool=False)->List[Any]:
       raise e
 
 def load(dir_path:Path, allow_failure:bool=False)->dbag.Bag:
+  dir_path = Path(dir_path)
   assert is_result_saved(dir_path)
   done_path = dir_path.joinpath(DONE_FILE)
   load_tasks = []
@@ -76,6 +84,7 @@ def load(dir_path:Path, allow_failure:bool=False)->dbag.Bag:
 
 def save_part(part:List[Any], path:Path)->Path:
   "Stores that partition at `path`, returns `path`"
+  path = Path(path)
   # Turns out that some complex functions might have non-list partitions
   # For instance, a partition containing numpy arrays will be _MapChunk
   part = list(part)
@@ -85,6 +94,7 @@ def save_part(part:List[Any], path:Path)->Path:
 
 
 def write_done_file(parts:List[str], part_dir:Path)->Path:
+  part_dir = Path(part_dir)
   done_path = part_dir.joinpath(DONE_FILE)
   with open(done_path, 'w') as f:
     for part in parts:
@@ -92,6 +102,7 @@ def write_done_file(parts:List[str], part_dir:Path)->Path:
   return done_path
 
 def save(bag:dbag.Bag, path:Path, keep_partial_result:bool=False)->dask.delayed:
+  path = Path(path)
   path.mkdir(parents=True, exist_ok=True)
   save_tasks = []
   for part_idx, part in enumerate(bag.to_delayed()):
@@ -105,10 +116,12 @@ def save(bag:dbag.Bag, path:Path, keep_partial_result:bool=False)->dask.delayed:
   return dask.delayed(write_done_file)(save_tasks, path)
 
 def is_result_saved(path:Path)->bool:
+  path = Path(path)
   done_path = path.joinpath(DONE_FILE)
   return done_path.is_file()
 
 def touch_random_unused_file(base_dir:Path, ext:Optional[str]=None)->Path:
+  base_dir = Path(base_dir)
   assert base_dir.is_dir()
   if ext is None:
     ext = ""
@@ -133,6 +146,7 @@ def save_value(value:Any, path:Path)->None:
   """
   Saves an arbitrary object.
   """
+  path = Path(path)
   with open(path, 'wb') as f:
     pickle.dump(value, f)
 
@@ -141,6 +155,7 @@ def load_value(path:Path)->Any:
   """
   Loads an arbitrary object.
   """
+  path = Path(path)
   with open(path, 'rb') as f:
     return pickle.load(f)
 
@@ -150,6 +165,7 @@ def load_random_sample_to_memory(
     partition_sample_rate:float=1,
     disable_pbar:bool=False,
 )->List[Any]:
+  data_dir = Path(data_dir)
   assert value_sample_rate > 0
   assert value_sample_rate <= 1
   assert partition_sample_rate > 0

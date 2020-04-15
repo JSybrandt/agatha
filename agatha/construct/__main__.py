@@ -1,5 +1,5 @@
 from agatha.construct import (
-    dask_checkpoint,
+    checkpoint,
     dask_process_global as dpg,
     embedding_util,
     file_util,
@@ -7,12 +7,11 @@ from agatha.construct import (
     graph_util,
     knn_util,
     text_util,
-    construct_config_pb2 as cpb
+    ngram_util,
+    construct_config_pb2 as cpb,
+    document_pipeline,
 )
-from agatha.construct.document_parsers import (
-  parse_pubmed_xml,
-  parse_covid_json,
-)
+from agatha.construct.checkpoint import ckpt
 from agatha.util import (
     misc_util,
     sqlite3_lookup,
@@ -25,78 +24,6 @@ import dask.bag as dbag
 import shutil
 import json
 from datetime import datetime
-
-
-def get_medline_documents(
-    config:cpb.ConstructConfig,
-    download_shared:Path,
-)->dbag.Bag:
-  # Download all of pubmed. ####
-  if not config.skip_ftp_download:
-    print("Downloading pubmed XML Files")
-    with ftp_util.ftp_connect(
-        address=config.ftp.address,
-        workdir=config.ftp.workdir,
-    ) as conn:
-      # Downloads new files if not already present in shared
-      xml_paths = ftp_util.ftp_retreive_all(
-          conn=conn,
-          pattern="^.*\.xml\.gz$",
-          directory=download_shared,
-          show_progress=True,
-      )
-  else:
-    print(f"Skipping FTP download, using {download_shared}/*.xml.gz instead")
-    assert download_shared.is_dir(), f"Cannot find {download_shared}"
-    xml_paths = list(download_shared.glob("*.xml.gz"))
-    assert len(xml_paths) > 0, f"No .xml.gz files inside {download_shared}"
-
-  if config.debug.enable:
-    print(f"\t- Downsampling {len(xml_paths)} xml files to only "
-          f"{config.debug.partition_subset_size}.")
-    # Takes the top x (typically larger)
-    xml_paths = xml_paths[-config.debug.partition_subset_size:]
-
-  # Parse xml-files per-partition
-  medline_documents = dbag.from_delayed([
-    dask.delayed(parse_pubmed_xml.parse_zipped_pubmed_xml)(
-      xml_path=p,
-    )
-    for p in xml_paths
-  ])
-
-  if not config.allow_nonenglish_abstracts:
-    medline_documents = medline_documents.filter(
-      # Only take the english ones
-      lambda r: r["language"]=="eng"
-    )
-
-  if config.HasField("cut_date"):
-    # This will fail if the cut-date is not a valid string
-    datetime.strptime(config.cut_date, "%Y-%m-%d")
-    medline_documents = medline_documents.filter(
-        lambda r: r["date"] < config.cut_date
-    )
-
-  if config.debug.enable:
-    print("\t- Downsampling documents by "
-          f"{config.debug.document_sample_rate}")
-    medline_documents = medline_documents.random_sample(
-        config.debug.document_sample_rate,
-    )
-  return medline_documents
-
-
-def get_covid_documents(config:cpb.ConstructConfig)->dbag.Bag:
-  covid_json_dir = Path(config.covid_json_dir)
-  assert covid_json_dir.is_dir(), \
-      f"Failed to find covid_json_dir:{covid_json_dir}"
-  json_paths = list(covid_json_dir.glob("**/*.json"))
-  assert len(json_paths) > 0, "Failed to find json files in covid_json_dir."
-  json_path_bag = dbag.from_sequence(json_paths)
-  json_records = json_path_bag.map(parse_covid_json.json_path_to_record)
-  return json_records
-
 
 if __name__ == "__main__":
   config = cpb.ConstructConfig()
@@ -141,10 +68,18 @@ if __name__ == "__main__":
     )
 
   print("Prepping scratch directories")
-  download_local, download_shared = scratch("download_pubmed")
   _, faiss_index_dir = scratch("faiss_index")
   _, hash2name_dir = scratch("hash_to_name")
-  _, checkpoint_dir = scratch("dask_checkpoints")
+  _, checkpoint_dir = scratch("checkpoints")
+
+  # Setup checkpoint
+  checkpoint.set_root(checkpoint_dir)
+  if config.cluster.disable_checkpoints:
+    checkpoint.disable()
+  if config.HasField("stop_after_ckpt"):
+    checkpoint.set_halt_point(config.stop_after_ckpt)
+  if config.cluster.clear_checkpoints:
+    checkpoint.clear_all_ckpt()
 
   faiss_index_path = faiss_index_dir.joinpath("final.index")
 
@@ -183,146 +118,67 @@ if __name__ == "__main__":
     shutil.rmtree(checkpoint_dir)
     checkpoint_dir.mkdir()
 
-  def ckpt(name:str, **ckpt_kwargs)->None:
-    "Applies checkpointing to the given bag"
-    if not config.cluster.disable_checkpoints:
-      print("Checkpoint:", name)
-      assert name in globals()
-      bag = globals()[name]
-      assert type(bag) == dbag.Bag
-      # Replace bag with result of ckpt, typically with save / load
-      globals()[name] = dask_checkpoint.checkpoint(
-          bag,
-          name=name,
-          checkpoint_dir=checkpoint_dir,
-          **ckpt_kwargs
-      )
-    if config.HasField("stop_after_ckpt") and config.stop_after_ckpt == name:
-      print("Stopping early.")
-      exit(0)
-
   ##############################################################################
   # BEGIN PIPELINE                                                             #
   ##############################################################################
 
-  documents = get_medline_documents(config, download_shared)
+  # Here's the text data sources
+
+  if config.HasField("medline_xml_dir"):
+    document_pipeline.perform_document_independent_tasks(
+        config=config,
+        documents=document_pipeline.get_medline_documents(config),
+        ckpt_prefix="medline"
+    )
+
   if config.HasField("covid_json_dir"):
-    documents = dbag.concat([
-      documents,
-      get_covid_documents(config),
-    ])
-  ckpt("documents")
+    document_pipeline.perform_document_independent_tasks(
+        config=config,
+        documents=document_pipeline.get_covid_documents(config),
+        ckpt_prefix="covid"
+    )
 
-  # Split documents into sentences, filter out too-long and too-short sentences.
-  sentences = documents.map_partitions(
-      text_util.split_sentences,
-      # --
-      min_sentence_len=config.parser.min_sentence_len,
-      max_sentence_len=config.parser.max_sentence_len,
-  )
-  ckpt("sentences")
+  # At this point, we are going to recover text sources using the checkpoint
+  # module
 
-  # Add POS tagging, lemmas, entitites, and additional data to each sent
-  sentences_with_lemmas = sentences.map_partitions(
-      text_util.analyze_sentences,
-      # --
-      text_field="sent_text",
-  )
-  ckpt("sentences_with_lemmas")
+  ##############################################################################
+
+  parsed_sentences = dbag.concat([
+    checkpoint.checkpoint(name, verbose=False)
+    for name in checkpoint.get_checkpoints_like("*parsed_sentences")
+  ])
+
 
   # Perform n-gram mining, introduces a new field "ngrams"
-  sentences_with_ngrams = text_util.get_frequent_ngrams(
-      analyzed_sentences=sentences_with_lemmas,
+  ngram_sentences = ngram_util.get_frequent_ngrams(
+      analyzed_sentences=parsed_sentences,
       max_ngram_length=config.phrases.max_ngram_length,
       min_ngram_support=config.phrases.min_ngram_support,
       min_ngram_support_per_partition=\
           config.phrases.min_ngram_support_per_partition,
       ngram_sample_rate=config.phrases.ngram_sample_rate,
   )
-  ckpt("sentences_with_ngrams")
+  ckpt("ngram_sentences")
 
-  sentences_with_bow = sentences_with_ngrams.map_partitions(
-      text_util.add_bow_to_analyzed_sentence
-  )
-  ckpt("sentences_with_bow")
-
-  sentence_edges_terms = graph_util.record_to_bipartite_edges(
-    records=sentences_with_bow,
-    get_neighbor_keys_fn=text_util.get_interesting_token_keys,
-    weight_by_tf_idf=False,
-  )
-  ckpt("sentence_edges_terms")
-
-  sentence_edges_entities = graph_util.record_to_bipartite_edges(
-    records=sentences_with_bow,
-    get_neighbor_keys_fn=text_util.get_entity_keys,
-    weight_by_tf_idf=False,
-  )
-  ckpt("sentence_edges_entities")
-
-  sentence_edges_mesh = graph_util.record_to_bipartite_edges(
-    records=sentences_with_bow,
-    get_neighbor_keys_fn=text_util.get_mesh_keys,
-    weight_by_tf_idf=False,
-  )
-  ckpt("sentence_edges_mesh")
-
-  sentence_edges_ngrams = graph_util.record_to_bipartite_edges(
-    records=sentences_with_bow,
+  ngram_edges = graph_util.record_to_bipartite_edges(
+    records=ngram_sentences,
     get_neighbor_keys_fn=text_util.get_ngram_keys,
     weight_by_tf_idf=False,
   )
-  ckpt("sentence_edges_ngrams")
+  ckpt("ngram_edges")
 
-  sentence_edges_adj = graph_util.record_to_bipartite_edges(
-    records=sentences_with_bow,
-    get_neighbor_keys_fn=text_util.get_adjacent_sentences,
-    # We can store only one side of the connection because each sentence will
-    # get their own neighbors. Additionally, these should all have the same
-    # sort of connections.
-    weight_by_tf_idf=False,
-    bidirectional=False,
+  bow_sentences = ngram_sentences.map_partitions(
+      text_util.add_bow_to_analyzed_sentence
   )
-  ckpt("sentence_edges_adj")
-
-
-  # At this point we have to do the embedding
-
-  sentences_with_embedding = (
-      sentences_with_bow
-      .map_partitions(
-        embedding_util.embed_records,
-        # --
-        batch_size=config.sys.batch_size,
-        text_field="sent_text",
-        max_sequence_length=config.parser.max_sequence_length,
-      )
-  )
-  ckpt("sentences_with_embedding")
-  final_sentence_records = sentences_with_embedding
-
-  hash_and_embedding = (
-      final_sentence_records
-      .map(
-        lambda x: {
-          "id": misc_util.hash_str_to_int(x["id"]),
-          "embedding": x["embedding"]
-        }
-      )
-  )
-  ckpt("hash_and_embedding")
+  ckpt("bow_sentences")
 
   print("Creating Hash2Name Database")
-  hash_and_name = (
-      sentences
-      .map(lambda rec: {
-        "name": rec["id"],
-        "hash": misc_util.hash_str_to_int(rec["id"]),
-      })
-  )
   hash2name_db = hash2name_dir.joinpath("hash2name.sqlite3")
   sqlite3_lookup.create_lookup_table(
-    record_bag=hash_and_name,
+    record_bag=dbag.concat([
+      checkpoint.checkpoint(name, verbose=False)
+      for name in checkpoint.get_checkpoints_like("*hashed_names")
+    ]),
     key_field="hash",
     value_field="name",
     database_path=hash2name_db,
@@ -331,10 +187,15 @@ if __name__ == "__main__":
   )
 
   # Now we can distribute the knn training
+  hashed_embeddings = dbag.concat([
+    checkpoint.checkpoint(name, verbose=False)
+    for name in checkpoint.get_checkpoints_like("*hashed_embeddings")
+  ])
+
   if not faiss_index_path.is_file():
     print("Training Faiss Index:", faiss_index_path)
     knn_util.train_distributed_knn(
-        hash_and_embedding=hash_and_embedding,
+        hash_and_embedding=hashed_embeddings,
         batch_size=config.sys.batch_size,
         num_centroids=config.sentence_knn.num_centroids,
         num_probes=config.sentence_knn.num_probes,
@@ -347,32 +208,30 @@ if __name__ == "__main__":
   else:
     print("Using existing Faiss Index")
 
-  nearest_neighbors_edges = knn_util.nearest_neighbors_network_from_index(
-      hash_and_embedding=hash_and_embedding,
+  knn_edges = knn_util.nearest_neighbors_network_from_index(
+      hash_and_embedding=hashed_embeddings,
       hash2name_db=hash2name_db,
       batch_size=config.sys.batch_size,
       num_neighbors=config.sentence_knn.num_neighbors,
   )
-  ckpt("nearest_neighbors_edges")
+  ckpt("knn_edges")
 
-  all_subgraph_partitions = dbag.concat([
-      sentence_edges_terms,
-      sentence_edges_entities,
-      sentence_edges_mesh,
-      sentence_edges_ngrams,
-      sentence_edges_adj,
-      nearest_neighbors_edges,
+  # Now we can get all edges
+  all_edges = dbag.concat([
+    checkpoint.checkpoint(name, verbose=False)
+    for name in checkpoint.get_checkpoints_like("*_edges")
   ])
+
   print("Writing edges to database dump")
   (
-      all_subgraph_partitions
+      all_edges
       .map_partitions(graph_util.nxgraphs_to_tsv_edge_list)
       .to_textfiles(f"{res_graph_dir}/*.tsv")
   )
 
   print("Writing sentences to database dump")
   (
-      sentences_with_bow
+      bow_sentences
       .map(json.dumps)
       .to_textfiles(f"{res_sentence_dir}/*.json")
   )

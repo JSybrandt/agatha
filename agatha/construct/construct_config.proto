@@ -41,8 +41,11 @@ message ConstructConfig {
   optional bool allow_nonenglish_abstracts = 16 [default=false];
 
   // If set, we will NOT check against the pubmed FTP server, instead we will
-  // use whatever is inside {shared_scratch}/download_medline
+  // use whatever is inside medline_xml_dir
   optional bool skip_ftp_download = 17 [default=false];
+
+  // The directory that we will load / download medline from.
+  optional string medline_xml_dir = 19;
 
   // If set, pull in all of the json files contained within this directory.
   // Expect json files to have been downloaded from

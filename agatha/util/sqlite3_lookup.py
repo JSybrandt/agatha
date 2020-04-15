@@ -50,7 +50,11 @@ def create_lookup_table(
   database_path = Path(database_path)
   intermediate_data_dir = Path(intermediate_data_dir)
   agatha_install_path = Path(agatha_install_path)
-  if not database_path.is_file():
+  print("Sqlite3 Lookup Table:", database_path)
+  if database_path.is_file():
+    print("\t- Ready")
+  else:
+    print("\t-Constructing...")
     if not intermediate_data_dir.exists():
       intermediate_data_dir.mkdir(parents=True, exist_ok=True)
     else:
@@ -75,6 +79,7 @@ def create_lookup_table(
         database_path=database_path,
         agatha_install_path=agatha_install_path
     )
+    print("\t- Done!")
 
 
 class Sqlite3LookupTable():

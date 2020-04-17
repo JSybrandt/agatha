@@ -1,4 +1,5 @@
 # https://github.com/facebookresearch/faiss/wiki/FAQ#how-can-i-distribute-index-building-on-several-machines
+
 import dask.bag as dbag
 import faiss
 from pathlib import Path
@@ -56,20 +57,20 @@ def nearest_neighbors_network_from_index(
     index = dpg.get(f"knn_util:faiss_{faiss_index_name}")
 
     graph = nx.Graph()
-    with sqlite3_lookup.Sqlite3LookupTable(hash2name_db) as hash2names:
-      for batch in iter_to_batches(hash_and_embedding, batch_size):
-        hashes, embeddings = to_hash_and_embedding(records=batch)
-        _, neighs_per_root = index.search(embeddings, num_neighbors)
-        hashes = hashes.tolist() + flatten_list(neighs_per_root.tolist())
-        # Create records
-        for root_hash, neigh_indices in zip(hashes, neighs_per_root):
-          if root_hash in hash2names:
-            for root_name in hash2names[root_hash]:
-              for neigh_hash in neigh_indices:
-                if neigh_hash != root_hash and neigh_hash in hash2names:
-                  for neigh_name in hash2names[neigh_hash]:
-                    graph.add_edge(root_name, neigh_name, weight=weight)
-                    graph.add_edge(neigh_name, root_name, weight=weight)
+    hash2names = sqlite3_lookup.Sqlite3LookupTable(hash2name_db)
+    for batch in iter_to_batches(hash_and_embedding, batch_size):
+      hashes, embeddings = to_hash_and_embedding(records=batch)
+      _, neighs_per_root = index.search(embeddings, num_neighbors)
+      hashes = hashes.tolist() + flatten_list(neighs_per_root.tolist())
+      # Create records
+      for root_hash, neigh_indices in zip(hashes, neighs_per_root):
+        if root_hash in hash2names:
+          for root_name in hash2names[root_hash]:
+            for neigh_hash in neigh_indices:
+              if neigh_hash != root_hash and neigh_hash in hash2names:
+                for neigh_name in hash2names[neigh_hash]:
+                  graph.add_edge(root_name, neigh_name, weight=weight)
+                  graph.add_edge(neigh_name, root_name, weight=weight)
     return [graph]
 
   return hash_and_embedding.map_partitions(apply_faiss_to_edges)

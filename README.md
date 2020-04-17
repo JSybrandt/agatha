@@ -1,6 +1,11 @@
 ![logo](https://github.com/JSybrandt/agatha/blob/master/logo.png?raw=true)
 
-Quick note: If you're here looking for the _CBAG: Conditional Biomedical
+We are currently doing a bunch of development around the [CORD-19][cord_19]
+datsset. These customizations have been funded by an NSF RAPID grant.
+_Follow Along with Development 
+[on trello](https://trello.com/b/RneqUX9H/agatha)_.
+
+If you're here looking for the _CBAG: Conditional Biomedical
 Abstract Generation_ project, take a look in the
 [agatha/ml/abstract_generator][cbag_link] submodule.
 
@@ -226,3 +231,4 @@ conda activate agatha
 [paper_link]:https://arxiv.org/abs/2002.05635
 [2015_model_link]:https://drive.google.com/uc?id=1Tka7zPF0PdG7yvGOGOXuEsAtRLLimXmP
 [cbag_link]:https://github.com/JSybrandt/agatha/tree/master/agatha/ml/abstract_generator
+[cord_19]:https://pages.semanticscholar.org/coronavirus-research

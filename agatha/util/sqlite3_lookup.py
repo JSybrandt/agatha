@@ -84,13 +84,21 @@ def create_lookup_table(
 
 class Sqlite3LookupTable():
   """
-  Gets values from an Sqlite3 Table called "lookup_table" where keys are
+  Gets values from an Sqlite3 Table called where keys are
   strings and values are json encoded.
   """
   def __init__(
       self,
-      db_path:Path
+      db_path:Path,
+      table_name:str="lookup_table",
+      key_column_name:str="key",
+      value_column_name:str="value",
   ):
+    self.table_name = table_name
+    self.key_column_name = key_column_name
+    self.value_column_name = value_column_name
+    assert self.key_column_name != self.value_column_name, \
+        "Key and Value column names cannot be the same."
     self._connection = None
     self._cursor = None
     db_path = Path(db_path)
@@ -153,10 +161,10 @@ class Sqlite3LookupTable():
     of the primary key.
     """
     schema_data = self._cursor.execute(
-        "PRAGMA table_info('lookup_table')"
+        f"PRAGMA table_info('{self.table_name}')"
     ).fetchall()
     assert len(schema_data) > 0, \
-        f"Missing `lookup_table` in {self.db_path}"
+        f"Missing `{self.table_name}` in {self.db_path}"
     assert len(schema_data) >= 2, \
         f"Missing key and/or value column in {self.db_path}"
     schema = {}
@@ -164,10 +172,14 @@ class Sqlite3LookupTable():
       col_name, dtype = row[1], row[2]
       schema[col_name] = dtype
 
-    assert "key" in schema and schema["key"] == "TEXT", \
-        f"Schema missing text key column in {self.db_path}"
-    assert "value" in schema and schema["value"] == "TEXT", \
-        f"Schema missing text value column in {self.db_path}"
+    assert (
+        self.key_column_name in schema
+        and schema[self.key_column_name] == "TEXT"
+    ), f"Schema missing {self.key_column_name} in {self.db_path}"
+    assert (
+        self.value_column_name in schema
+        and schema[self.value_column_name] == "TEXT"
+    ), f"Schema missing {self.value_column_name} in {self.db_path}"
 
   def _set_db_flags(self)->None:
     assert self.connected()
@@ -202,7 +214,11 @@ class Sqlite3LookupTable():
   def __getitem__(self, key:str):
     assert self.connected(), "Attempting to get item from closed db."
     res = self._cursor.execute(
-        "SELECT value FROM lookup_table WHERE key=?",
+        f"""
+          SELECT {self.value_column_name}
+          FROM {self.table_name}
+          WHERE {self.key_column_name}=?
+        """,
         (key,)
     ).fetchone()
     if res is None:
@@ -213,7 +229,13 @@ class Sqlite3LookupTable():
   def __contains__(self, key:str)->bool:
     assert self.connected(), "Attempting to operate on closed db."
     res = self._cursor.execute(
-        "SELECT EXISTS( SELECT 1 FROM lookup_table WHERE key=?)",
+        f"""
+          SELECT EXISTS(
+            SELECT 1
+            FROM {self.table_name}
+            WHERE {self.key_column_name}=?
+          )
+        """,
         (key,)
     ).fetchone()
     return res[0] == 1

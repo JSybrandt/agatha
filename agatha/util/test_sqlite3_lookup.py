@@ -10,20 +10,30 @@ The Sqlite3 Lookup table is designed to store json encoded key-value pairs.
 This is designed to be as fast and flexible as necessary.
 """
 
-def make_sqlite3_db(test_name:str, data:Dict[str, Any])->Path:
+def make_sqlite3_db(
+    test_name:str,
+    data:Dict[str, Any],
+    table_name:str="lookup_table",
+    key_column_name:str="key",
+    value_column_name:str="value",
+)->Path:
   db_path = Path("/tmp/").joinpath(f"{test_name}.sqlite3")
   if db_path.is_file():
     db_path.unlink()
   with sqlite3.connect(db_path) as db_conn:
-    db_conn.execute("""
-      CREATE TABLE lookup_table (
-        key TEXT PRIMARY KEY,
-        value TEXT
+    db_conn.execute(f"""
+      CREATE TABLE {table_name} (
+        {key_column_name} TEXT PRIMARY KEY,
+        {value_column_name} TEXT
       );
     """)
     for key, value in data.items():
       db_conn.execute(
-        "INSERT INTO lookup_table (key, value) VALUES(?,?);",
+        f"""
+          INSERT INTO {table_name}
+            ({key_column_name}, {value_column_name})
+            VALUES(?,?);
+        """,
         (str(key), json.dumps(value))
       )
   return db_path
@@ -106,6 +116,54 @@ def test_sqlite3_is_preloaded():
   }
   db_path = make_sqlite3_db("test_sqlite3_lookup_preload", expected)
   table = Sqlite3LookupTable(db_path)
+  assert not table.is_preloaded()
+  # Should load the table contents to memory
+  table.preload()
+  assert table.is_preloaded()
+
+def test_custom_table_name():
+  expected = {
+      "A": [1,2,3],
+      "B": [4,5,6],
+  }
+  db_path = make_sqlite3_db(
+      "test_custom_table_name",
+      expected,
+      table_name="custom"
+  )
+  table = Sqlite3LookupTable(db_path, table_name="custom")
+  assert not table.is_preloaded()
+  # Should load the table contents to memory
+  table.preload()
+  assert table.is_preloaded()
+
+def test_custom_key_column_name():
+  expected = {
+      "A": [1,2,3],
+      "B": [4,5,6],
+  }
+  db_path = make_sqlite3_db(
+      "test_custom_key_column_name",
+      expected,
+      key_column_name="custom"
+  )
+  table = Sqlite3LookupTable(db_path, key_column_name="custom")
+  assert not table.is_preloaded()
+  # Should load the table contents to memory
+  table.preload()
+  assert table.is_preloaded()
+
+def test_custom_value_column_name():
+  expected = {
+      "A": [1,2,3],
+      "B": [4,5,6],
+  }
+  db_path = make_sqlite3_db(
+      "test_custom_value_column_name",
+      expected,
+      value_column_name="custom"
+  )
+  table = Sqlite3LookupTable(db_path, value_column_name="custom")
   assert not table.is_preloaded()
   # Should load the table contents to memory
   table.preload()

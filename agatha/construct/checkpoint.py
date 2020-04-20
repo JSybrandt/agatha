@@ -5,6 +5,7 @@ from pathlib import Path
 from copy import deepcopy
 import shutil
 import inspect
+from datetime import datetime
 
 
 # GLOBAL PARAMETERS
@@ -123,7 +124,7 @@ def checkpoint(
       exit(0)
 
   # If checkpoint is done, load no matter what
-  vprint("Checkpoint:", name)
+  vprint("Checkpoint:", name, "\t", datetime.now())
   if is_ckpt_done(name):
     vprint("\t- Ready")
     check_halt()

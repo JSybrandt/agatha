@@ -132,10 +132,10 @@ def test_custom_table_name():
       table_name="custom"
   )
   table = Sqlite3LookupTable(db_path, table_name="custom")
-  assert not table.is_preloaded()
-  # Should load the table contents to memory
-  table.preload()
-  assert table.is_preloaded()
+  assert table["A"] == expected["A"]
+  assert table["B"] == expected["B"]
+  assert "C" not in table
+
 
 def test_custom_key_column_name():
   expected = {
@@ -148,10 +148,9 @@ def test_custom_key_column_name():
       key_column_name="custom"
   )
   table = Sqlite3LookupTable(db_path, key_column_name="custom")
-  assert not table.is_preloaded()
-  # Should load the table contents to memory
-  table.preload()
-  assert table.is_preloaded()
+  assert table["A"] == expected["A"]
+  assert table["B"] == expected["B"]
+  assert "C" not in table
 
 def test_custom_value_column_name():
   expected = {
@@ -164,7 +163,27 @@ def test_custom_value_column_name():
       value_column_name="custom"
   )
   table = Sqlite3LookupTable(db_path, value_column_name="custom")
-  assert not table.is_preloaded()
-  # Should load the table contents to memory
-  table.preload()
-  assert table.is_preloaded()
+  assert table["A"] == expected["A"]
+  assert table["B"] == expected["B"]
+  assert "C" not in table
+
+def test_backward_compatable_fallback():
+  expected = {
+      "A": [1,2,3],
+      "B": [4,5,6],
+  }
+  db_path = make_sqlite3_db(
+      "test_backward_compatable_fallback",
+      expected,
+  )
+  # table set with custom (incorrect) names
+  # expected behavior, fall back to defaults
+  table = Sqlite3LookupTable(
+      db_path,
+      table_name="custom_table",
+      key_column_name="custom_key",
+      value_column_name="custom_value",
+  )
+  assert table["A"] == expected["A"]
+  assert table["B"] == expected["B"]
+  assert "C" not in table

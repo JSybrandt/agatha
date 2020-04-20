@@ -82,6 +82,9 @@ def create_lookup_table(
     print("\t- Done!")
 
 
+_DEFAULT_TABLE_NAME="lookup_table"
+_DEFAULT_KEY_COLUMN_NAME="key"
+_DEFAULT_VALUE_COLUMN_NAME="value"
 class Sqlite3LookupTable():
   """
   Gets values from an Sqlite3 Table called where keys are
@@ -90,9 +93,9 @@ class Sqlite3LookupTable():
   def __init__(
       self,
       db_path:Path,
-      table_name:str="lookup_table",
-      key_column_name:str="key",
-      value_column_name:str="value",
+      table_name:str=_DEFAULT_TABLE_NAME,
+      key_column_name:str=_DEFAULT_KEY_COLUMN_NAME,
+      value_column_name:str=_DEFAULT_VALUE_COLUMN_NAME,
   ):
     self.table_name = table_name
     self.key_column_name = key_column_name
@@ -208,7 +211,14 @@ class Sqlite3LookupTable():
     # Open read-only connection
     self._connection = sqlite3.connect(f"file:{self.db_path}?mode=ro", uri=True)
     self._cursor = self._connection.cursor()
-    self._assert_schema()
+    try:
+      self._assert_schema()
+    except AssertionError:
+      # Backwards compatibility fallback
+      self.table_name=_DEFAULT_TABLE_NAME
+      self.key_column_name=_DEFAULT_KEY_COLUMN_NAME
+      self.value_column_name=_DEFAULT_VALUE_COLUMN_NAME
+      self._assert_schema()
     self._set_db_flags()
 
   def __getitem__(self, key:str):

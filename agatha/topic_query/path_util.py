@@ -3,7 +3,7 @@ import networkx as nx
 import numpy as np
 from copy import copy
 from tqdm import tqdm
-from agatha.util.sqlite3_graph import Sqlite3Graph
+from agatha.util.sqlite3_lookup import Sqlite3Graph
 import random
 from math import log2
 

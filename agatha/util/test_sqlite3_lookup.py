@@ -1,4 +1,8 @@
-from agatha.util.sqlite3_lookup import Sqlite3LookupTable
+from agatha.util.sqlite3_lookup import (
+    Sqlite3LookupTable,
+    Sqlite3Graph,
+    Sqlite3Bow,
+)
 import sqlite3
 import json
 from pathlib import Path
@@ -187,3 +191,67 @@ def test_backward_compatable_fallback():
   assert table["A"] == expected["A"]
   assert table["B"] == expected["B"]
   assert "C" not in table
+
+def test_old_sqlite3graph():
+  expected = {
+      "A": ["B", "C"],
+      "B": ["A"],
+      "C": ["A"],
+  }
+  db_path = make_sqlite3_db(
+      "test_old_sqlite3graph",
+      expected,
+      table_name="graph",
+      key_column_name="node",
+      value_column_name="neighbors",
+  )
+  table = Sqlite3Graph(db_path)
+  assert table["A"] == expected["A"]
+  assert table["B"] == expected["B"]
+  assert table["C"] == expected["C"]
+  assert "D" not in table
+
+def test_old_sqlite3bow():
+  expected = {
+      "A": ["B", "C"],
+      "B": ["A"],
+      "C": ["A"],
+  }
+  db_path = make_sqlite3_db(
+      "test_old_sqlite3bow",
+      expected,
+      table_name="sentences",
+      key_column_name="id",
+      value_column_name="bow",
+  )
+  table = Sqlite3Bow(db_path)
+  assert table["A"] == expected["A"]
+  assert table["B"] == expected["B"]
+  assert table["C"] == expected["C"]
+  assert "D" not in table
+
+def test_new_sqlite3graph():
+  expected = {
+      "A": ["B", "C"],
+      "B": ["A"],
+      "C": ["A"],
+  }
+  db_path = make_sqlite3_db("test_new_sqlite3graph", expected)
+  table = Sqlite3Graph(db_path)
+  assert table["A"] == expected["A"]
+  assert table["B"] == expected["B"]
+  assert table["C"] == expected["C"]
+  assert "D" not in table
+
+def test_new_sqlite3bow():
+  expected = {
+      "A": ["B", "C"],
+      "B": ["A"],
+      "C": ["A"],
+  }
+  db_path = make_sqlite3_db("test_new_sqlite3bow", expected)
+  table = Sqlite3Graph(db_path)
+  assert table["A"] == expected["A"]
+  assert table["B"] == expected["B"]
+  assert table["C"] == expected["C"]
+  assert "D" not in table

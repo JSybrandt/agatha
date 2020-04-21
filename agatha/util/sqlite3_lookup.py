@@ -249,3 +249,42 @@ class Sqlite3LookupTable():
         (key,)
     ).fetchone()
     return res[0] == 1
+
+################################################################################
+## SPECIAL CASES ###############################################################
+################################################################################
+
+# These special cases are added for backwards compatibility. Custom table, key
+# and column names are potentially used on old data sources.
+
+class Sqlite3Bow(Sqlite3LookupTable):
+  def __init__(
+      self,
+      db_path:Path,
+      table_name:str="sentences",
+      key_column_name:str="id",
+      value_column_name:str="bow",
+  ):
+    Sqlite3LookupTable.__init__(
+        self,
+        db_path=db_path,
+        table_name=table_name,
+        key_column_name=key_column_name,
+        value_column_name=value_column_name,
+    )
+
+class Sqlite3Graph(Sqlite3LookupTable):
+  def __init__(
+      self,
+      db_path:Path,
+      table_name:str="graph",
+      key_column_name:str="node",
+      value_column_name:str="neighbors",
+  ):
+    Sqlite3LookupTable.__init__(
+        self,
+        db_path=db_path,
+        table_name=table_name,
+        key_column_name=key_column_name,
+        value_column_name=value_column_name,
+    )

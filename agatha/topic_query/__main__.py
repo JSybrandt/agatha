@@ -9,8 +9,7 @@ from agatha.topic_query import (
     topic_query_config_pb2 as cpb,
 )
 from agatha.util import entity_types, proto_util
-from agatha.util.sqlite3_graph import Sqlite3Graph
-from agatha.util.sqlite3_bow import Sqlite3Bow
+from agatha.util.sqlite3_lookup import Sqlite3Graph, Sqlite3Bow
 
 
 def assert_conf_has_field(config:cpb.TopicQueryConfig, field:str)->None:
@@ -40,46 +39,44 @@ if __name__ == "__main__":
   graph_index = Sqlite3Graph(config.graph_db)
   bow_index = Sqlite3Bow(config.bow_db)
 
-  with graph_index as graph_index:
-    assert config.source in graph_index, "Failed to find source in graph_index."
-    assert config.target in graph_index, "Failed to find target in graph_index."
+  assert config.source in graph_index, "Failed to find source in graph_index."
+  assert config.target in graph_index, "Failed to find target in graph_index."
 
 
-    # Get Path
-    print("Finding shortest path")
-    path, cached_graph = path_util.get_shortest_path(
+  # Get Path
+  print("Finding shortest path")
+  path, cached_graph = path_util.get_shortest_path(
+      graph_index=graph_index,
+      source=config.source,
+      target=config.target,
+      max_degree=config.max_degree,
+  )
+  if path is None:
+    raise ValueError(f"Path is disconnected, {config.source}, {config.target}")
+  pprint(path)
+
+  print("Collecting Nearby Sentences")
+  sentence_ids = set()
+  for path_node in path:
+    print("\t-", path_node)
+    # Each node along the path is allowed to add some sentences
+    sentence_ids.update(
+      path_util.get_nearby_nodes(
         graph_index=graph_index,
-        source=config.source,
-        target=config.target,
+        source=path_node,
+        key_type=entity_types.SENTENCE_TYPE,
+        max_result_size=config.max_sentences_per_path_elem,
         max_degree=config.max_degree,
-    )
-    if path is None:
-      raise ValueError(f"Path is disconnected, {config.source}, {config.target}")
-    pprint(path)
-
-    print("Collecting Nearby Sentences")
-    sentence_ids = set()
-    for path_node in path:
-      print("\t-", path_node)
-      # Each node along the path is allowed to add some sentences
-      sentence_ids.update(
-        path_util.get_nearby_nodes(
-          graph_index=graph_index,
-          source=path_node,
-          key_type=entity_types.SENTENCE_TYPE,
-          max_result_size=config.max_sentences_per_path_elem,
-          max_degree=config.max_degree,
-          cached_graph=cached_graph,
-        )
+        cached_graph=cached_graph,
       )
-    sentence_ids = list(sentence_ids)
+    )
+  sentence_ids = list(sentence_ids)
 
-  with bow_index as bow:
-    print("Downloading Sentence Text for all", len(sentence_ids), "sentences")
-    # List[List[str]]
-    text_corpus = [
-        bow[s] for s in sentence_ids if s in bow
-    ]
+  print("Downloading Sentence Text for all", len(sentence_ids), "sentences")
+  # List[List[str]]
+  text_corpus = [
+      bow[s] for s in sentence_ids if s in bow
+  ]
 
   print("Identifying potential query-specific stopwords")
   min_support = config.topic_model.min_support_count

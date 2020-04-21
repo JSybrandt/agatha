@@ -238,6 +238,8 @@ def add_points_to_index(
     output_path:Path,
 )->Path:
   "Loads an initial index, adds the partition to the index, and writes result"
+  init_index_path = Path(init_index_path)
+  file_util.wait_for_file_to_appear(init_index_path)
   index = faiss.read_index(str(init_index_path))
   assert index.is_trained
 

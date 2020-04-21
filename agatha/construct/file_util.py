@@ -7,6 +7,9 @@ import random
 import pickle
 import dask
 from tqdm import tqdm
+import os
+import random
+import time
 
 EXT = ".pkl"
 DONE_FILE = "__done__"
@@ -178,3 +181,22 @@ def load_random_sample_to_memory(
         if random.random() < value_sample_rate:
           res.append(rec)
   return res
+
+def wait_for_file_to_appear(file_path:Path, max_tries:int=5)->None:
+  file_path = Path(file_path)
+  parent_dir = file_path.absolute().parent
+  assert parent_dir.is_dir(), "Waiting for file in non-existent dir"
+  # if the file doesn't exist, we don't want to bombard the filesystem
+  # random provides a small offset between parallel machines
+  sleep_time = 1 + random.random()
+  # make max_tries attempts to find the file
+  for _ in range(max_tries):
+    if not file_path.is_file():
+      time.sleep(sleep_time)
+      # double the sleep time on each failure
+      sleep_time *= 2
+      # touching the parent can often cause a filesystem sync
+      os.system(f"touch {parent_dir}")
+    else:
+      break
+  assert file_path.is_file(), f"Failed to find: {file_path}"

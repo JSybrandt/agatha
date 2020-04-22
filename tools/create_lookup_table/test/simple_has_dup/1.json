@@ -1,0 +1,8 @@
+{ "key": "a", "value": "a_1" }
+{ "key": "a", "value": "a_2" }
+{ "key": "a", "value": "a_3" }
+{ "key": "b", "value": "b_1" }
+{ "key": "b", "value": "b_2" }
+{ "key": "b", "value": "b_3" }
+{ "key": "c", "value": "Has a \n newline character" }
+{ "key": "c", "value": "Has two \n \n newline character" }

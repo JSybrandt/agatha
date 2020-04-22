@@ -1,0 +1,2 @@
+{ "key": "a", "value": { "feat_1": 1, "feat_2": "two", "feat_3": [ "a", "b", "c" ] } }
+{ "key": "b", "value": { "feat_1": 5, "feat_2": "six", "feat_3": [ "c", "d", "e" ] } }

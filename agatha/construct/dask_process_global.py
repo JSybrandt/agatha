@@ -30,7 +30,6 @@ class WorkerPreloader(object):
     "Adds a global object to the preloader"
     assert key not in self.initializers
     self.initializers[key] = init
-    print("Registered", key)
 
   def get(self, key:str, worker:Worker)->Any:
     assert hasattr(worker, "_preloader_data")
@@ -39,12 +38,10 @@ class WorkerPreloader(object):
     if key not in worker._preloader_data:
       with worker._lock:
         if key not in worker._preloader_data:
-          print(f"Initializing {key}")
           worker._preloader_data[key] = self.initializers[key]()
     return worker._preloader_data[key]
 
   def clear(self, worker):
-    print("Clearing process global data.")
     with worker._lock:
       del worker._preloader_data
       worker._preloader_data = {}

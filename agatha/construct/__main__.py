@@ -24,28 +24,55 @@ import dask.bag as dbag
 import shutil
 import json
 from datetime import datetime
+from typing import Dict, Any
 
-if __name__ == "__main__":
-  config = cpb.ConstructConfig()
-  # Creates a parser with arguments corresponding to all of the provided fields.
-  # Copy any command-line specified args to the config
-  proto_util.parse_args_to_config_proto(config)
-  print("Running agatha build with the following custom parameters:")
-  print(config)
+def setup_directories(config:cpb.ConstructConfig())->Dict[str, Path]:
+  # Directory Structure
+  """
+  {scratch_root_dir}/
+    checkpoints/
+      ...
+    helper_data/
+      faiss_index/
+      hash_to_name/
 
-  # Checks
-  print("Performing config checks")
-  shared_scratch_root = Path(config.cluster.shared_scratch)
-  shared_scratch_root.mkdir(parents=True, exist_ok=True)
-  assert shared_scratch_root.is_dir()
-  local_scratch_root = Path(config.cluster.local_scratch)
-  local_scratch_root.mkdir(parents=True, exist_ok=True)
-  assert local_scratch_root.is_dir()
+  {output_dir}/
+    json_dump/
+      graph_data/
+        ...
+      sentence_data/
+        ...
+  """
 
+  # intermediate dirs
+  scratch_root_dir = Path(config.scratch_dir)
+  checkpoint_dir = scratch_root_dir.joinpath("checkpoints")
+  helper_data_dir = scratch_root_dir.joinpath("helper_data")
+  faiss_index_dir = helper_data_dir.joinpath("faiss_index")
+  hash2name_dir = helper_data_dir.joinpath("hash_to_name")
+
+  # output dirs
+  output_dir = Path(config.output_dir)
+  output_dump_dir = output_dir.joinpath("json_dump")
+  output_graph_dir = output_dump_dir.joinpath("graph_data")
+  output_sentence_dir = output_dump_dir.joinpath("sentence_data")
+
+  # For each of the directories specified above
+  for val in locals().values():
+    if isinstance(val, Path):
+      val.mkdir(parents=True, exist_ok=True)
+
+  # Helper Paths
+  faiss_index_path = faiss_index_dir.joinpath("final.index")
+  hash2name_db = hash2name_dir.joinpath("hash2name.sqlite3")
+
+  # Return all values created in this function
+  return locals()
+
+def setup_cluster(config:cpb.ConstructConfig, faiss_index_path:Path)->None:
   # Connect
   if config.cluster.run_locally:
     print("Running on local machine!")
-    # Changes to dpg allow for a "none" dask client
     dask_client = None
   else:
     cluster_address = f"{config.cluster.address}:{config.cluster.port}"
@@ -57,43 +84,7 @@ if __name__ == "__main__":
       dask_client.restart()
     print(f"\t- Running on {len(dask_client.nthreads())} machines.")
 
-
-  # Prepping all scratch dirs ###
-  def scratch(task_name):
-    "Creates a local / global scratch dir with the give name"
-    return file_util.prep_scratches(
-      local_scratch_root=local_scratch_root,
-      shared_scratch_root=shared_scratch_root,
-      task_name=task_name,
-    )
-
-  print("Prepping scratch directories")
-  _, faiss_index_dir = scratch("faiss_index")
-  _, hash2name_dir = scratch("hash_to_name")
-  _, checkpoint_dir = scratch("checkpoints")
-
-  # Setup checkpoint
-  checkpoint.set_root(checkpoint_dir)
-  if config.cluster.disable_checkpoints:
-    checkpoint.disable()
-  if config.HasField("stop_after_ckpt"):
-    checkpoint.set_halt_point(config.stop_after_ckpt)
-  if config.cluster.clear_checkpoints:
-    checkpoint.clear_all_ckpt()
-
-  faiss_index_path = faiss_index_dir.joinpath("final.index")
-
-  _, res_data_dir = scratch("processed_data")
-  # export directories
-  # This one will hold edge tsv data
-  res_graph_dir = res_data_dir.joinpath("graph")
-  res_graph_dir.mkdir(parents=True, exist_ok=True)
-  # This one will hold sentences stored as json dumps
-  res_sentence_dir = res_data_dir.joinpath("sentences")
-  res_sentence_dir.mkdir(parents=True, exist_ok=True)
-
-  # Initialize Helper Objects ###
-  print("Registering Helper Objects")
+  # Initialize Helper Objects on each worker
   preloader = dpg.WorkerPreloader()
   preloader.register(*text_util.get_scispacy_initalizer(
       scispacy_version=config.parser.scispacy_version,
@@ -113,16 +104,34 @@ if __name__ == "__main__":
   ))
   dpg.add_global_preloader(client=dask_client, preloader=preloader)
 
+def setup_checkpoints(config:cpb.ConstructConfig)->None:
+  # Setup checkpoint
+  checkpoint.set_root(checkpoint_dir)
+  if config.cluster.disable_checkpoints:
+    checkpoint.disable()
+  if config.HasField("stop_after_ckpt"):
+    checkpoint.set_halt_point(config.stop_after_ckpt)
   if config.cluster.clear_checkpoints:
-    print("Clearing checkpoint dir")
-    shutil.rmtree(checkpoint_dir)
-    checkpoint_dir.mkdir()
+    checkpoint.clear_all_ckpt()
+
+
+if __name__ == "__main__":
+  config = cpb.ConstructConfig()
+  # Creates a parser with arguments corresponding to all of the provided fields.
+  # Copy any command-line specified args to the config
+  proto_util.parse_args_to_config_proto(config)
+  print("Running agatha build with the following custom parameters:")
+  print(config)
+
+  # Adds all setup directories to the current scope
+  locals().update(setup_directories(config))
+  setup_cluster(config, faiss_index_path)
+  setup_checkpoints(config)
 
   ##############################################################################
   # BEGIN PIPELINE                                                             #
   ##############################################################################
 
-  # Here's the text data sources
 
   if config.HasField("medline_xml_dir"):
     document_pipeline.perform_document_independent_tasks(
@@ -182,7 +191,6 @@ if __name__ == "__main__":
       lambda r: {"key": r["hash"], "value": r["name"]}
     )
   )
-  hash2name_db = hash2name_dir.joinpath("hash2name.sqlite3")
   sqlite3_lookup.create_lookup_table(
     key_value_records=hash_name_kv,
     result_database_path=hash2name_db,
@@ -221,7 +229,7 @@ if __name__ == "__main__":
   ckpt("knn_edges")
 
   # Now we can get all edges
-  print("Writing edges for Sqlite3")
+  print("Writing graph json dump")
   graph_kv = (
     dbag.concat([
       checkpoint.checkpoint(name, verbose=False)
@@ -231,10 +239,10 @@ if __name__ == "__main__":
   )
   sqlite3_lookup.export_key_value_records(
       key_value_records=graph_kv,
-      export_dir=res_graph_dir,
+      export_dir=output_graph_dir,
   )
 
-  print("Writing sentences to database dump")
+  print("Writing sentence json dump")
   sentence_kv = bow_sentences.map(
       lambda r: dict(
         key=r["id"],
@@ -246,5 +254,5 @@ if __name__ == "__main__":
   )
   sqlite3_lookup.export_key_value_records(
       key_value_records=sentence_kv,
-      export_dir=res_sentence_dir
+      export_dir=output_sentence_dir
   )

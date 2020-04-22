@@ -52,6 +52,13 @@ message ConstructConfig {
   // https://pages.semanticscholar.org/coronavirus-research
   optional string covid_json_dir = 18;
 
+  // The directory where to store intermediate values. Needs to be accessible
+  // from all workers
+  optional string scratch_dir = 20;
+
+  // The directory where to store results
+  // Will output graph and sentence json files
+  optional string output_dir = 21;
 }
 
 
@@ -66,9 +73,6 @@ message ClusterConfig {
   // Where to connect to cluster.
   optional string address = 1 [default="localhost"];
   optional int32 port = 2 [default=8786];
-  // Fast scratch dir to use for intermediate storage.
-  optional string local_scratch = 3 [default="/tmp"];
-  optional string shared_scratch = 4;
   // Restarting cluster refreshes all code, but also clears stored datasets.
   optional bool restart = 5 [default=false];
   optional bool run_locally = 6 [default=false];

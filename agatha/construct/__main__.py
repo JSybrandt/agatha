@@ -173,15 +173,19 @@ if __name__ == "__main__":
   ckpt("bow_sentences")
 
   print("Creating Hash2Name Database")
-  hash2name_db = hash2name_dir.joinpath("hash2name.sqlite3")
-  sqlite3_lookup.create_lookup_table(
-    record_bag=dbag.concat([
+  hash_name_kv = (
+    dbag.concat([
       checkpoint.checkpoint(name, verbose=False)
       for name in checkpoint.get_checkpoints_like("*hashed_names")
-    ]),
-    key_field="hash",
-    value_field="name",
-    database_path=hash2name_db,
+    ])
+    .map(
+      lambda r: {"key": r["hash"], "value": r["name"]}
+    )
+  )
+  hash2name_db = hash2name_dir.joinpath("hash2name.sqlite3")
+  sqlite3_lookup.create_lookup_table(
+    key_value_records=hash_name_kv,
+    result_database_path=hash2name_db,
     intermediate_data_dir=hash2name_dir,
     agatha_install_path=config.install_dir,
   )
@@ -217,21 +221,30 @@ if __name__ == "__main__":
   ckpt("knn_edges")
 
   # Now we can get all edges
-  all_edges = dbag.concat([
-    checkpoint.checkpoint(name, verbose=False)
-    for name in checkpoint.get_checkpoints_like("*_edges")
-  ])
-
-  print("Writing edges to database dump")
-  (
-      all_edges
-      .map_partitions(graph_util.nxgraphs_to_tsv_edge_list)
-      .to_textfiles(f"{res_graph_dir}/*.tsv")
+  print("Writing edges for Sqlite3")
+  graph_kv = (
+    dbag.concat([
+      checkpoint.checkpoint(name, verbose=False)
+      for name in checkpoint.get_checkpoints_like("*_edges")
+    ])
+    .map_partitions(graph_util.nxgraphs_to_kv)
+  )
+  sqlite3_lookup.export_key_value_records(
+      key_value_records=graph_kv,
+      export_dir=res_graph_dir,
   )
 
   print("Writing sentences to database dump")
-  (
-      bow_sentences
-      .map(json.dumps)
-      .to_textfiles(f"{res_sentence_dir}/*.json")
+  sentence_kv = bow_sentences.map(
+      lambda r: dict(
+        key=r["id"],
+        value=dict(
+          bow=r["bow"],
+          sent_text=r["sent_text"],
+        )
+      )
+  )
+  sqlite3_lookup.export_key_value_records(
+      key_value_records=sentence_kv,
+      export_dir=res_sentence_dir
   )

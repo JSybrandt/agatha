@@ -120,7 +120,7 @@ def train_distributed_knn(
     )
 
     # Train initial index, store result in init_index_path
-    init_index_path = dask.compute(
+    dask.compute(
         dask.delayed(train_initial_index)(
           training_data=training_data,
           num_centroids=num_centroids,
@@ -130,6 +130,7 @@ def train_distributed_knn(
           output_path=init_index_path,
         )
     )
+    file_util.wait_for_file_to_appear(init_index_path)
   else:
     print("\t- Using initial index:", init_index_path)
 
@@ -176,7 +177,7 @@ def train_initial_index(
     num_quantizers:int,
     bits_per_quantizer:int,
     output_path:Path,
-)->Path:
+)->None:
   """
   Computes index using method from:
   https://hal.inria.fr/inria-00514462v2/document
@@ -205,10 +206,6 @@ def train_initial_index(
   Choosing an index is hard:
   https://github.com/facebookresearch/faiss/wiki/Index-IO,-index-factory,-cloning-and-hyper-parameter-tuning
   """
-  print("Training Initial Index!")
-  print("Training Initial Index!")
-  print("Training Initial Index!")
-  print("Training Initial Index!")
   data = np.vstack([
     b.astype(dtype=np.float32) for b in training_data
   ])
@@ -229,7 +226,6 @@ def train_initial_index(
   index.nprobe = num_probes
   index.train(data)
   faiss.write_index(index, str(output_path))
-  return output_path
 
 def add_points_to_index(
     records:Iterable[Record],

@@ -1,3 +1,3 @@
-__VERSION__ = '20.04.21.dev0'
+__VERSION__ = '20.04.22'
 
 from . import ml

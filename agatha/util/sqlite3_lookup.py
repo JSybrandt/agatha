@@ -8,19 +8,27 @@ import os
 
 def _record_to_kv_json(
     record:Record,
-    key_field:str,
-    value_field:str
 )->str:
-  return json.dumps((
-      str(record[key_field]),
-      str(record[value_field]),
-    ))
+  assert "key" in record
+  assert "value" in record
+  return json.dumps({
+    "key": str(record["key"]),
+    "value": record["value"]
+  })
 
-def _make_sqlite3_database_from_json(
-    intermediate_data_dir:Path,
-    database_path:Path,
+
+def compile_kv_json_dir_to_sqlite3(
+    json_data_dir:Path,
+    result_database_path:Path,
     agatha_install_path:Path,
+    merge_duplicates:bool,
+    verbose:bool,
 )->None:
+  "WARNING: Runs on local machine, NOT on dask cluster"
+  json_data_dir = Path(json_data_dir)
+  result_database_path = Path(result_database_path)
+  agatha_install_path = Path(agatha_install_path)
+
   create_lookup_table_exec = (
       agatha_install_path
       .joinpath("tools")
@@ -29,58 +37,69 @@ def _make_sqlite3_database_from_json(
   )
   assert create_lookup_table_exec.is_file(), \
       "Failed to find create_lookup_table tool. Incorrect install path?"
-  assert intermediate_data_dir.is_dir()
-  assert not database_path.exists()
-  flag = os.system(
-      f"{create_lookup_table_exec} "
-      f"-i {intermediate_data_dir} "
-      f"-o {database_path} "
-  )
+  assert json_data_dir.is_dir()
+  assert not result_database_path.exists(), \
+      f"Database: {result_database_path} already exists."
+  flag = os.system(" ".join([
+      str(create_lookup_table_exec),
+      "-i", str(json_data_dir),
+      "-o", str(result_database_path),
+      ("-m" if merge_duplicates else ""),
+      ("-v" if verbose else ""),
+  ]))
   assert flag == 0, "Something failed during create_lookup_table"
-  assert database_path.is_file(), "Failed to create database"
+  assert result_database_path.is_file(), "Failed to create database"
+
+
+def export_key_value_records(
+    key_value_records:dbag.Bag,
+    export_dir:Path,
+)->None:
+  export_dir = Path(export_dir)
+  # Clean up / setup export dir
+  export_dir.mkdir(parents=True, exist_ok=True)
+  # Remove any previously constructed json files in there
+  for json_file in export_dir.glob("*.json"):
+    json_file.unlink()
+  (
+    key_value_records
+    .map(_record_to_kv_json)
+    .to_textfiles(f"{export_dir}/*.json")
+  )
+
 
 def create_lookup_table(
-  record_bag: dbag.Bag,
-  key_field:str,
-  value_field:str,
-  database_path:Path,
-  intermediate_data_dir:Path,
-  agatha_install_path:Path,
+    key_value_records:dbag.Bag,
+    result_database_path:Path,
+    intermediate_data_dir:Path,
+    agatha_install_path:Path,
+    merge_duplicates:bool=False,
+    verbose:bool=False
 )->None:
-  database_path = Path(database_path)
+  result_database_path = Path(result_database_path)
   intermediate_data_dir = Path(intermediate_data_dir)
   agatha_install_path = Path(agatha_install_path)
-  print("Sqlite3 Lookup Table:", database_path)
-  if database_path.is_file():
+
+  print("Sqlite3 Lookup Table:", result_database_path)
+  if result_database_path.is_file():
     print("\t- Ready")
   else:
-    print("\t-Constructing...")
-    if not intermediate_data_dir.exists():
-      intermediate_data_dir.mkdir(parents=True, exist_ok=True)
-    else:
-      # Remove any previously constructed json files in there
-      print("\t- Removing existing json files from", intermediate_data_dir)
-      for json_file in intermediate_data_dir.glob("*.json"):
-        json_file.unlink()
-
-    print("\t- Writing intermediate json files")
-    ( # Save all keys and values as kv pair json files
-        record_bag
-        .map(
-          _record_to_kv_json,
-          key_field=key_field,
-          value_field=value_field
-        )
-        .to_textfiles(f"{intermediate_data_dir}/*.json")
-    )
-    print("\t- Writing", database_path)
-    _make_sqlite3_database_from_json(
-        intermediate_data_dir=intermediate_data_dir,
-        database_path=database_path,
-        agatha_install_path=agatha_install_path
+    print("\t- Exporting to json")
+    export_key_value_records(key_value_records, intermediate_data_dir)
+    print("\t- Indexing database")
+    compile_kv_json_dir_to_sqlite3(
+        json_data_dir=intermediate_data_dir,
+        result_database_path=result_database_path,
+        agatha_install_path=agatha_install_path,
+        merge_duplicates=merge_duplicates,
+        verbose=verbose,
     )
     print("\t- Done!")
 
+
+################################################################################
+# Actual Database Interface ####################################################
+################################################################################
 
 _DEFAULT_TABLE_NAME="lookup_table"
 _DEFAULT_KEY_COLUMN_NAME="key"

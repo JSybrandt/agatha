@@ -5,15 +5,16 @@ from agatha.util.misc_util import Record
 from math import log
 import pandas as pd
 
-def nxgraphs_to_tsv_edge_list(graphs:Iterable[nx.Graph])->Iterable[str]:
+def nxgraphs_to_kv(graphs:Iterable[nx.Graph])->Iterable[str]:
   res = []
   for graph in graphs:
-    for (source, target, data) in graph.edges(data=True):
-      source = source.replace("\t", " ")
-      target = target.replace("\t", " ")
-      weight = data["weight"]
-      res.append(f"{source}\t{target}\t{weight}")
-      res.append(f"{target}\t{source}\t{weight}")
+    for (source, target) in graph.edges():
+      source = source.replace("\t", " ").replace("\n"," ")
+      target = target.replace("\t", " ").replace("\n"," ")
+      res.append(dict(
+        key=source,
+        value=target
+      ))
   return res
 
 def record_to_bipartite_edges(

@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 import json
-from typing import List, Any
+from typing import List, Any, Set
 import dask.bag as dbag
 from agatha.util.misc_util import Record
 import os
@@ -213,6 +213,7 @@ class Sqlite3LookupTable():
     self._cursor.execute('PRAGMA temp_store = MEMORY')
     self._cursor.execute('PRAGMA query_only = TRUE')
     self._cursor.execute('PRAGMA threads = 4')
+    self._cursor.arraysize = 64
 
   def _disconnect(self)->None:
     if self.connected():
@@ -268,6 +269,26 @@ class Sqlite3LookupTable():
         (key,)
     ).fetchone()
     return res[0] == 1
+
+  def keys(self)->Set[str]:
+    assert self.connected(), "Attempting to operate on closed db."
+    query = self._cursor.execute(
+        f"""
+          SELECT {self.key_column_name}
+          FROM {self.table_name}
+        """
+    )
+    return set(r[0] for r in query.fetchall())
+
+  def __len__(self)->int:
+    assert self.connected(), "Attempting to operate on closed db."
+    return self._cursor.execute(
+        f"""
+          SELECT count(*)
+          FROM {self.table_name}
+        """
+    ).fetchone()[0]
+
 
 ################################################################################
 ## SPECIAL CASES ###############################################################

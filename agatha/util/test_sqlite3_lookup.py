@@ -255,3 +255,23 @@ def test_new_sqlite3bow():
   assert table["B"] == expected["B"]
   assert table["C"] == expected["C"]
   assert "D" not in table
+
+def test_keys():
+  expected = {
+      "A": ["B", "C"],
+      "B": ["A"],
+      "C": ["A"],
+  }
+  db_path = make_sqlite3_db("test_keys", expected)
+  table = Sqlite3LookupTable(db_path)
+  assert set(table.keys()) == set(expected.keys())
+
+def test_len():
+  expected = {
+      "A": ["B", "C"],
+      "B": ["A"],
+      "C": ["A"],
+  }
+  db_path = make_sqlite3_db("test_len", expected)
+  table = Sqlite3LookupTable(db_path)
+  assert len(table) == len(expected)

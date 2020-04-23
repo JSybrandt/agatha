@@ -20,7 +20,7 @@ function run_test(){
   sqlite3 $d/db.sqlite3 "SELECT * FROM lookup_table;"
 
   # Cleanup
-  rm -f $d/db.sqlite3
+  #rm -f $d/db.sqlite3
 }
 
 run_test complex_no_dup

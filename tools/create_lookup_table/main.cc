@@ -52,18 +52,26 @@ struct TableEntry {
   std::string value;
 };
 
+std::string get_value_string(const json& val){
+  if (val.is_object() || val.is_array()){
+    return val.dump();
+  } else {
+    return val.get<std::string>();
+  }
+}
+
 std::list<TableEntry> parse_json(const fs::path& json_path){
   std::list<TableEntry> res;
   std::fstream json_file(json_path, std::ios::in);
-  std::string key, value, line;
+  std::string line;
   while (getline(json_file, line)){
     json key_value_entry = json::parse(line);
     assert(key_value_entry.find("key") != key_value_entry.end());
     assert(key_value_entry.find("value") != key_value_entry.end());
     assert(key_value_entry["key"].is_string());
     res.emplace_back(
-        key_value_entry["key"],
-        key_value_entry["value"].dump()
+        key_value_entry["key"].get<std::string>(),
+        get_value_string(key_value_entry["value"])
     );
   }
   json_file.close();

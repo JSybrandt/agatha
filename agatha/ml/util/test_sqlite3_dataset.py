@@ -29,3 +29,24 @@ def test_getitem():
     k, v = dataset[idx]
     actual[k] = v
   assert expected == actual
+
+def test_subset():
+  data = {
+      "1": "A",
+      "2": "B",
+      "3": "C",
+      "4": "D",
+  }
+  db_path = make_sqlite3_db("test_getitem", data)
+  table = Sqlite3LookupTable(db_path)
+  filter_fn = lambda k: int(k) <= 2
+  dataset = sqlite3_dataset.Sqlite3Dataset(table, filter_fn)
+  actual = {}
+  for idx in range(len(dataset)):
+    k, v = dataset[idx]
+    actual[k] = v
+  expected = {
+      "1": "A",
+      "2": "B",
+  }
+  assert expected == actual

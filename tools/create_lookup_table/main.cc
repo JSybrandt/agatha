@@ -166,6 +166,7 @@ int main(int argc, char** argv){
         sql::make_column("value", &TableEntry::value)
       )
   );
+  storage.pragma.journal_mode(sqlite_orm::journal_mode::OFF);
   storage.sync_schema();
 
   if (verbose) std::cout << "Writing DB" << std::endl;

@@ -1,5 +1,5 @@
 from agatha.ml.abstract_generator import datasets
-from agatha.ml.abstract_generator.lamb_optimizer import Lamb
+from agatha.ml.util.lamb_optimizer import Lamb
 from agatha.ml.abstract_generator.tokenizer import AbstractGeneratorTokenizer
 from agatha.ml.util.kv_store_dataset import KVStoreDictDataset
 from argparse import Namespace

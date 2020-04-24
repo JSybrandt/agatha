@@ -1,38 +1,52 @@
-import pytorch_lightning as pl
-from argparse import ArgumentParser
-from agatha.ml.hypothesis_predictor.hypothesis_predictor import (
-    HypothesisPredictor
-)
+from argparse import ArgumentParser, Namespace
+from agatha.ml.hypothesis_predictor import hypothesis_predictor as hp
+from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pathlib import Path
+
+
+def train(
+    training_args:Namespace,
+    graph_db:Path,
+    entity_db:Path,
+    embedding_dir:Path,
+):
+  assert graph_db.is_file()
+  assert entity_db.is_file()
+  assert embedding_dir.is_dir()
+  trainer = Trainer.from_argparse_args(training_args)
+  model = hp.HypothesisPredictor(training_args)
+  model.prepare_for_training()
+  trainer.fit(model)
 
 if __name__ == "__main__":
   parser = ArgumentParser()
-  parser.add_argument("--train-fraction", type=float, default=1)
-  parser.add_argument("--train-gradient-clip-val", type=float, default=1)
+  parser = Trainer.add_argparse_args(parser)
+  parser = hp.HypothesisPredictor.add_argparse_args(parser)
+  # These arguments will be serialized with the model
+  training_args = parser.parse_known_args()
+
+  # These arguments will be forgotten after training is complete
   parser.add_argument(
-      "--model-ckpt-dir",
-      default="./point_cloud_eval_ckpt"
+      "--graph-db",
+      type=Path,
+      help="Location of graph sqlite3 lookup table."
   )
-
-
-  HypothesisPredictor.configure_argument_parser(parser)
-  args = parser.parse_args()
-
-  print(args)
-  trainer = pl.Trainer(
-      gradient_clip_val=args.train_gradient_clip_val,
-      default_save_path=args.model_ckpt_dir,
-      gpus=-1 if args.distributed else 1,
-      nb_gpu_nodes=args.train_num_machines if args.distributed else 1,
-      distributed_backend='ddp' if args.distributed else None,
-      train_percent_check=args.train_fraction,
-      val_percent_check=args.train_fraction,
-      track_grad_norm=2 if args.debug else -1,
-      overfit_pct=0.01 if args.debug else 0,
-      weights_summary='full',
+  parser.add_argument(
+      "--entity-db",
+      type=Path,
+      help="Location of entity sqlite3 lookup table."
   )
-  model = HypothesisPredictor(args)
-  if args.mode == "train":
-    model.init_training_datasets()
-    trainer.fit(model)
-  elif args.mode == "test":
-    trainer.test(model)
+  parser.add_argument(
+      "--embedding-dir",
+      type=Path,
+      help="Location of graph embedding hdf5 files."
+  )
+  all_args = parser.parse_args()
+
+  train(
+      training_args=training_args,
+      graph_db=all_args.graph_db,
+      entity_db=all_args.entity_db,
+      embedding_dir=all_args.embedding_dir
+  )

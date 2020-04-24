@@ -24,13 +24,13 @@ class EmbeddingLookupTable():
   def __init__(
       self,
       embedding_dir:Path,
-      entity_index_db_path:Path,
+      entity_db:Path,
   ):
     embedding_dir = Path(embedding_dir)
-    entity_index_db_path = Path(entity_index_db_path)
+    entity_db = Path(entity_db)
     assert embedding_dir.is_dir(), "Failed to find embedding_dir"
-    assert entity_index_db_path.is_file(), "Failed to find entity_index"
-    self.entity_index = Sqlite3LookupTable(entity_index_db_path)
+    assert entity_db.is_file(), "Failed to find entities"
+    self.entities = Sqlite3LookupTable(entity_db)
     self._type_part2path = {
         parse_embedding_path(embedding_path): embedding_path
         for embedding_path
@@ -60,8 +60,8 @@ class EmbeddingLookupTable():
         return h5_file["embeddings"][row]
 
   def __getitem__(self, entity:str)->np.array:
-    assert entity in self.entity_index, f"Cannot find {entity} in index"
-    location = self.entity_index[entity]
+    assert entity in self.entities, f"Cannot find {entity} in index"
+    location = self.entities[entity]
     assert "type" in location, f"Invalid location object: {location}"
     assert "part" in location, f"Invalid location object: {location}"
     assert "row" in location, f"Invalid location object: {location}"
@@ -71,18 +71,19 @@ class EmbeddingLookupTable():
     return self._get_row(type_, part, row)
 
   def __contains__(self, entity:str)->bool:
-    return entity in self.entity_index
+    return entity in self.entities
 
   def preload(self)->None:
-    self.entity_index.preload()
-    for path_key, path in self._type_part2path:
-      with h5py.File(h5_path, "r") as h5_file:
-        self._type_part2matrix[path_key] = h5_file["embeddings"][()]
+    if not self.is_preloaded():
+      self.entities.preload()
+      for path_key, path in self._type_part2path:
+        with h5py.File(h5_path, "r") as h5_file:
+          self._type_part2matrix[path_key] = h5_file["embeddings"][()]
 
   def is_preloaded(self)->bool:
     "the entity index is loaded and all paths have been loaded"
     return (
-        self.entity_index.is_preloaded()
+        self.entities.is_preloaded()
         and (
           set(self._type_part2matrix.keys())
           == set(self._type_part2path.keys())

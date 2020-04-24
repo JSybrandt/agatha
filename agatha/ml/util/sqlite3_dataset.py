@@ -41,3 +41,23 @@ class Sqlite3Dataset(Dataset):
     key = self.keys()[idx]
     value = self.table[key]
     return key, value
+
+class Sqlite3KeyDataset(Sqlite3Dataset):
+  """
+  Same as above, only returns keys
+  """
+  def __init__(self, *args, **kwargs):
+    Sqlite3Dataset.__init__(self, *args, **kwargs)
+
+  def __getitem__(self, idx)->str:
+    return Sqlite3Dataset.__getitem__(idx)[0]
+
+class Sqlite3ValueDataset(Sqlite3Dataset):
+  """
+  Same as above, only returns values
+  """
+  def __init__(self, *args, **kwargs):
+    Sqlite3Dataset.__init__(self, *args, **kwargs)
+
+  def __getitem__(self, idx)->str:
+    return Sqlite3Dataset.__getitem__(idx)[1]

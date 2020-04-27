@@ -1,6 +1,6 @@
 from agatha.util.sqlite3_lookup import Sqlite3LookupTable
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Set
 import h5py
 import numpy as np
 
@@ -76,7 +76,7 @@ class EmbeddingLookupTable():
   def preload(self)->None:
     if not self.is_preloaded():
       self.entities.preload()
-      for path_key, path in self._type_part2path:
+      for path_key, h5_path in self._type_part2path.items():
         with h5py.File(h5_path, "r") as h5_file:
           self._type_part2matrix[path_key] = h5_file["embeddings"][()]
 
@@ -89,3 +89,6 @@ class EmbeddingLookupTable():
           == set(self._type_part2path.keys())
         )
     )
+
+  def keys(self)->Set[str]:
+    return self.entities.keys()

@@ -125,7 +125,7 @@ class Sqlite3LookupTable():
     self._cursor = None
     db_path = Path(db_path)
     assert db_path.is_file(), f"Failed to find {db_path}"
-    self.db_path = Path(db_path)
+    self.db_path = db_path
     self._connect()
 
   def __del__(self):
@@ -252,7 +252,7 @@ class Sqlite3LookupTable():
         (key,)
     ).fetchone()
     if res is None:
-      return res
+      raise ValueError(f"Key {key} not present in {self.db_path}")
     else:
       return json.loads(res[0])
 

@@ -53,18 +53,23 @@ class PredicateObservationGenerator():
       subj:str,
       obj:str
   )->Tuple[List[str], List[str]]:
-    s = set(filter(lambda k: k[0]==PREDICATE_TYPE, self.graph(subj)))
-    o = set(filter(lambda k: k[0]==PREDICATE_TYPE, self.graph(obj)))
+    assert subj in self.graph, f"Failed to find {subj} in graph."
+    assert obj in self.graph, f"Failed to find {obj} in graph."
+    s = set(filter(lambda k: k[0]==PREDICATE_TYPE, self.graph[subj]))
+    o = set(filter(lambda k: k[0]==PREDICATE_TYPE, self.graph[obj]))
     s, o = (s-o, o-s)
     return self._sample_neighborhood(s), self._sample_neighborhood(o)
 
   def __getitem__(self, predicate:str)->PredicateEmbeddings:
-    subj, obj = parse_predicate_name(predicate)
-    s_neigh, o_neigh = self._get_pred_neigh_from_diff(subj, obj)
+    try:
+      subj, obj = parse_predicate_name(predicate)
+    except Exception:
+      raise Exception(f"Failed to parse predicate: {predicate}")
+    subj_neigh, obj_neigh = self._get_pred_neigh_from_diff(subj, obj)
     subj = self.embeddings[subj]
     obj = self.embeddings[obj]
-    s_neigh = [self.embeddings[s] for s in s_neigh]
-    o_neigh = [self.embeddings[o] for p in o_neigh]
+    subj_neigh = [self.embeddings[s] for s in subj_neigh]
+    obj_neigh = [self.embeddings[o] for o in obj_neigh]
     return PredicateEmbeddings(
         subj=subj,
         obj=obj,
@@ -82,6 +87,7 @@ class PredicateScrambleObservationGenerator(PredicateObservationGenerator):
     self.predicates = predicates
 
   def __getitem__(self, predicate:str):
+    subj, obj = parse_predicate_name(predicate)
     subj = self.embeddings[subj]
     obj = self.embeddings[obj]
     neighs = [
@@ -92,24 +98,36 @@ class PredicateScrambleObservationGenerator(PredicateObservationGenerator):
     return PredicateEmbeddings(
         subj=subj,
         obj=obj,
-        subj_neigh=neighs[:neighbor_sample_rate],
-        obj_neigh=neighs[neighbor_sample_rate:]
+        subj_neigh=neighs[:self.neighbor_sample_rate],
+        obj_neigh=neighs[self.neighbor_sample_rate:]
     )
 
 
 class NegativePredicateGenerator():
-  def __init__(self, coded_terms:List[str]):
+  def __init__(
+      self,
+      coded_terms:List[str],
+      graph:Sqlite3LookupTable,
+  ):
+    "Generates coded terms that appear in graph."
     self.coded_terms = coded_terms
+    self.graph = graph
+
+  def _choose_term(self):
+    term = random.choice(self.coded_terms)
+    while term not in self.graph:
+      term = random.choice(self.coded_terms)
+    return term
 
   def generate(self):
-    subj = random.choice(self.coded_terms)
-    obj = random.choice(self.coded_terms)
+    subj = self._choose_term()
+    obj = self._choose_term()
     assert subj[0] == UMLS_TERM_TYPE
     assert obj[0] == UMLS_TERM_TYPE
     # Convert m:c00, m:c11 to p:c00:verb:c11
     subj = subj[2:]
     obj = obj[2:]
-    return "{PREDICATE_TYPE}:{subj}:neg:{obj}"
+    return f"{PREDICATE_TYPE}:{subj}:neg:{obj}"
 
 
 class PredicateBatchGenerator():
@@ -122,9 +140,12 @@ class PredicateBatchGenerator():
       neighbor_sample_rate:int,
       negative_swap_rate:int,
       negative_scramble_rate:int,
+      verbose:bool,
   ):
+    self.verbose = verbose
     self.negative_generator = NegativePredicateGenerator(
-        coded_terms=coded_terms
+        coded_terms=coded_terms,
+        graph=graph,
     )
     self.scramble_observation_generator = PredicateScrambleObservationGenerator(
         predicates=predicates,
@@ -160,8 +181,12 @@ class PredicateBatchGenerator():
       one of the corresponding negative inputs
     """
 
+    if self.verbose:
+      print("Generating Positives...")
     pos = [self.observation_generator[p] for p in positive_predicates]
     negs = []
+    if self.verbose:
+      print("Generating Negative Swaps...")
     for _ in range(self.negative_swap_rate):
       negs.append([
         self.observation_generator[
@@ -169,6 +194,8 @@ class PredicateBatchGenerator():
         ]
         for _ in positive_predicates
       ])
+    if self.verbose:
+      print("Generating Negative Scrambles...")
     for _ in range(self.negative_scramble_rate):
       negs.append([
         self.scramble_observation_generator[

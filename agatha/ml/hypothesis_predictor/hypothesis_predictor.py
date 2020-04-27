@@ -1,3 +1,4 @@
+from collections import defaultdict
 import torch
 import pytorch_lightning as pl
 from argparse import Namespace, ArgumentParser
@@ -14,6 +15,9 @@ class HypothesisPredictor(pl.LightningModule):
   def __init__(self, hparams:Namespace):
     super(HypothesisPredictor, self).__init__()
     self.hparams = hparams
+
+    self.verbose = False
+    self.distributed = False
 
     # Layers
     ## Graph Emb Input
@@ -39,10 +43,6 @@ class HypothesisPredictor(pl.LightningModule):
     # Loss Fn
     self.loss_fn = torch.nn.MarginRankingLoss(margin=self.hparams.margin)
 
-    self.hparams.batch_size = self.hparams.positives_per_batch * (
-        self.hparams.neg_swap_rate + self.hparams.neg_scramble_rate
-    )
-
     # Helper data, set by configure_paths
     self.embeddings = None
     self.graph = None
@@ -52,6 +52,10 @@ class HypothesisPredictor(pl.LightningModule):
     self.predicates = None
     self.coded_terms = None
     self.predicate_batch_generator = None
+
+  def _vprint(self, *args, **kwargs):
+    if self.verbose:
+      print(*args, **kwargs)
 
   def configure_paths(
       self,
@@ -66,26 +70,29 @@ class HypothesisPredictor(pl.LightningModule):
         embedding_dir=embedding_dir,
         entity_db=entity_db,
     )
-    self.graph=Sqlite3Graph(self.graph_db)
+    self.graph=Sqlite3Graph(graph_db)
 
-  def is_ready(self)->bool:
+  def paths_set(self)->bool:
     return self.embeddings is not None and self.graph is not None
 
   def preload(self)->None:
-    assert is_ready(), "Must set graph/embeddings before preload."
+    assert self.paths_set(), "Must call configure_paths before preload."
     self.graph.preload()
     self.embeddings.preload()
 
   def is_preloaded(self)->None:
     return (
-        self.is_ready()
+        self.paths_set()
         and self.graph.is_preloaded()
         and self.embeddings.is_preloaded()
     )
 
   def prepare_for_training(self)->None:
-    assert self.is_ready(), "Must call configure_paths first"
+    assert self.paths_set(), \
+        "Must call configure_paths before prepare_for_training"
+    self._vprint("Getting entity names")
     entities = self.embeddings.keys()
+    assert len(entities) > 0, "Failed to find embedding entities."
     self.coded_terms = list(filter(
       lambda k: k[0] == UMLS_TERM_TYPE,
       entities
@@ -94,10 +101,13 @@ class HypothesisPredictor(pl.LightningModule):
       lambda k: k[0] == PREDICATE_TYPE,
       entities
     ))
+    self._vprint("Splitting train/validation")
     validation_size = int(
         len(self.predicates) * self.hparams.validation_fraction
     )
     training_size = len(self.predicates) - validation_size
+    self._vprint("\t- Training:", training_size)
+    self._vprint("\t- Validation:", validation_size)
     (
         self.training_predicates,
         self.validation_predicates,
@@ -105,15 +115,18 @@ class HypothesisPredictor(pl.LightningModule):
         self.predicates,
         [training_size, validation_size]
     )
+    self._vprint("Preparing Batch Generator")
     self.predicate_batch_generator = predicate_util.PredicateBatchGenerator(
         graph=self.graph,
         embeddings=self.embeddings,
-        predicates=self.training_predicates,
+        predicates=self.predicates,
         coded_terms=self.coded_terms,
         neighbor_sample_rate=self.hparams.neighbor_sample_rate,
         negative_swap_rate=self.hparams.negative_swap_rate,
         negative_scramble_rate=self.hparams.negative_scramble_rate,
+        verbose=self.verbose,
     )
+    self._vprint("Ready for training!")
 
   def _configure_dataloader(
       self,
@@ -121,7 +134,7 @@ class HypothesisPredictor(pl.LightningModule):
   )->torch.utils.data.DataLoader:
     shuffle = True
     sampler = None
-    if self.hparams.distributed:
+    if self.distributed:
       shuffle = False
       sampler=torch.utils.data.distributed.DistributedSampler(predicate_dataset)
     return torch.utils.data.DataLoader(
@@ -132,12 +145,15 @@ class HypothesisPredictor(pl.LightningModule):
     )
 
   def train_dataloader(self)->torch.utils.data.DataLoader:
+    self._vprint("Getting Training Dataloader")
     return self._configure_dataloader(self.training_predicates)
 
   def val_dataloader(self)->torch.utils.data.DataLoader:
+    self._vprint("Getting Validation Dataloader")
     return self._configure_dataloader(self.validation_predicates)
 
   def forward(self, predicate_embeddings:torch.FloatTensor)->torch.FloatTensor:
+    self._vprint("Forward")
     local_stacked_emb = self.embedding_transformation(predicate_embeddings)
     local_stacked_emb = torch.relu(local_stacked_emb)
     encoded_predicate = self.encode_predicate_data(local_stacked_emb)
@@ -179,13 +195,7 @@ class HypothesisPredictor(pl.LightningModule):
       positive_predictions:List[str],
       batch_idx:int
   )->Dict[str, Any]:
-    return self._step(positive_predictions)
-
-  def training_step(
-      self,
-      positive_predictions:List[str],
-      batch_idx:int
-  )->Dict[str, Any]:
+    self._vprint("Training Step")
     return self._step(positive_predictions)
 
   def validation_step(
@@ -193,9 +203,29 @@ class HypothesisPredictor(pl.LightningModule):
       positive_predictions:List[str],
       batch_idx:int
   )->Dict[str, Any]:
+    self._vprint("Validation Step")
     return self._step(positive_predictions)
 
+  def _on_epoch_end(
+      self,
+      outputs:List[Dict[str,torch.Tensor]]
+  )->Dict[str, Dict[str,torch.Tensor]]:
+    metric2values = defaultdict(list)
+    for output in outputs:
+      for k, v in output.items():
+        metric2values[k].append(v)
+    for k in metric2values:
+      metric2values[k] = torch.mean(metric2values[v])
+    return dict(
+      log=metric2values,
+      progress_bar=metric2values
+    )
+
+  def validation_epoch_end(self, outputs:List[Dict[str,torch.Tensor]]):
+    return self._on_epoch_end(outputs)
+
   def configure_optimizers(self):
+    self._vprint("Configuring optimizers")
     return Lamb(
         self.parameters(),
         lr=self.hparams.lr,
@@ -223,10 +253,12 @@ class HypothesisPredictor(pl.LightningModule):
 
 
   def init_ddp_connection(self, proc_rank, world_size):
+    self._vprint("Initializing Distributed Connection")
+    self.distributed = True
     torch.distributed.init_process_group(
         'gloo',
         rank=proc_rank,
-        world_size=world_size*self.hparams.train_num_machines
+        world_size=world_size*self.hparams.num_nodes
     )
 
   @staticmethod
@@ -235,67 +267,18 @@ class HypothesisPredictor(pl.LightningModule):
     These arguments will be serialized along with the model after training.
     Path-specific arguments will be passed in separately.
     """
-    parser.add_argument(
-        "--positives-per-batch",
-        type=int,
-        default=16,
-    )
-    parser.add_argument(
-        "--neg-scramble-rate",
-        type=int,
-        default=10,
-        help="A negative scramble draws the neighborhood sets randomly"
-    )
-    parser.add_argument(
-        "--neg-swap-rate",
-        type=int,
-        default=10,
-        help="A negative swap exchanges the subject and object data in full."
-    )
-    parser.add_argument(
-        "--dim",
-        type=int,
-        default=256,
-    )
-    parser.add_argument(
-        "--warmup-steps",
-        type=int,
-        default=1000,
-    )
-    parser.add_argument(
-        "--neighbors-per-term",
-        type=int,
-        default=5,
-    )
-    parser.add_argument(
-        "--transformer-layers",
-        type=int,
-        default=4,
-    )
-    parser.add_argument(
-        "--transformer-ff-dim",
-        type=int,
-        default=512,
-    )
-    parser.add_argument(
-        "--transformer-heads",
-        type=int,
-        default=8,
-    )
-    parser.add_argument(
-        "--transformer-dropout",
-        type=float,
-        default=0.1,
-    )
-    parser.add_argument(
-        "--margin",
-        type=float,
-        default=0.1,
-    )
-    parser.add_argument(
-        "--weight-decay",
-        type=float,
-        default=0.01,
-    )
-
+    parser.add_argument("--dim", type=int)
+    parser.add_argument("--lr", type=float)
+    parser.add_argument("--margin", type=float)
+    parser.add_argument("--negative-scramble-rate", type=int)
+    parser.add_argument("--negative-swap-rate", type=int)
+    parser.add_argument("--neighbor-sample-rate", type=int)
+    parser.add_argument("--positives-per-batch", type=int)
+    parser.add_argument("--transformer-dropout", type=float)
+    parser.add_argument("--transformer-ff-dim", type=int)
+    parser.add_argument("--transformer-heads", type=int)
+    parser.add_argument("--transformer-layers", type=int)
+    parser.add_argument("--validation-fraction", type=float)
+    parser.add_argument("--warmup-steps", type=int)
+    parser.add_argument("--weight-decay", type=float)
     return parser

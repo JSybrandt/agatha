@@ -153,7 +153,6 @@ class HypothesisPredictor(pl.LightningModule):
     return self._configure_dataloader(self.validation_predicates)
 
   def forward(self, predicate_embeddings:torch.FloatTensor)->torch.FloatTensor:
-    self._vprint("Forward")
     local_stacked_emb = self.embedding_transformation(predicate_embeddings)
     local_stacked_emb = torch.relu(local_stacked_emb)
     encoded_predicate = self.encode_predicate_data(local_stacked_emb)
@@ -214,8 +213,10 @@ class HypothesisPredictor(pl.LightningModule):
     for output in outputs:
       for k, v in output.items():
         metric2values[k].append(v)
+    metric2value = {}
     for k in metric2values:
-      metric2values[k] = torch.mean(metric2values[v])
+      if len(metric2values[k]) > 0:
+        metric2values[k] = sum(metric2values[k]) / len(metric2values[k])
     return dict(
       log=metric2values,
       progress_bar=metric2values

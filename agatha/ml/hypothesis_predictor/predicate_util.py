@@ -218,13 +218,8 @@ def collate_predicate_embeddings(
   dimensions: (2+2(r)) X n X d
   """
   return torch.cat([
-    # Subject Embeddings
-    torch.FloatTensor([p.subj for p in predicate_embeddings]).unsqueeze(0),
-    # Object Embeddings
-    torch.FloatTensor([p.obj for p in predicate_embeddings]).unsqueeze(0),
-    # Neighbor Embeddings
     torch.nn.utils.rnn.pad_sequence([
-      torch.FloatTensor(p.subj_neigh + p.obj_neigh)
+      torch.FloatTensor([p.subj, p.obj] + p.subj_neigh + p.obj_neigh)
       for p in predicate_embeddings
     ])
   ])

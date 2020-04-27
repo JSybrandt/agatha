@@ -25,6 +25,7 @@ class EmbeddingLookupTable():
       self,
       embedding_dir:Path,
       entity_db:Path,
+      disable_cache:bool=False,
   ):
     embedding_dir = Path(embedding_dir)
     entity_db = Path(entity_db)
@@ -38,6 +39,7 @@ class EmbeddingLookupTable():
     }
     assert any(self._type_part2path), "Failed to find embedding files."
     self._type_part2matrix = {}
+    self._use_cache = not disable_cache
 
   def __getstate__(self):
     "If we pickle, don't pickle preloaded data"
@@ -47,16 +49,38 @@ class EmbeddingLookupTable():
     self._type_part2matrix = preloaded_data
     return state
 
-  def _get_row(self, type_:str, part:int, row:int)->np.array:
+  def clear_cache(self):
+    self._type_part2matrix.clear()
+
+  def disable_cache(self):
+    self.clear_cache()
+    self._use_cache = False
+
+  def enable_cache(self):
+    self._use_cache = True
+
+  def _cache_matrix(self, type_:str, part:int)->None:
     path_key = (type_, part)
+    if self._use_cache and path_key not in self._type_part2matrix:
+      h5_path = self._type_part2path[path_key]
+      assert h5_path.is_file(), f"Failed to find {h5_path}"
+      with h5py.File(h5_path, "r") as h5_file:
+        # Copy matrix to memory
+        self._type_part2matrix[path_key] = h5_file["embeddings"][()]
+
+  def _get_row(self, type_:str, part:int, row:int)->np.array:
+    # Adds path_key to _type_part2matrix if using cache
+    path_key = (type_, part)
+    self._cache_matrix(*path_key)
     if path_key in self._type_part2matrix:
       return self._type_part2matrix[path_key][row]
-    else:
+    else:  # user has elected not to use cache
       assert path_key in self._type_part2path, \
         f"Cannot find path associated with: {entity} --- {location}"
       h5_path = self._type_part2path[path_key]
       assert h5_path.is_file(),  f"Missing file: {h5_path}"
       with h5py.File(h5_path, "r") as h5_file:
+        # This operation only grabs the one row
         return h5_file["embeddings"][row]
 
   def __getitem__(self, entity:str)->np.array:
@@ -76,9 +100,8 @@ class EmbeddingLookupTable():
   def preload(self)->None:
     if not self.is_preloaded():
       self.entities.preload()
-      for path_key, h5_path in self._type_part2path.items():
-        with h5py.File(h5_path, "r") as h5_file:
-          self._type_part2matrix[path_key] = h5_file["embeddings"][()]
+      for path_key in self._type_part2path:
+        self._cache_matrix(*path_key)
 
   def is_preloaded(self)->bool:
     "the entity index is loaded and all paths have been loaded"

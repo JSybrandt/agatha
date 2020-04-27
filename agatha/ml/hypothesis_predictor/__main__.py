@@ -25,6 +25,7 @@ def train(
       embedding_dir=embedding_dir,
   )
   model.graph.preload()
+  model.embeddings.entities.preload()
   model.prepare_for_training()
   trainer.fit(model)
 

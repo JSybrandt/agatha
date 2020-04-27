@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 import json
-from typing import List, Any, Set
+from typing import List, Any, Set, Optional
 import dask.bag as dbag
 from agatha.util.misc_util import Record
 import os
@@ -115,6 +115,7 @@ class Sqlite3LookupTable():
       table_name:str=_DEFAULT_TABLE_NAME,
       key_column_name:str=_DEFAULT_KEY_COLUMN_NAME,
       value_column_name:str=_DEFAULT_VALUE_COLUMN_NAME,
+      disable_cache:bool=False
   ):
     self.table_name = table_name
     self.key_column_name = key_column_name
@@ -127,14 +128,20 @@ class Sqlite3LookupTable():
     assert db_path.is_file(), f"Failed to find {db_path}"
     self.db_path = db_path
     self._connect()
+    self._use_cache = not disable_cache
+    self._cache = {}
+    self._len = None # Saved after first len() call
 
   def __del__(self):
     self._disconnect()
 
   def __getstate__(self):
     self._disconnect()
+    cached_data = self._cache
+    self._cache = {}
     state = self.__dict__.copy()
     self._connect()
+    self._cache = cached_data
     return state
 
   def __setstate__(self, state):
@@ -241,8 +248,18 @@ class Sqlite3LookupTable():
       self._assert_schema()
     self._set_db_flags()
 
-  def __getitem__(self, key:str):
-    assert self.connected(), "Attempting to get item from closed db."
+  def clear_cache(self)->None:
+    self._cache.clear()
+
+  def disable_cache(self)->None:
+    self.clear_cache()
+    self._use_cache = False
+
+  def enable_cache(self)->None:
+    self._use_cache = True
+
+  def _query(self, key:str)->Optional[Any]:
+    assert self.connected(), "Attempting to query item from closed db."
     res = self._cursor.execute(
         f"""
           SELECT {self.value_column_name}
@@ -252,23 +269,28 @@ class Sqlite3LookupTable():
         (key,)
     ).fetchone()
     if res is None:
-      raise ValueError(f"Key {key} not present in {self.db_path}")
+      return None
     else:
       return json.loads(res[0])
 
+  def _get(self, key:str)->Optional[Any]:
+    if self._use_cache and key in self._cache:
+      return self._cache[key]
+    else:
+      value = self._query(key)
+      if self._use_cache:
+        self._cache[key] = value
+      return value
+
+  def __getitem__(self, key:str):
+    value_or_none = self._get(key)
+    assert value_or_none is not None, \
+        f"Failed to find {key} in {self.db_path}"
+    return value_or_none
+
   def __contains__(self, key:str)->bool:
-    assert self.connected(), "Attempting to operate on closed db."
-    res = self._cursor.execute(
-        f"""
-          SELECT EXISTS(
-            SELECT 1
-            FROM {self.table_name}
-            WHERE {self.key_column_name}=?
-          )
-        """,
-        (key,)
-    ).fetchone()
-    return res[0] == 1
+    value_or_none = self._get(key)
+    return value_or_none is not None
 
   def keys(self)->Set[str]:
     assert self.connected(), "Attempting to operate on closed db."
@@ -281,13 +303,15 @@ class Sqlite3LookupTable():
     return set(r[0] for r in query.fetchall())
 
   def __len__(self)->int:
-    assert self.connected(), "Attempting to operate on closed db."
-    return self._cursor.execute(
-        f"""
-          SELECT count(*)
-          FROM {self.table_name}
-        """
-    ).fetchone()[0]
+    if self._len is None:
+      assert self.connected(), "Attempting to operate on closed db."
+      self._len = self._cursor.execute(
+          f"""
+            SELECT count(*)
+            FROM {self.table_name}
+          """
+      ).fetchone()[0]
+    return self._len
 
 
 ################################################################################

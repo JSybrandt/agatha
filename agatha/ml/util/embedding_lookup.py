@@ -43,20 +43,20 @@ class EmbeddingLookupTable():
 
   def __getstate__(self):
     "If we pickle, don't pickle preloaded data"
-    preloaded_data = self._type_part2matrix
+    cached_data = self._type_part2matrix
     self._type_part2matrix = {}
     state = self.__dict__.copy()
-    self._type_part2matrix = preloaded_data
+    self._type_part2matrix = cached_data
     return state
 
-  def clear_cache(self):
+  def clear_cache(self)->None:
     self._type_part2matrix.clear()
 
-  def disable_cache(self):
+  def disable_cache(self)->None:
     self.clear_cache()
     self._use_cache = False
 
-  def enable_cache(self):
+  def enable_cache(self)->None:
     self._use_cache = True
 
   def _cache_matrix(self, type_:str, part:int)->None:

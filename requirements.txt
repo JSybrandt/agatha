@@ -87,3 +87,6 @@ recommonmark
 
 # Allow sphinx to see type hints
 sphinx-autodoc-typehints
+
+# Theme
+sphinx-rtd-theme

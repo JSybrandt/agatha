@@ -1,0 +1,16 @@
+# These requirements are JUST for readthedocs to build
+
+# Generates Documentation
+sphinx>=3.0.0
+
+# Allows for markdown docs
+recommonmark
+
+# Allow sphinx to see type hints
+sphinx-autodoc-typehints
+
+# Theme
+sphinx-rtd-theme
+
+# Run ApiDoc on Build
+sphinxcontrib-apidoc

@@ -31,11 +31,11 @@ release = '2020-04-29'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    "sphinxcontrib.apidoc",  # Automatically run apidoc on each build
     "recommonmark",  # Allow markdown
     "sphinx.ext.autodoc",  # Make documentation from source
     "sphinx.ext.napoleon",  # Read docs in Google format
     "sphinx_rtd_theme",  # Provides theme
-    "sphinxcontrib.apidoc",  # Automatically run apidoc on each build
     "sphinx_autodoc_typehints",  # Allow automatic documentation to see hints
 ]
 

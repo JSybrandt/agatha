@@ -18,10 +18,10 @@ conda:
 
 python:
   install:
+    - requirements: docs/requirements.txt
+    - requirements: requirements.txt
     - method: pip
       path: .
-    - requirements: requirements.txt
-    - requirements: docs/requirements.txt
 
 # We do not require git submodules to process this
 submodules:

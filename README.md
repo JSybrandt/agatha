@@ -1,3 +1,6 @@
+Agatha Overview
+===============
+
 ![logo](https://github.com/JSybrandt/agatha/blob/master/logo.png?raw=true)
 
 We are currently doing a bunch of development around the [CORD-19][cord_19]
@@ -9,7 +12,7 @@ If you're here looking for the _CBAG: Conditional Biomedical
 Abstract Generation_ project, take a look in the
 [agatha/ml/abstract_generator][cbag_link] submodule.
 
-# Install Agatha to use pretrained models
+## Install Agatha to use pretrained models
 
 In [our paper][paper_link] we present state-of-the-art performance numbers
 across a range of recent biomedical discoveries across popular biomedical
@@ -107,7 +110,7 @@ with torch.no_grad():
   predictions = model.predict_from_terms(queries)
 ```
 
-# Replicate the 2015 Validation Experiments
+## Replicate the 2015 Validation Experiments
 
 Provided in `./benchmarks` are the files we use to produce the results found in
 our paper. Using the 2015 pretrained model, you should be able to replicate
@@ -171,7 +174,7 @@ input predicates per-type. Using the `label` field of each predicate, we can
 then compare how the ranking critera correlates with the true connections `1`
 and the undisovered connections `0`.
 
-# Installing Agatha for Development
+## Installing Agatha for Development
 
 These instructions are useful if you want to customize Agatha, especially if you
 are also running this system on the Clemson Palmetto Cluster. This guide

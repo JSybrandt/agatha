@@ -36,6 +36,7 @@ extensions = [
     "sphinx.ext.napoleon",  # Read docs in Google format
     "sphinx_autodoc_typehints",  # Allow automatic documentation to see hints
     "sphinx_rtd_theme",  # Provides theme
+    "sphinxcontrib.apidoc",  # Automatically run apidoc on each build
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -52,7 +53,6 @@ exclude_patterns = [
     '_api/*_pb2.rst',
 ]
 
-# Enable txt and md files
 source_suffix = {
   '.rst': 'restructuredtext',
   '.txt': 'markdown',
@@ -60,13 +60,23 @@ source_suffix = {
 }
 
 # Needed to ensure that ReadTheDocs finds the index
-master_doc = "index.rst"
+master_doc = "index"
+
+# -- Options for apidoc
+
+apidoc_module_dir = "../agatha"
+apidoc_output_dir = "_api"
+apidoc_separate_modules = True
+apidoc_extra_args = [
+    "--force",
+    "--implicit-namespaces",
+    "-H", "Agatha",
+]
 
 # -- Options for HTML output -------------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-#
 html_theme = "sphinx_rtd_theme"
 
 # Add any paths that contain custom static files (such as style sheets) here,

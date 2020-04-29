@@ -80,7 +80,7 @@ fire
 ################################################################################
 
 # Generates Documentation
-sphinx
+sphinx>=3.0.0
 
 # Allows for markdown docs
 recommonmark
@@ -90,3 +90,6 @@ sphinx-autodoc-typehints
 
 # Theme
 sphinx-rtd-theme
+
+# Run ApiDoc on Build
+sphinxcontrib-apidoc

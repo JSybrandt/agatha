@@ -17,9 +17,19 @@ class PredicateEmbeddings:
 
 
 def parse_predicate_name(predicate_name:str)->Tuple[str, str]:
-  """
-  Converts a name like: p:c1365543:causes:c0260397
-  into (m:c1365543, m:c0260397)
+  """Parses subject and object from predicate name strings.
+
+  Predicate names are formatted strings that follow this convention:
+  p:{subj}:{verb}:{obj}. This function extracts the subject and object and
+  returns coded-term names in the form: m:{entity}. Will raise an exception if
+  the predicate name is improperly formatted.
+
+  Args:
+    predicate_name: Predicate name in form p:{subj}:{verb}:{obj}.
+
+  Returns:
+    The subject and object formulated as coded-term names.
+
   """
   typ, sub, vrb, obj = predicate_name.lower().split(":")
   assert typ == PREDICATE_TYPE

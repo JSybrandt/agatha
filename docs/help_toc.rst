@@ -2,6 +2,8 @@ Help
 ====
 
 .. toctree::
+   :glob:
    :maxdepth: 1
 
-   train_agatha
+   help/*
+

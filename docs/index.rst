@@ -4,8 +4,9 @@ Agatha: Biomedical Hypothesis Generation
 .. toctree::
    :maxdepth: 2
 
-   help/toc
+   README
    _api/modules
+   help_toc
 
 
 

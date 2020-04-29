@@ -14,13 +14,13 @@ formats: all
 
 # The conda env will bring along protobuf and python version
 conda:
-  environment: docs/environment.yml
+  environment: docs/environment.yaml
 
-# Version managed by conda
 python:
   install:
     - method: pip
       path: .
+    - requirements: requirements.txt
 
 # We do not require git submodules to process this
 submodules:

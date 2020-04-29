@@ -105,9 +105,16 @@ _DEFAULT_TABLE_NAME="lookup_table"
 _DEFAULT_KEY_COLUMN_NAME="key"
 _DEFAULT_VALUE_COLUMN_NAME="value"
 class Sqlite3LookupTable():
-  """
-  Gets values from an Sqlite3 Table called where keys are
-  strings and values are json encoded.
+  f"""Dict-like interface for Sqlite3 key-value tables
+
+  Assumes that the provided sqlite3 path has a table containing string keys and
+  json-encoded string values. By default, the table name is
+  {_DEFAULT_TABLE_NAME}, with columns {_DEFAULT_KEY_COLUMN_NAME} and
+  {_DEFAULT_VALUE_COLUMN_NAME}.
+
+  This interface is pickle-able, and provides caching and preloading. Note that
+  instances of this object that are recovered from pickles will _NOT_ retain the
+  preloading or caching information from the original.
   """
   def __init__(
       self,
@@ -117,6 +124,21 @@ class Sqlite3LookupTable():
       value_column_name:str=_DEFAULT_VALUE_COLUMN_NAME,
       disable_cache:bool=False
   ):
+    """A Dict-like interface for Sqlite3 key-value tables
+
+    Creates an Sqlite3LookupTable cheaply. Caching starts empty and preloading
+    can be enabled later  with `.preload()`. Constructor establishes database
+    file handler, and establishes optimized read-only access.
+
+    Args:
+      db_path: The file-system location of the Sqlite3 file.
+      table_name: The sql table name to find within `db_path`.
+      key_column_name: The string column of `table_name`. Performance of the
+        Sqlite3LookupTable will depend on whether an index has been created on
+        `key_column_name`.
+      value_column_name: The json-encoded string column of `table_name`
+
+    """
     self.table_name = table_name
     self.key_column_name = key_column_name
     self.value_column_name = value_column_name
@@ -149,6 +171,7 @@ class Sqlite3LookupTable():
     self._connect()
 
   def is_preloaded(self)->bool:
+    "True if database has been loaded to memory."
     if not self.connected():
       return False
     """
@@ -163,8 +186,12 @@ class Sqlite3LookupTable():
     return self._cursor.execute("PRAGMA database_list").fetchone()[2] == ""
 
   def preload(self)->None:
-    """
-    Copies the content of the database to memory
+    """Copies the database to memory.
+
+    This is done by dumping the contents of disk into ram, and _does not_
+    perform any json parsing. This improves performance because now sqlite3
+    calls do not have to travel to storage.
+
     """
     assert self.connected()
     if not self.is_preloaded():
@@ -176,6 +203,7 @@ class Sqlite3LookupTable():
       self._set_db_flags()
 
   def connected(self)->bool:
+    "True if the database connection has been made."
     return self._connection is not None
 
   def _assert_schema(self)->None:
@@ -249,13 +277,16 @@ class Sqlite3LookupTable():
     self._set_db_flags()
 
   def clear_cache(self)->None:
+    "Removes contents of internal cache"
     self._cache.clear()
 
   def disable_cache(self)->None:
+    "Disables the use of internal cache"
     self.clear_cache()
     self._use_cache = False
 
   def enable_cache(self)->None:
+    "Enables the use of internal cache"
     self._use_cache = True
 
   def _query(self, key:str)->Optional[Any]:
@@ -293,6 +324,14 @@ class Sqlite3LookupTable():
     return value_or_none is not None
 
   def keys(self)->Set[str]:
+    """Get all keys from the Sqlite3 Table.
+
+    Recalls _all_ keys from the connected database. This operation may be slow
+    or even infeasible for larger tables.
+
+    Returns:
+      The set of all keys from the connected database.
+    """
     assert self.connected(), "Attempting to operate on closed db."
     query = self._cursor.execute(
         f"""
@@ -303,6 +342,7 @@ class Sqlite3LookupTable():
     return set(r[0] for r in query.fetchall())
 
   def __len__(self)->int:
+    "Returns the number of entries in the connected database."
     if self._len is None:
       assert self.connected(), "Attempting to operate on closed db."
       self._len = self._cursor.execute(
@@ -318,10 +358,12 @@ class Sqlite3LookupTable():
 ## SPECIAL CASES ###############################################################
 ################################################################################
 
-# These special cases are added for backwards compatibility. Custom table, key
-# and column names are potentially used on old data sources.
-
 class Sqlite3Bow(Sqlite3LookupTable):
+  """
+  for backwards compatibility, Sqlite3Bow allows for alternate default table,
+  key, and value names. However, newer tables following the default
+  Sqlite3LookupTable schema will still work.
+  """
   def __init__(
       self,
       db_path:Path,
@@ -338,6 +380,11 @@ class Sqlite3Bow(Sqlite3LookupTable):
     )
 
 class Sqlite3Graph(Sqlite3LookupTable):
+  """
+  for backwards compatibility, Sqlite3Graph allows for alternate default table,
+  key, and value names. However, newer tables following the default
+  Sqlite3LookupTable schema will still work.
+  """
   def __init__(
       self,
       db_path:Path,

@@ -1,12 +1,12 @@
 from distutils.command.build_py import build_py as _build_py
 from distutils.command.clean import clean as _clean
 from distutils.spawn import find_executable
-from agatha import __VERSION__
 from setuptools import setup, Extension, find_packages
 from setuptools.command.install import install as _install
 import os
 import subprocess
 import sys
+import agatha
 
 
 proto_src_files = [
@@ -84,7 +84,7 @@ class Install(_install):
 
 setup(
     name='Agatha',
-    version=__VERSION__,
+    version=agatha.__VERSION__,
     author="Justin Sybrandt",
     author_email="jsybran@clemson.edu",
     description=("Automatic Graph-mining And Transformer based "

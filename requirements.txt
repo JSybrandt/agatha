@@ -74,3 +74,14 @@ matplotlib
 
 # Used to run the semmeddb tool
 fire
+
+################################################################################
+# Needed to improve developer workflow #########################################
+################################################################################
+
+# Generates Documentation
+sphinx
+
+# Allows for markdown docs
+recommonmark
+

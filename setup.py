@@ -81,10 +81,6 @@ class build_py(_build_py):
 class Install(_install):
   def run(self):
     _install.do_egg_install(self)
-    import nltk
-    # Needed for split-sentences
-    nltk.download("punkt")
-
 
 setup(
     name='Agatha',

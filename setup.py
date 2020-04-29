@@ -57,7 +57,8 @@ def generate_proto(source):
     protoc_command = [ protoc, "-I.", "--python_out=.", source ]
     if subprocess.call(protoc_command) != 0:
       sys.exit(-1)
-    print(f"Generated {output}!")
+  else:
+    print("Using pre-existing version of", output)
 
 class clean(_clean):
   def run(self):

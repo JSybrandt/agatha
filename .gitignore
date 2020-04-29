@@ -137,7 +137,8 @@ data/
 configs/
 
 # Compiled proto files
-*_pb2.py
+# *_pb2.py
+# Allow compiled proto files
 
 explore/
 

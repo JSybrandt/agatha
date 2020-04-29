@@ -140,7 +140,7 @@ class PredicateBatchGenerator():
       neighbor_sample_rate:int,
       negative_swap_rate:int,
       negative_scramble_rate:int,
-      verbose:bool,
+      verbose:bool=False,
   ):
     self.verbose = verbose
     self.negative_generator = NegativePredicateGenerator(

@@ -10,6 +10,7 @@ from agatha.ml.util.embedding_lookup import EmbeddingLookupTable
 from agatha.util.misc_util import iter_to_batches
 from agatha.ml.hypothesis_predictor import predicate_util
 from pathlib import Path
+import os
 
 class HypothesisPredictor(pl.LightningModule):
   def __init__(self, hparams:Namespace):
@@ -75,22 +76,25 @@ class HypothesisPredictor(pl.LightningModule):
   def paths_set(self)->bool:
     return self.embeddings is not None and self.graph is not None
 
-  def preload(self)->None:
+  def preload(self, include_embeddings:bool=False)->None:
     assert self.paths_set(), "Must call configure_paths before preload."
-    self.graph.preload()
-    self.embeddings.preload()
+    if not self.is_preloaded():
+      self.graph.preload()
+      if include_embeddings:
+        self.embeddings.preload()
+      else:
+        self.embeddings.entities.preload()
 
   def is_preloaded(self)->None:
     return (
         self.paths_set()
         and self.graph.is_preloaded()
-        and self.embeddings.is_preloaded()
+        and self.embeddings.entities.is_preloaded()
     )
 
   def prepare_for_training(self)->None:
     assert self.paths_set(), \
         "Must call configure_paths before prepare_for_training"
-    self._vprint("Getting entity names")
     entities = self.embeddings.keys()
     assert len(entities) > 0, "Failed to find embedding entities."
     self.coded_terms = list(filter(
@@ -124,15 +128,15 @@ class HypothesisPredictor(pl.LightningModule):
         neighbor_sample_rate=self.hparams.neighbor_sample_rate,
         negative_swap_rate=self.hparams.negative_swap_rate,
         negative_scramble_rate=self.hparams.negative_scramble_rate,
-        verbose=self.verbose,
     )
     self._vprint("Ready for training!")
 
   def _configure_dataloader(
       self,
-      predicate_dataset:torch.utils.data.Dataset
+      predicate_dataset:torch.utils.data.Dataset,
+      shuffle:bool,
   )->torch.utils.data.DataLoader:
-    shuffle = True
+    self.preload()
     sampler = None
     if self.distributed:
       shuffle = False
@@ -142,15 +146,23 @@ class HypothesisPredictor(pl.LightningModule):
         shuffle=shuffle,
         sampler=sampler,
         batch_size=self.hparams.positives_per_batch,
+        num_workers=self.hparams.dataloader_workers,
+        pin_memory=True,
     )
 
   def train_dataloader(self)->torch.utils.data.DataLoader:
     self._vprint("Getting Training Dataloader")
-    return self._configure_dataloader(self.training_predicates)
+    return self._configure_dataloader(
+        self.training_predicates,
+        shuffle=True,
+    )
 
   def val_dataloader(self)->torch.utils.data.DataLoader:
     self._vprint("Getting Validation Dataloader")
-    return self._configure_dataloader(self.validation_predicates)
+    return self._configure_dataloader(
+        self.validation_predicates,
+        shuffle=False,
+    )
 
   def forward(self, predicate_embeddings:torch.FloatTensor)->torch.FloatTensor:
     local_stacked_emb = self.embedding_transformation(predicate_embeddings)
@@ -194,7 +206,6 @@ class HypothesisPredictor(pl.LightningModule):
       positive_predictions:List[str],
       batch_idx:int
   )->Dict[str, Any]:
-    self._vprint("Training Step")
     return self._step(positive_predictions)
 
   def validation_step(
@@ -202,7 +213,6 @@ class HypothesisPredictor(pl.LightningModule):
       positive_predictions:List[str],
       batch_idx:int
   )->Dict[str, Any]:
-    self._vprint("Validation Step")
     return self._step(positive_predictions)
 
   def _on_epoch_end(
@@ -233,6 +243,11 @@ class HypothesisPredictor(pl.LightningModule):
         weight_decay=self.hparams.weight_decay,
     )
 
+  def on_train_start(self):
+    pl.LightningModule.on_train_start(self)
+    self._vprint("Training started")
+
+
   def optimizer_step(
       self,
       epoch_idx,
@@ -253,21 +268,13 @@ class HypothesisPredictor(pl.LightningModule):
     optimizer.zero_grad()
 
 
-  def init_ddp_connection(self, proc_rank, world_size):
-    self._vprint("Initializing Distributed Connection")
-    self.distributed = True
-    torch.distributed.init_process_group(
-        'gloo',
-        rank=proc_rank,
-        world_size=world_size*self.hparams.num_nodes
-    )
-
   @staticmethod
   def add_argparse_args(parser:ArgumentParser)->ArgumentParser:
     """
     These arguments will be serialized along with the model after training.
     Path-specific arguments will be passed in separately.
     """
+    parser.add_argument("--dataloader-workers", type=int)
     parser.add_argument("--dim", type=int)
     parser.add_argument("--lr", type=float)
     parser.add_argument("--margin", type=float)
@@ -283,3 +290,48 @@ class HypothesisPredictor(pl.LightningModule):
     parser.add_argument("--warmup-steps", type=int)
     parser.add_argument("--weight-decay", type=float)
     return parser
+
+  def init_ddp_connection(
+      self,
+      proc_rank:int,
+      world_size:int,
+      is_slurm_managing_tasks:bool=False
+  )->None:
+    """
+    Override to define your custom way of setting up a distributed environment.
+    Lightning's implementation uses env:// init by default and sets the first node as root
+    for SLURM managed cluster.
+    Args:
+        proc_rank: The current process rank within the node.
+        world_size: Number of GPUs being use across all nodes. (num_nodes * num_gpus).
+        is_slurm_managing_tasks: is cluster managed by SLURM.
+    """
+    if is_slurm_managing_tasks:
+      self._init_slurm_connection()
+
+    if 'MASTER_ADDR' not in os.environ:
+      log.warning("MASTER_ADDR environment variable is not defined. Set as localhost")
+      os.environ['MASTER_ADDR'] = '127.0.0.1'
+
+    if 'MASTER_PORT' not in os.environ:
+      log.warning("MASTER_PORT environment variable is not defined. Set as 12910")
+      os.environ['MASTER_PORT'] = '12910'
+
+    if 'WORLD_SIZE' in os.environ and os.environ['WORLD_SIZE'] != world_size:
+      log.warning("WORLD_SIZE environment variable is not equal to the computed "
+                   "world size. Ignored.")
+
+    # Reverting to GLOO until nccl upgrades in pytorch are complete
+    #torch_backend = "nccl" if self.trainer.on_gpu else "gloo"
+    torch_backend = "gloo"
+
+    self._vprint(
+        "Attempting connection:",
+        torch_backend,
+        os.environ["MASTER_ADDR"], proc_rank
+    )
+    torch.distributed.init_process_group(
+        torch_backend,
+        rank=proc_rank,
+        world_size=world_size
+    )

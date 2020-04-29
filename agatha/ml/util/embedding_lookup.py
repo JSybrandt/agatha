@@ -38,11 +38,21 @@ class EmbeddingLookupTable():
         in embedding_dir.glob("embeddings_*.h5")
     }
     assert any(self._type_part2path), "Failed to find embedding files."
+    self._type_part2file_handle = {}
     self._type_part2matrix = {}
     self._use_cache = not disable_cache
 
+  def __del__(self)->None:
+    self._close_file_handles()
+
+  def _close_file_handles(self)->None:
+    for handle in self._type_part2file_handle.values():
+      handle.close()
+    self._type_part2file_handle.clear()
+
   def __getstate__(self):
     "If we pickle, don't pickle preloaded data"
+    self._close_file_handles()
     cached_data = self._type_part2matrix
     self._type_part2matrix = {}
     state = self.__dict__.copy()
@@ -62,11 +72,18 @@ class EmbeddingLookupTable():
   def _cache_matrix(self, type_:str, part:int)->None:
     path_key = (type_, part)
     if self._use_cache and path_key not in self._type_part2matrix:
+      self._type_part2matrix[path_key] = \
+          self._get_file_handle(*path_key)["embeddings"][()]
+
+  def _get_file_handle(self, type_:str, part:int)->h5py.File:
+    path_key = (type_, part)
+    assert path_key in self._type_part2path, \
+      f"Cannot find path associated with: {entity} --- {location}"
+    if path_key not in self._type_part2file_handle:
       h5_path = self._type_part2path[path_key]
-      assert h5_path.is_file(), f"Failed to find {h5_path}"
-      with h5py.File(h5_path, "r") as h5_file:
-        # Copy matrix to memory
-        self._type_part2matrix[path_key] = h5_file["embeddings"][()]
+      assert h5_path.is_file(),  f"Missing file: {h5_path}"
+      self._type_part2file_handle[path_key] = h5py.File(h5_path, "r")
+    return self._type_part2file_handle[path_key]
 
   def _get_row(self, type_:str, part:int, row:int)->np.array:
     # Adds path_key to _type_part2matrix if using cache
@@ -75,13 +92,7 @@ class EmbeddingLookupTable():
     if path_key in self._type_part2matrix:
       return self._type_part2matrix[path_key][row]
     else:  # user has elected not to use cache
-      assert path_key in self._type_part2path, \
-        f"Cannot find path associated with: {entity} --- {location}"
-      h5_path = self._type_part2path[path_key]
-      assert h5_path.is_file(),  f"Missing file: {h5_path}"
-      with h5py.File(h5_path, "r") as h5_file:
-        # This operation only grabs the one row
-        return h5_file["embeddings"][row]
+      return self._get_file_handle(*path_key)["embeddings"][row]
 
   def __getitem__(self, entity:str)->np.array:
     assert entity in self.entities, f"Cannot find {entity} in index"

@@ -4,6 +4,7 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pathlib import Path
 from copy import deepcopy
+from socket import gethostname
 
 
 def train(
@@ -13,6 +14,8 @@ def train(
     embedding_dir:Path,
     verbose:bool,
 ):
+  if verbose:
+    print("Started training on:", gethostname())
   assert graph_db.is_file()
   assert entity_db.is_file()
   assert embedding_dir.is_dir()
@@ -24,8 +27,6 @@ def train(
       entity_db=entity_db,
       embedding_dir=embedding_dir,
   )
-  model.graph.preload()
-  model.embeddings.entities.preload()
   model.prepare_for_training()
   trainer.fit(model)
 
@@ -55,7 +56,8 @@ if __name__ == "__main__":
   parser.add_argument("--verbose", type=bool)
   all_args = parser.parse_args()
 
-  print(all_args)
+  if all_args.verbose:
+    print(all_args)
   train(
       training_args=training_args,
       graph_db=all_args.graph_db,

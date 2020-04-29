@@ -85,3 +85,5 @@ sphinx
 # Allows for markdown docs
 recommonmark
 
+# Allow sphinx to see type hints
+sphinx-autodoc-typehints

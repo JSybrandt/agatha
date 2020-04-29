@@ -32,7 +32,9 @@ release = '2020-04-29'
 # ones.
 extensions = [
     "recommonmark",  # Allow markdown
-    "sphinx.ext.autodoc",  # Make documentation from 
+    "sphinx.ext.autodoc",  # Make documentation from source
+    "sphinx.ext.napoleon",  # Read docs in Google format
+    "sphinx_autodoc_typehints",  # Allow automatic documentation to see hints
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -41,7 +43,13 @@ templates_path = ['_templates']
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
+exclude_patterns = [
+    '_build',
+    'Thumbs.db',
+    '.DS_Store',
+    'test*',
+    '**__pycache__**',
+]
 
 # Enable txt and md files
 source_suffix = {

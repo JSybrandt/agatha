@@ -34,9 +34,9 @@ extensions = [
     "recommonmark",  # Allow markdown
     "sphinx.ext.autodoc",  # Make documentation from source
     "sphinx.ext.napoleon",  # Read docs in Google format
-    "sphinx_autodoc_typehints",  # Allow automatic documentation to see hints
     "sphinx_rtd_theme",  # Provides theme
     "sphinxcontrib.apidoc",  # Automatically run apidoc on each build
+    "sphinx_autodoc_typehints",  # Allow automatic documentation to see hints
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -55,7 +55,6 @@ exclude_patterns = [
 
 source_suffix = {
   '.rst': 'restructuredtext',
-  '.txt': 'markdown',
   '.md': 'markdown',
 }
 

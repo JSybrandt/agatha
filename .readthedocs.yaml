@@ -21,6 +21,7 @@ python:
     - method: pip
       path: .
     - requirements: requirements.txt
+    - requirements: docs/requirements.txt
 
 # We do not require git submodules to process this
 submodules:

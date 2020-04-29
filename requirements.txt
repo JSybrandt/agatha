@@ -43,22 +43,3 @@ matplotlib
 
 # Used to run the semmeddb tool
 fire
-
-################################################################################
-# Needed to improve developer workflow #########################################
-################################################################################
-
-# Generates Documentation
-sphinx>=3.0.0
-
-# Allows for markdown docs
-recommonmark
-
-# Allow sphinx to see type hints
-sphinx-autodoc-typehints
-
-# Theme
-sphinx-rtd-theme
-
-# Run ApiDoc on Build
-sphinxcontrib-apidoc

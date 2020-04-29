@@ -5,7 +5,7 @@ Agatha: Biomedical Hypothesis Generation
    :maxdepth: 2
 
    help/toc
-   api/modules
+   _api/modules
 
 
 

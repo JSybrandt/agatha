@@ -48,8 +48,8 @@ exclude_patterns = [
     '_build',
     'Thumbs.db',
     '.DS_Store',
-    'api/test*',
-    'api/*_pb2.rst',
+    '_api/test*',
+    '_api/*_pb2.rst',
 ]
 
 # Enable txt and md files
@@ -58,6 +58,9 @@ source_suffix = {
   '.txt': 'markdown',
   '.md': 'markdown',
 }
+
+# Needed to ensure that ReadTheDocs finds the index
+master_doc = "index.rst"
 
 # -- Options for HTML output -------------------------------------------------
 

@@ -23,3 +23,7 @@ python:
 # We do not require git submodules to process this
 submodules:
   exclude: all
+
+# The conda env will bring along protobuf
+conda:
+  environment: docs/environment.yml

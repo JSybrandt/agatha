@@ -4,53 +4,22 @@
 # pip install -r requirements.txt
 
 ################################################################################
-# Required to Construct the Semantic Network ###################################
+# Required to Construct the Semantic Network And Train Models ##################
 ################################################################################
 
 faiss-cpu
 fsspec
+gensim
 lxml
 networkx
 nltk
 pandas
+pygsheets
 pymongo
+scispacy
 spacy
 transformers
 
-# Required by the semmeddb conversion tool
-pymysql
-
-################################################################################
-# Required for Topic Model Queries #############################################
-################################################################################
-
-gensim
-networkx
-
-################################################################################
-# Required for Replication - Agatha ############################################
-################################################################################
-
-scispacy
-spacy
-
-# en_core_sci_lg
-https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.2.4/en_core_sci_lg-0.2.4.tar.gz
-
-################################################################################
-# Required for Replication - CBAG ##############################################
-################################################################################
-
-git+https://github.com/hltcoe/PredPatt.git
-scispacy
-spacy
-spacy_conll
-
-# Used to store generated abstracts online
-pygsheets
-
-# en_ner_bionlp13cg_md
-https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.2.4/en_ner_bionlp13cg_md-0.2.4.tar.gz
 
 ################################################################################
 # Quality of Life ##############################################################

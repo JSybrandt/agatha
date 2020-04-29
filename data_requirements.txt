@@ -1,0 +1,7 @@
+# Spacy
+
+# en_ner_bionlp13cg_md
+https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.2.4/en_ner_bionlp13cg_md-0.2.4.tar.gz
+
+# en_core_sci_lg
+https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.2.4/en_core_sci_lg-0.2.4.tar.gz

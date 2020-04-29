@@ -6,7 +6,6 @@ from agatha.config import config_pb2 as cpb
 from agatha.construct import dask_checkpoint, file_util
 from agatha.ml.abstract_generator.misc_util import items_to_ordered_index
 from agatha.ml.abstract_generator.path_util import get_paths
-from agatha.ml.abstract_generator import predicate_util
 from agatha.util.misc_util import Record
 import random
 import sentencepiece as spm
@@ -14,34 +13,6 @@ from sqlitedict import SqliteDict
 import string
 from typing import Iterable, Optional
 from agatha.construct import dask_process_global as dpg
-
-def extract_predicates(config:cpb.AbstractGeneratorConfig):
-  paths = get_paths(config)
-  dask_client = connect_to_dask_cluster(config)
-
-  preloader = dpg.WorkerPreloader()
-  preloader.register(*predicate_util.get_scispacy_initalizer(
-      config.predicate_spacy_model
-  ))
-  preloader.register(*predicate_util.get_stopwordlist_initializer(
-      config.predicate_stopword_list
-  ))
-  dpg.add_global_preloader(client=dask_client, preloader=preloader)
-
-  abstracts = file_util.load(
-      paths["checkpoint_dir"]
-      .joinpath("medline_documents")
-  )
-
-  predicates = abstracts.map_partitions(predicate_util.abstracts_to_predicates)
-  predicates = dask_checkpoint.checkpoint(
-      predicates,
-      name="predicates",
-      checkpoint_dir=paths["model_ckpt_dir"],
-      overwrite=False,
-  )
-  predicates.compute()
-
 
 def prep(config:cpb.AbstractGeneratorConfig):
   # all important paths

@@ -4,14 +4,13 @@ from agatha.util import proto_util
 from agatha.ml.abstract_generator.abstract_generator import AbstractGenerator
 from agatha.ml.abstract_generator.generation_util import evaluate, name_thy_self
 from agatha.ml.abstract_generator.path_util import get_paths
-from agatha.ml.abstract_generator.prep_training_data import prep, extract_predicates
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 import torch
 
 
 # Eval added as an alias for evaluate
-MODES = ["train", "evaluate", "prep", "eval", "name", "extract_predicates"]
+MODES = ["train", "evaluate", "prep", "eval", "name"]
 
 
 def get_model_from_config(
@@ -94,5 +93,3 @@ if __name__ == "__main__":
     evaluate(config)
   if config.mode == "name":
     name_thy_self(config)
-  if config.mode == "extract_predicates":
-    extract_predicates(config)

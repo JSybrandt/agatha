@@ -7,7 +7,15 @@ import os
 import subprocess
 import sys
 import agatha
-from build_util import deps_util
+
+def parse_requirements(deps_path):
+  res = []
+  with open(deps_path) as req_file:
+    for line in req_file:
+      line = line.strip()
+      if len(line) > 0 and line[0] != '#':
+        res.append(line)
+  return res
 
 proto_src_files = [
     "agatha/config/config.proto",
@@ -82,17 +90,14 @@ class Install(_install):
   def run(self):
     _install.do_egg_install(self)
 
-# Parse the requirements file
-requirements = deps_util.parse_requirements("requirements.txt")
-# If we are running on ReadTheDocs then we are going to have to mock up some
-# expensive imports. Therefore, we do NOT want to install anything in the
-# readthedocs_mocked_requirements file.
-if deps_util.running_on_read_the_docs():
-  mock_path = ".readthedocs_mocked_requirements.txt"
-  print("REMOVING DEPENDENCIES FOUND IN", mock_path)
-  removed_reqs = deps_util.parse_requirements(mock_path)
-  requirements = list(set(requirements)-set(removed_reqs))
-  print("REMOVED:", removed_reqs)
+
+# If running on ReadTheDocs, DO NOT install dependencies. Everything must be
+# specified in the autodoc_mock_imports variable in docs/conf.py
+if "READTHEDOCS" in os.environ and os.environ["READTHEDOCS"].lower() == "true":
+  requirements = []
+else:
+  # Parse the requirements file
+  requirements = parse_requirements("requirements.txt")
 
 setup(
     name='Agatha',

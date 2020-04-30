@@ -13,7 +13,7 @@ def parse_requirements():
   with open("requirements.txt") as req_file:
     for line in req_file:
       line = line.strip()
-      if line[0] != '#':
+      if len(line) > 0 and line[0] != '#':
         res.append(line)
   return res
 

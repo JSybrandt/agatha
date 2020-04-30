@@ -13,12 +13,13 @@ sphinx:
 formats: all
 
 # The conda env will bring along protobuf and python version
+# ALL PYTHON DEPS MUST BE SPECIFIED HERE
+# Look at help/write_docs.md for details
 conda:
   environment: docs/environment.yaml
 
 python:
   install:
-    - requirements: requirements.txt
     - method: pip
       path: .
 

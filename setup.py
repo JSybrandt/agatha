@@ -111,8 +111,4 @@ setup(
       "torch",
       "tqdm",
     ],
-    dependency_links=[
-      # This replaces the pytorch-lightning until their next version
-      'http://github.com/PyTorchLightning/pytorch-lightning/master'
-    ]
 )

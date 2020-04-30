@@ -103,30 +103,38 @@ will take a while, but the result should appear online after a few minutes.
 The hardest part about ReadTheDocs is getting the remote server to properly
 install all dependencies needed within the memory and time constraints that come
 along with using a free 3rd party service. We solve this problem by using a
-combination of a lightweight conda environment, a through  requirements
-file, and the sphinx autodoc mockup module.
+combination of a lightweight conda environment, and heavy use of the mockup
+function of sphinx autodoc.
 
-Some dependencies, such as [protobuf][10] and python 3.8 are best installed via
+Some dependencies, such as [protobuf][10], can only be installed via
 conda. Additionally, because the conda environment creation process is the first
 step that ReadTheDocs will perform each build, we also load in our
 documentation-specific requirements. These modules are specified in
 `docs/environment.yaml`.
 
-The rest of the decencies that can be installed via pip are specified in
-`requirements.txt`. This is the typical process for adding dependencies to any
-python project. The contests of this file are parsed in our `setup.py` so that
-any user running `pip` to install agatha will receive all required modules.
+The rest of the dependencies take too long and use too much memory to be
+installed on ReadTheDocs. At the time of writing we only receive 900 seconds and
+500mb of memory in order to build the entire package. Furthermore, many of our
+dependencies may have version conflicts that can cause unexpected issues that
+are hard to debug on the remote server. To get around this limitation, we mockup
+all of our external dependencies when ReadTheDocs builds our project.
 
-_However_, ReadTheDocs asserts a string 900 second build time limitation, as
-well as a 500mb memory limit. For this reason there are a number of modules that
-we cannot afford to install when building documentation of the ReadTheDocs
-server. We specify these expensive modules in
-`.readthedocs_mocked_requirements.txt`. When running on ReadTheDocs.org, the
-`READTHEDOCS` environment variable will be set to `True`. We observe this in
-`setup.py` and `docs/conf.py` in order to omit these modules from being
-installed, and to replace these modules with mocked alternatives. This has the
-effect of decreasing the quality of our documentation in some places, but
-enables all the other features that come along with ReadTheDocs.org.
+When the `READTHEDOCS` environment variable is set to `True`, we make two
+modifications to our documentation creation process. Firstly, `setup.py` is
+configured to drop all requirements, meaning that only the Agatha source code
+itself will be installed. In order to load our source without error, we make the
+second change in `docs/conf.py`. Here, we set `autodoc_mock_imports` to be a
+list of all top-level imported modules within Agatha. Unfortunately, some
+package names are different from their corresponding module names (`pip install
+faiss_cpu` provides the `faiss` module for instance).  _Therefore, the list of
+imported modules has to be duplicated in `docs/conf.py`._
+
+Because we are mocking up all of our dependencies, there are some lower-quality
+documents in places. Specifically, where we use type hints for externally
+defined classes. Future work could try to selectively enable some modules for
+better documentation on ReadTheDocs. However, one can always build
+higher-quality documentation locally by installing the package with all
+dependencies and running `make html` in `docs/`.
 
 [1]:https://www.sphinx-doc.org/en/master/index.html
 [2]:https://readthedocs.org/

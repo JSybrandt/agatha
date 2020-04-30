@@ -1,7 +1,6 @@
-# None of the following requirements are necessary to use Agatha.
-# If you wish to construct the system yourself, or if you want to
-# Replicate our experiments, then you should:
-# pip install -r requirements.txt
+# Warning, this file is parsed by setup.py to create install_requires
+# I wrote a really dumb parser, this means that a line cannot contain both a
+# comment and a module name. Comment lines MUST start with #
 
 ################################################################################
 # Required to Construct the Semantic Network And Train Models ##################

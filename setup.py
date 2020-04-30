@@ -8,6 +8,15 @@ import subprocess
 import sys
 import agatha
 
+def parse_requirements():
+  res = []
+  with open("requirements.txt") as req_file:
+    for line in req_file:
+      line = line.strip()
+      if line[0] != '#':
+        res.append(line)
+  return res
+
 
 proto_src_files = [
     "agatha/config/config.proto",
@@ -95,20 +104,5 @@ setup(
     long_description_content_type="text/markdown",
     cmdclass={ 'clean': clean, 'build_py': build_py, "install":Install },
     setup_requires=["nltk"],
-    install_requires=[
-      "cloudpickle",
-      "dask",
-      "distributed",
-      "gdown",  # Needed to download pretrained models
-      "h5py",
-      "numpy",
-      "pandas",
-      "protobuf",
-      "pytorch-lightning",
-      "sentencepiece",  # needed to run CBAG
-      "sklearn", # needed to run Agatha predictor
-      "sqlitedict", # needed for CBAG
-      "torch",
-      "tqdm",
-    ],
+    install_requires=parse_requirements(),
 )

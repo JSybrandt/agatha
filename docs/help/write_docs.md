@@ -101,34 +101,32 @@ will take a while, but the result should appear online after a few minutes.
 ### Updating Dependencies for Read the Docs
 
 The hardest part about ReadTheDocs is getting the remote server to properly
-install all dependencies needed to install the docs and build agatha. If the
-build fails remotely, but works locally (by running `make html` in the `docs`
-directory) then this is almost certainly the issue. In order to configure
-dependencies for ReadTheDocs, you must specify a conda environment in
-`docs/environment.yaml`.  We use conda for this process, as opposed to pip,
-because conda allows for some non-python imports, such as `protobuf`. However,
-keep in mind that as developers, we will want to keep `requirements.txt` updated
-whenever possible.
+install all dependencies needed within the memory and time constraints that come
+along with using a free 3rd party service. We solve this problem by using a
+combination of a lightweight conda environment, a through  requirements
+file, and the sphinx autodoc mockup module.
 
-ReadTheDocs loads conda first and loads whatever we specify in our
-`docs/environment.yaml` file. Take a look at [these docs][9] for how conda loads
-from yaml files. Conda also allows us to specify non-python dependencies, such
-as [protobuf][10] that is necessary to build agatha.  To update the conda
-environment used by ReadTheDocs, you need to [create a conda environment yaml
-file][8].  Note that ReadTheDocs does _NOT_ load the `requirements.txt` file.
-Here's the best way to add a documentation dependency, or a dependency that
-cannot be installed via `pip`.
+Some dependencies, such as [protobuf][10] and python 3.8 are best installed via
+conda. Additionally, because the conda environment creation process is the first
+step that ReadTheDocs will perform each build, we also load in our
+documentation-specific requirements. These modules are specified in
+`docs/environment.yaml`.
 
- 1. Run `conda env create -n <unique_name> -f docs/environment.yaml` to create a
-    new environment with all of the previously nessesary requirements.
- 2. If the new dependency can be installed via pip, add it to the
-    `requirements.txt` file. Then run `pip install -r requirements.txt`.
- 3. If the new dependency is only available through conda, simply run `conda
-    install <new_dep>`
- 4. Run `conda env export > docs/environment.yaml` to update the stored conda
-    environment.
- 5. Add all changed files to a commit and push it online. Make sure the
-    ReadTheDocs build succeeds.
+The rest of the decencies that can be installed via pip are specified in
+`requirements.txt`. This is the typical process for adding dependencies to any
+python project. The contests of this file are parsed in our `setup.py` so that
+any user running `pip` to install agatha will receive all required modules.
+
+_However_, ReadTheDocs asserts a string 900 second build time limitation, as
+well as a 500mb memory limit. For this reason there are a number of modules that
+we cannot afford to install when building documentation of the ReadTheDocs
+server. We specify these expensive modules in
+`.readthedocs_mocked_requirements.txt`. When running on ReadTheDocs.org, the
+`READTHEDOCS` environment variable will be set to `True`. We observe this in
+`setup.py` and `docs/conf.py` in order to omit these modules from being
+installed, and to replace these modules with mocked alternatives. This has the
+effect of decreasing the quality of our documentation in some places, but
+enables all the other features that come along with ReadTheDocs.org.
 
 [1]:https://www.sphinx-doc.org/en/master/index.html
 [2]:https://readthedocs.org/

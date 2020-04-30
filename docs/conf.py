@@ -12,7 +12,10 @@
 #
 import os
 import sys
+sys.path.insert(0, os.path.abspath('../build_util'))
 sys.path.insert(0, os.path.abspath('../agatha'))
+import deps_util
+
 
 # -- Project information -----------------------------------------------------
 
@@ -70,6 +73,14 @@ apidoc_extra_args = [
     "--implicit-namespaces",
     "-H", "Agatha",
 ]
+
+# If we are running on ReadTheDocs then we are going to have to mock up some
+# expensive imports. Therefore, we did NOT install anything in the
+# readthedocs_mocked_requirements file. These must be mocked instead.
+if deps_util.running_on_read_the_docs():
+  autodoc_mock_imports = deps_util.parse_requirements(
+    "../.readthedocs_mocked_requirements.txt"
+  )
 
 # -- Options for HTML output -------------------------------------------------
 

@@ -20,7 +20,7 @@ conda:
 
 python:
   install:
-    - method: pip
+    - method: setuptools
       path: .
 
 # We do not require git submodules to process this

@@ -21,11 +21,9 @@ numpy
 pandas
 protobuf
 pygsheets
-pymongo
 pytorch-lightning
 scispacy
 sentencepiece
-sklearn
 spacy
 sqlitedict
 torch
@@ -50,8 +48,6 @@ pytest
 ################################################################################
 # Needed to run tools and create plots #########################################
 ################################################################################
-
-matplotlib
 
 # Used to run the semmeddb tool
 fire

@@ -24,7 +24,25 @@ def compile_kv_json_dir_to_sqlite3(
     merge_duplicates:bool,
     verbose:bool,
 )->None:
-  "WARNING: Runs on local machine, NOT on dask cluster"
+  """Merges all key/value json entries into an indexed sqlite3 table
+
+  This function assumes that `json_dir` contains many *.json files. Each file
+  should contain one json object per line. Each object should contain a "key"
+  and a "value" field. This function will use the c++ `create_lookup_table` by
+  executing a subprocess.
+
+  Args:
+    json_data_dir: The location containing *.jso. files.
+    result_database_path: The location to store the result sqlite3 db.
+    agatha_install_path: The location containing the "tools" directory, where
+      `create_lookup_table` has been built.
+    merge_duplicates: The create_lookup_table utility has two modes. If
+      merge_duplicates is False, then we assume there are no key collisions and
+      each value is stored as-is. If True, then we combine values associated
+      with duplicate keys into arrays of unique elements.
+    verbose: If set, print intermediate output of create_lookup_table.
+
+  """
   json_data_dir = Path(json_data_dir)
   result_database_path = Path(result_database_path)
   agatha_install_path = Path(agatha_install_path)
@@ -55,6 +73,19 @@ def export_key_value_records(
     key_value_records:dbag.Bag,
     export_dir:Path,
 )->None:
+  """Converts a Dask bag of Dicts into a collection of json files.
+
+  In order to create a lookup table, we must first export all data as json.
+  This function maps each element of the input bag to a json encoded string and
+  writes one file per partition to the export_dir. WARNING: this function will
+  delete any json files already present in export_dir.
+
+  Args:
+    key_value_records: A dask bag containing dicts.
+    export_dir: The location to write json files. Will erase any if present
+      beforehand.
+
+  """
   export_dir = Path(export_dir)
   # Clean up / setup export dir
   export_dir.mkdir(parents=True, exist_ok=True)
@@ -76,6 +107,28 @@ def create_lookup_table(
     merge_duplicates:bool=False,
     verbose:bool=False
 )->None:
+  """Creates an Sqlite3 table compatible with Sqlite3LookupTable
+
+  Each element of the key_value_records bag is converted to json and written to
+  disk. Then, one machine calls the `create_lookup_table` tool in order to
+  index all records into an Sqlite3LookupTable compatible database. Warning, if
+  used in a distributed setting, the master node will be the one to call the
+  `create_lookup_table` utility.
+
+  key_value_records: A dask bag containing dicts. Each dict should have a "key"
+    and a "value" field.
+  result_database_path: The location to write the Sqlite3 file.
+  intermediate_data_dir: The location to write intermediate json text files.
+    Warning, if any json files exist beforehand, they will be erased.
+  agatha_install_path: The root of Agatha, wherein the `tools` directory can be
+    located.
+  merge_duplicates: If set, `create_lookup_table` will perform the more
+    expensive operation of combining distinct values associated with the same
+    key.
+  verbose: If set, the `create_lookup_table` utility will print intermediate
+    output.
+
+  """
   result_database_path = Path(result_database_path)
   intermediate_data_dir = Path(intermediate_data_dir)
   agatha_install_path = Path(agatha_install_path)
@@ -105,16 +158,24 @@ _DEFAULT_TABLE_NAME="lookup_table"
 _DEFAULT_KEY_COLUMN_NAME="key"
 _DEFAULT_VALUE_COLUMN_NAME="value"
 class Sqlite3LookupTable():
-  f"""Dict-like interface for Sqlite3 key-value tables
+  """Dict-like interface for Sqlite3 key-value tables
 
   Assumes that the provided sqlite3 path has a table containing string keys and
   json-encoded string values. By default, the table name is
-  {_DEFAULT_TABLE_NAME}, with columns {_DEFAULT_KEY_COLUMN_NAME} and
-  {_DEFAULT_VALUE_COLUMN_NAME}.
+  `lookup_table`, with columns `key` and `value`.
 
   This interface is pickle-able, and provides caching and preloading. Note that
   instances of this object that are recovered from pickles will _NOT_ retain the
   preloading or caching information from the original.
+
+  Args:
+    db_path: The file-system location of the Sqlite3 file.
+    table_name: The sql table name to find within `db_path`.
+    key_column_name: The string column of `table_name`. Performance of the
+      Sqlite3LookupTable will depend on whether an index has been created on
+      `key_column_name`.
+    value_column_name: The json-encoded string column of `table_name`
+
   """
   def __init__(
       self,
@@ -124,21 +185,6 @@ class Sqlite3LookupTable():
       value_column_name:str=_DEFAULT_VALUE_COLUMN_NAME,
       disable_cache:bool=False
   ):
-    """A Dict-like interface for Sqlite3 key-value tables
-
-    Creates an Sqlite3LookupTable cheaply. Caching starts empty and preloading
-    can be enabled later  with `.preload()`. Constructor establishes database
-    file handler, and establishes optimized read-only access.
-
-    Args:
-      db_path: The file-system location of the Sqlite3 file.
-      table_name: The sql table name to find within `db_path`.
-      key_column_name: The string column of `table_name`. Performance of the
-        Sqlite3LookupTable will depend on whether an index has been created on
-        `key_column_name`.
-      value_column_name: The json-encoded string column of `table_name`
-
-    """
     self.table_name = table_name
     self.key_column_name = key_column_name
     self.value_column_name = value_column_name
@@ -360,7 +406,7 @@ class Sqlite3LookupTable():
 
 class Sqlite3Bow(Sqlite3LookupTable):
   """
-  for backwards compatibility, Sqlite3Bow allows for alternate default table,
+  For backwards compatibility, Sqlite3Bow allows for alternate default table,
   key, and value names. However, newer tables following the default
   Sqlite3LookupTable schema will still work.
   """
@@ -381,7 +427,7 @@ class Sqlite3Bow(Sqlite3LookupTable):
 
 class Sqlite3Graph(Sqlite3LookupTable):
   """
-  for backwards compatibility, Sqlite3Graph allows for alternate default table,
+  For backwards compatibility, Sqlite3Graph allows for alternate default table,
   key, and value names. However, newer tables following the default
   Sqlite3LookupTable schema will still work.
   """

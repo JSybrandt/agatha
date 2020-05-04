@@ -3,7 +3,7 @@ import torch
 import pytorch_lightning as pl
 from argparse import Namespace, ArgumentParser
 from agatha.ml.util.lamb_optimizer import Lamb
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 from agatha.util.entity_types import UMLS_TERM_TYPE, PREDICATE_TYPE
 from agatha.util.sqlite3_lookup import Sqlite3Graph
 from agatha.ml.util.embedding_lookup import EmbeddingLookupTable
@@ -81,6 +81,9 @@ class HypothesisPredictor(pl.LightningModule):
       entity_db:Path,
       embedding_dir:Path,
   ):
+    graph_db = Path(graph_db)
+    entity_db = Path(entity_db)
+    embedding_dir = Path(embedding_dir)
     assert graph_db.is_file(), f"Failed to find {graph_db}"
     assert entity_db.is_file(), f"Failed to find {entity_db}"
     assert embedding_dir.is_dir(), f"Failed to find {embedding_dir}"
@@ -93,7 +96,91 @@ class HypothesisPredictor(pl.LightningModule):
   def paths_set(self)->bool:
     return self.embeddings is not None and self.graph is not None
 
+  def predict_from_terms(
+      self,
+      terms:List[Tuple[str, str]],
+      batch_size:int=1,
+  )->List[float]:
+    """Evaluates the Agatha model for the given set of predicates.
+
+    For each pair of coded terms in `terms`, we produce a prediction in the
+    range 0-1. Behind the scenes this means that we will lookup embeddings for
+    the terms themselves as well as samples neighbors of each term. Then, these
+    samples will be put through the Agatha transformer model to output a
+    ranking criteria in 0-1. If this model has been put on gpu with a command
+    like `model.cuda()`, then these predictions will happen on GPU. We will
+    batch the predictions according to `batch_size`. This can greatly increase
+    performance for large prediction sets.
+
+    Note, behind the scenes there a lot of database accesses and caching. This
+    means that your first calls to predict_from_terms will be slow. If you want
+    to make many predictions quickly, call `model.preload()` before this
+    function.
+
+    Example Usage:
+
+    ```python3
+    model = torch.load(...)
+    model.configure_paths(...)
+    model.predict_from_terms([("C0006826", "C0040329")])
+    > [0.9951196908950806]
+    ```
+
+    Args:
+      terms: A list of coded-term name pairs. Coded terms are any elements that
+        agatha names with the `m:` prefix. The prefix is optional when specifying
+        terms for this function, meaning "C0040329" and "m:c0040329" will both
+        correspond to the same embedding.
+      batch_size: The number of predicates to predict at once. This is
+        especially important when using the GPU.
+
+    Returns:
+      A list of prediction values in the `[0,1]` interval. Higher values
+      indicate more plausible results. Output `i` corresponds to `terms[i]`.
+
+    """
+    assert self.paths_set(), "Cannot predict before paths_set"
+    # This will formulate our input as PredicateEmbeddings examples.
+    observation_generator = predicate_util.PredicateObservationGenerator(
+        graph=self.graph,
+        embeddings=self.embeddings,
+        neighbor_sample_rate=self.hparams.neighbor_sample_rate,
+    )
+    # Clean all of the input terms
+    predicates = [
+        predicate_util.to_predicate_name(
+          predicate_util.clean_coded_term(s),
+          predicate_util.clean_coded_term(o),
+        )
+        for s, o in terms
+    ]
+
+    result = []
+    for predicate_batch in iter_to_batches(predicates, batch_size):
+      # Get a tensor representing each stacked sample
+      embeddings = predicate_util.collate_predicate_embeddings(
+          [observation_generator[p] for p in predicate_batch]
+      )
+      # Move embeddings to device
+      embeddings.to(self.get_device())
+      result += self.forward(embeddings).detach().cpu().numpy().tolist()
+    return result
+
   def preload(self, include_embeddings:bool=False)->None:
+    """Loads all supplemental information into memory.
+
+    The graph and entity databases as well as the set of embedding file are all
+    read from storage in the typical case. If `model.preload()` is called, then
+    the databases are loaded to memory, which can improve overall training
+    performance. We do not preload the embedding by default because the
+    EmbeddingLookupTable will automatically cache needed embedding files in a
+    lazy manner. If we want to load these embeddings up front, we can set
+    `include_embeddings`.
+
+    Args:
+      include_embeddings: If set, load all embedding files up front.
+
+    """
     assert self.paths_set(), "Must call configure_paths before preload."
     if not self.is_preloaded():
       self.graph.preload()

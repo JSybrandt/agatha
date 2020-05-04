@@ -16,6 +16,17 @@ class PredicateEmbeddings:
   obj_neigh:List[np.array]
 
 
+def clean_coded_term(term:str)->str:
+  """
+  If term is not formatted as an agatha coded term key, produces a coded term
+  key. Otherwise, just returns the term.
+  """
+  if term[0] == UMLS_TERM_TYPE and term[1] == ":":
+    return term.lower()
+  else:
+    return f"{UMLS_TERM_TYPE}:{term}".lower()
+
+
 def parse_predicate_name(predicate_name:str)->Tuple[str, str]:
   """Parses subject and object from predicate name strings.
 
@@ -33,7 +44,51 @@ def parse_predicate_name(predicate_name:str)->Tuple[str, str]:
   """
   typ, sub, vrb, obj = predicate_name.lower().split(":")
   assert typ == PREDICATE_TYPE
-  return f"{UMLS_TERM_TYPE}:{sub}", f"{UMLS_TERM_TYPE}:{obj}"
+  return clean_coded_term(sub), clean_coded_term(obj)
+
+
+def to_predicate_name(
+    subj:str,
+    obj:str,
+    verb:str="unknown",
+    )-> str:
+  """Converts two names into a predicate of form p:t1:verb:t2
+
+  Assumes that terms are correct Agatha graph keys. This means that we expect
+  input terms in the form of m:____. Allows for a custom verb type, but
+  defaults to unknown. Output will always be set to lowercase.
+
+  Example usage:
+
+  ```
+  to_predicate_name(m:c1, m:c2)
+  > p:c1:unknown:c2
+  to_predicate_name(m:c1, m:c2, "treats")
+  > p:c1:treats:c2
+  to_predicate_name(m:c1, m:c2, "TREATS")
+  > p:c1:treats:c2
+  ```
+
+  Args:
+    subj: Subject term. In the form of "m:_____"
+    obj: Object term. In the form of "m:_____"
+    verb: Optional verb term for resulting predicate.
+
+  Returns:
+    Properly formatted predicate containing subject and object. Verb type will
+    be set to "UNKNOWN"
+
+  """
+  def assert_coded_term(t):
+    assert t[0]== UMLS_TERM_TYPE, f"{t} is not a coded term"
+    assert t[1]== ":", f"{t} is not a properly formatted name"
+  assert_coded_term(subj)
+  assert_coded_term(obj)
+  assert ":" not in verb, "Verb cannot contain colon character"
+  subj = subj[2:]
+  obj = obj[2:]
+  return f"{PREDICATE_TYPE}:{subj}:{verb}:{obj}".lower()
+
 
 
 class PredicateObservationGenerator():
@@ -113,6 +168,8 @@ class PredicateScrambleObservationGenerator(PredicateObservationGenerator):
     )
 
 
+
+
 class NegativePredicateGenerator():
   def __init__(
       self,
@@ -132,12 +189,7 @@ class NegativePredicateGenerator():
   def generate(self):
     subj = self._choose_term()
     obj = self._choose_term()
-    assert subj[0] == UMLS_TERM_TYPE
-    assert obj[0] == UMLS_TERM_TYPE
-    # Convert m:c00, m:c11 to p:c00:verb:c11
-    subj = subj[2:]
-    obj = obj[2:]
-    return f"{PREDICATE_TYPE}:{subj}:neg:{obj}"
+    return to_predicate_name(subj, obj)
 
 
 class PredicateBatchGenerator():
@@ -217,15 +269,13 @@ class PredicateBatchGenerator():
 
 
 def collate_predicate_embeddings(
-    predicate_embeddings:PredicateEmbeddings
+    predicate_embeddings:List[PredicateEmbeddings]
 )->torch.FloatTensor:
-  """
-  Combine a lost of predicate embeddings stored as multiple np arrays
-  into a single pytorch tensor
-  if n = len(predicate_embeddings)
-  r = neighbor_sample_rate
-  d = embedding dimensionality
-  dimensions: (2+2(r)) X n X d
+  """Combines a list of predicate embeddings into a single tensor.
+
+  if n = len(predicate_embeddings) r = neighbor_sample_rate d = embedding
+  dimensionality, then the result is of size: (2+2(r)) X n X d
+
   """
   return torch.cat([
     torch.nn.utils.rnn.pad_sequence([

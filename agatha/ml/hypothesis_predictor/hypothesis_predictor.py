@@ -11,14 +11,31 @@ from agatha.util.misc_util import iter_to_batches
 from agatha.ml.hypothesis_predictor import predicate_util
 from pathlib import Path
 import os
+from pytorch_lightning import Trainer
+from agatha.ml.util import hparam_util
 
 class HypothesisPredictor(pl.LightningModule):
   def __init__(self, hparams:Namespace):
     super(HypothesisPredictor, self).__init__()
-    self.hparams = hparams
+    # If the hparams have been setup with paths, typical for training
+    if (
+        hasattr(hparams, "graph_db")
+        and hasattr(hparams, "entity_db")
+        and hasattr(hparams, "embedding_dir")
+    ):
+      self.configure_paths(
+          graph_db=hparams.graph_db,
+          entity_db=hparams.entity_db,
+          embedding_dir=hparams.embedding_dir,
+      )
+    else: # Otherwise, the user will need to call configure_paths themselves
+      self.graph = None
+      self.embeddings = None
+    # Clear paths, don't want to serialize them later
+    self.hparams = hparam_util.remove_paths_from_namespace(hparams)
 
-    self.verbose = False
-    self.distributed = False
+    # Set when init_process_group is called
+    self._distributed = False
 
     # Layers
     ## Graph Emb Input
@@ -44,9 +61,6 @@ class HypothesisPredictor(pl.LightningModule):
     # Loss Fn
     self.loss_fn = torch.nn.MarginRankingLoss(margin=self.hparams.margin)
 
-    # Helper data, set by configure_paths
-    self.embeddings = None
-    self.graph = None
     # Helper data, set by prepare_for_training
     self.training_predicates = None
     self.validation_predicates = None
@@ -55,8 +69,11 @@ class HypothesisPredictor(pl.LightningModule):
     self.predicate_batch_generator = None
 
   def _vprint(self, *args, **kwargs):
-    if self.verbose:
+    if self.hparams.verbose:
       print(*args, **kwargs)
+
+  def set_verbose(self, val:bool)->None:
+    self.hparams.verbose = val
 
   def configure_paths(
       self,
@@ -138,7 +155,7 @@ class HypothesisPredictor(pl.LightningModule):
   )->torch.utils.data.DataLoader:
     self.preload()
     sampler = None
-    if self.distributed:
+    if self._distributed:
       shuffle = False
       sampler=torch.utils.data.distributed.DistributedSampler(predicate_dataset)
     return torch.utils.data.DataLoader(
@@ -294,12 +311,37 @@ class HypothesisPredictor(pl.LightningModule):
 
   @staticmethod
   def add_argparse_args(parser:ArgumentParser)->ArgumentParser:
+    """Used to add all model parameters to argparse
+
+    This static function allows for the easy configuration of argparse for the
+    construction and training of the Agatha deep learning model. Example usage:
+
+    ```python3
+    parser = HypothesisPredictor.add_argparse_args(ArgumentParser())
+    args = parser.parse_args()
+    trainer = Trainer.from_argparse_args(args)
+    model = HypothesisPredictor(args)
+    ```
+
+    Note, many of the arguments, such as the location of training databases or
+    the paths used to save the model during training, will _NOT_ be serialized
+    with the model. These can be configured either from `args` directly after
+    parsing, or through `configure_paths` after training.
+
+    Args:
+      parser: An argparse parser to be configured. Will receive all necessary
+        training and model parameter flags.
+
+    Returns:
+      A reference to the input argument parser.
+
     """
-    These arguments will be serialized along with the model after training.
-    Path-specific arguments will be passed in separately.
-    """
+    parser = Trainer.add_argparse_args(parser)
     parser.add_argument("--dataloader-workers", type=int)
     parser.add_argument("--dim", type=int)
+    parser.add_argument("--embedding-dir", type=Path)
+    parser.add_argument("--entity-db", type=Path)
+    parser.add_argument("--graph-db", type=Path)
     parser.add_argument("--lr", type=float)
     parser.add_argument("--margin", type=float)
     parser.add_argument("--negative-scramble-rate", type=int)
@@ -311,6 +353,7 @@ class HypothesisPredictor(pl.LightningModule):
     parser.add_argument("--transformer-heads", type=int)
     parser.add_argument("--transformer-layers", type=int)
     parser.add_argument("--validation-fraction", type=float)
+    parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--warmup-steps", type=int)
     parser.add_argument("--weight-decay", type=float)
     return parser
@@ -354,6 +397,7 @@ class HypothesisPredictor(pl.LightningModule):
         torch_backend,
         os.environ["MASTER_ADDR"], proc_rank
     )
+    self._distributed = True
     torch.distributed.init_process_group(
         torch_backend,
         rank=proc_rank,

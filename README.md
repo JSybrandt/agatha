@@ -3,7 +3,7 @@ Agatha Overview
 
 ![logo](https://github.com/JSybrandt/agatha/blob/master/logo.png?raw=true)
 
-[Checkout our Docs on ReadTheDocs][https://agatha-hypothesis-generation.readthedocs.io]
+[Checkout our Docs on ReadTheDocs](https://agatha-hypothesis-generation.readthedocs.io)
 
 We are currently doing a bunch of development around the [CORD-19][cord_19]
 datsset. These customizations have been funded by an NSF RAPID grant.

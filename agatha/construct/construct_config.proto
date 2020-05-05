@@ -26,6 +26,9 @@ message ConstructConfig {
   // Configures the phrase mining components
   optional NGramConfig phrases = 9;
 
+  // Configures running SemRep to generate predicates.
+  optional SemRepConfig semrep = 22;
+
   // If set, we're going to stop the construction process once we checkpoint
   // this value. Used to help prepare data for the ML process.
   optional string stop_after_ckpt = 10;
@@ -59,6 +62,7 @@ message ConstructConfig {
   // The directory where to store results
   // Will output graph and sentence json files
   optional string output_dir = 21;
+
 }
 
 
@@ -154,4 +158,22 @@ message NGramConfig {
   optional int32 min_ngram_support_per_partition = 3 [default=5];
   // How much of the text should we look at when mining ngrams?
   optional float ngram_sample_rate = 4 [default=0.33];
+}
+
+message SemRepConfig {
+  // By default we will _NOT_ run semrep ourselves. Most users will be happy
+  // with downloading the latest version of SemRep from:
+  // https://semrep.nlm.nih.gov/SemRep.v1.8_Installation.html#Download
+  optional bool enable 1 [default=false];
+
+  // The directory where metamap was installed, default name is public_mm
+  optional string public_mm_dir = 2;
+
+  // The directory where semrep was installed, default name is public_semrep
+  optional string public_semrep_dir = 3;
+
+  // Optional flags specified when running the semrep bin, such as:
+  // --relaxed_model
+  repeated string flags = 4;
+
 }

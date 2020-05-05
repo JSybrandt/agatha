@@ -94,3 +94,25 @@ def test_run_semrep():
     assert not output_file.exists()
     runner.run(TEST_DATA_PATH, output_file)
     assert output_file.is_file()
+
+def test_sentence_to_semrep_input():
+  # We can run this test if SemRep is not installed
+  sentences = [
+      dict(id=1, text_data="Sentence 1"),
+      dict(id=2, text_data="Sentence 2"),
+  ]
+
+  actual = semrep_util.sentence_to_semrep_input(sentences)
+  expected = ["1|Sentence 1", "2|Sentence 2"]
+  assert actual == expected
+
+def test_sentence_to_semrep_input_filter_newline():
+  # We can run this test if SemRep is not installed
+  sentences = [
+      dict(id=1, text_data="Sentence\n1"),
+      dict(id=2, text_data="Sentence\n2"),
+  ]
+
+  actual = semrep_util.sentence_to_semrep_input(sentences)
+  expected = ["1|Sentence 1", "2|Sentence 2"]
+  assert actual == expected

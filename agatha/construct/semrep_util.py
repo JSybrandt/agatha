@@ -12,12 +12,14 @@ servers are started we are free to run `semrep`.
 
 """
 
-from pathlib import Path
-from typing import Dict, Tuple, List
 import agatha.construct.dask_process_global as dpg
+from agatha.construct import text_util
+from agatha.util.misc_util import Record
 from multiprocessing import Process
-import subprocess
 import os
+from pathlib import Path
+import subprocess
+from typing import Dict, Tuple, List, Iterable
 
 def get_paths(
     semrep_install_dir:Path=None,
@@ -282,3 +284,47 @@ class SemRepRunner():
         env=self._get_env()
     )
     assert output_path.is_file(), f"SemRep Failed to produce {output_path}"
+
+
+################################################################################
+# Dask Utility Functions #######################################################
+################################################################################
+
+def sentence_to_semrep_input(records:Iterable[Record])->List[str]:
+  """Processes Sentence Records for SemRep Input
+
+  The SemRepRunner, with the default single_line_delim_input_w_id flag set,
+  expects input in the form:
+  ```
+  id1|Sentence 1
+  id2|Sentence 2
+    ...
+  ```
+
+  This function converts Agatha sentence records, containing the `text_data` and
+  `id` fields into the single_line_delim_input_w_id format. Because each
+  sentence must occur on its own line, this function will replace newline
+  characters with spaces in output.
+
+  Recommend Usage:
+
+  ```python3
+  sentences.map_partitions(sentence_to_semrep_input).to_textfiles(...)
+  ```
+
+  Args:
+    records: Sentence records, each containing `text_data` and `id`
+
+  """
+  res = []
+  for record in records:
+    assert "text_data" in record, "Record missing text_data field"
+    assert "id" in record, "Record missing id field"
+    text = str(record["text_data"])
+    id_ = str(record["id"])
+    # Don't want newlines in text
+    text = text.replace("\n", " ")
+    # Don't want pipe in id
+    assert "|" not in id_, "SemRep IDs cannot contain pipe character."
+    res.append(f"{id_}|{text}")
+  return res

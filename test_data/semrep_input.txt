@@ -1,13 +1,4 @@
-68842 Carcinoma-associated blood group MN precursor antigens against which all humans possess antibodies. 
-
-71617 Pericardial effusions associated with minoxidil. 
-
-62567 Growth of the nasal bone in the rat. 
-
-85610 Immunoelectrophoretic identification and purification of herpes simplex virus antigens released from infected cells in tissue culture. Proteins released from herpes simplex virus type 1 (HSV-1)-and type 2 (HSV-2)-infected HEp-2 cells have been characterized by the crossed immunoelectrophoretic technique. Both HSV type-common and type-specific antigens were found in the tissue culture medium 24 h after infection. Antigen Ag-6, an HSV-1-specific antigen, was found in high concentration in the medium as compared to other HSV antigens released from HSV-1-infected cells. The HSV-2-specific antigens, Ag-4 and Ag-1, were released in molecular modifications with altered electrophoretic mobility as compared to their cellular counterparts. Purification of HSV antigens was performed by ion-exchange chromatography, and an HSV type-common antigen, Ag-11, and an HSV-2-specific antigen, Ag-4A, were isolated.
-
-90675 alpha 2 micro-Globulin in the rat. The regulation of the appearance of multiple forms in vivo and in primary cultures of adult hepatocytes. 
-
-78600 [Use of proteinase inhibitors in the overall treatment of pollinosis]. 
-
-87213 The interaction of thermal tolerance with drug cytotoxicity in vitro. The effect of preheating EMT6 cells in vitro on their response to cytotoxic agents of either 43 degrees C or 37 degrees C has been investigated. Preheating for 3 h at 40 degrees C produced measurable protection (thermal tolerance) to subsequent treatment for 1 h at 43 degrees C. This preheat treatment was further found to reduce cell killing by BLM and BCNU (drug tolerance) present during 1 h at 43 degrees C. In contrast, no such heat-induced drug tolerance was seen with ADR. An additional effect with ADR was the apparent elimination of heat-induced thermal tolerance at toxic drug doses. However, preheating under these conditions had no effect on the subsequent cytotoxicity of any of these drugs at 37 degrees C. Also, preheating for 1 h at 43 degrees C was found to sensitize cells to BLM and BCNU toxicity at 37 degrees C but to protect against ADR toxicity. The results are discussed in relation to known mechanisms of cell killing by heat and of thermal tolerance.
+68842|Carcinoma-associated blood group MN precursor antigens against which all humans possess antibodies. 
+71617|Pericardial effusions associated with minoxidil. 
+62567|Growth of the nasal bone in the rat. 
+90675|alpha 2 micro-Globulin in the rat. The regulation of the appearance of multiple forms in vivo and in primary cultures of adult hepatocytes. 

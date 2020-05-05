@@ -198,6 +198,7 @@ class SemRepRunner():
       mm_data_version:str="USAbase",
       mm_data_year:str="2006AA",
       relaxed_model:bool=True,
+      single_line_delim_input_w_id=True,
       use_generic_domain_extensions=False,
       use_generic_domain_modification=False,
       word_sense_disambiguation=True,
@@ -217,6 +218,7 @@ class SemRepRunner():
     self.mm_data_version= mm_data_version
     self.mm_data_year = mm_data_year
     self.relaxed_model = relaxed_model
+    self.single_line_delim_input_w_id = single_line_delim_input_w_id
     self.use_generic_domain_extensions = use_generic_domain_extensions
     self.use_generic_domain_modification = use_generic_domain_modification
     self.word_sense_disambiguation = word_sense_disambiguation
@@ -247,6 +249,8 @@ class SemRepRunner():
     res.append(self.mm_data_year)
     if self.relaxed_model:
       res.append("--relaxed_model")
+    if self.single_line_delim_input_w_id:
+      res.append("--sldiID")
     if self.use_generic_domain_extensions:
       res.append("--use_generic_domain_extensions")
     if self.use_generic_domain_modification:
@@ -278,4 +282,3 @@ class SemRepRunner():
         env=self._get_env()
     )
     assert output_path.is_file(), f"SemRep Failed to produce {output_path}"
-

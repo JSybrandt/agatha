@@ -460,20 +460,17 @@ class HypothesisPredictor(pl.LightningModule):
         world_size: Number of GPUs being use across all nodes. (num_nodes * num_gpus).
         is_slurm_managing_tasks: is cluster managed by SLURM.
     """
-    if is_slurm_managing_tasks:
-      self._init_slurm_connection()
-
     if 'MASTER_ADDR' not in os.environ:
-      log.warning("MASTER_ADDR environment variable is not defined. Set as localhost")
+      print("MASTER_ADDR environment variable is not defined. Set as localhost")
       os.environ['MASTER_ADDR'] = '127.0.0.1'
 
     if 'MASTER_PORT' not in os.environ:
-      log.warning("MASTER_PORT environment variable is not defined. Set as 12910")
+      print("MASTER_PORT environment variable is not defined. Set as 12910")
       os.environ['MASTER_PORT'] = '12910'
 
     if 'WORLD_SIZE' in os.environ and os.environ['WORLD_SIZE'] != world_size:
-      log.warning("WORLD_SIZE environment variable is not equal to the computed "
-                   "world size. Ignored.")
+      print("WORLD_SIZE environment variable is not equal to the computed "
+            "world size. Ignored.")
 
     # Reverting to GLOO until nccl upgrades in pytorch are complete
     #torch_backend = "nccl" if self.trainer.on_gpu else "gloo"

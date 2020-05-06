@@ -98,15 +98,25 @@ def perform_document_independent_tasks(
     config:cpb.ConstructConfig,
     documents:dbag.Bag,
     ckpt_prefix:str,
+    semrep_work_dir:Optional[Path]=None,
 )->None:
-  """
+  """Performs Tasks that don't require communication between documents
+
   Performs all of the document processing operations that are required to
   happen on each document separately. This is important to separate between
   different input textual features because this allows us to update/invalidate
   particular sets of checkpoints faster.
 
-  Inputs: All necessary information to process the input set of documents.
-  Outputs: Dictionary containing each bag
+  Args:
+    config: Constriction Configuration
+    documents: Collection of texts to process
+    ckpt_prefix: To stop collisions, and to improve caching, each call to this
+      function should have a different prefix indicating the type of the
+      corresponding documents. For instance, calling this with medline documents
+      could get the `medline` prefix.
+    semrep_work_dir: The location to store semrep intermediate files. Only
+      used if semrep has been installed and configured.
+
   """
 
   ckpt("documents", ckpt_prefix)

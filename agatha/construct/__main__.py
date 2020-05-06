@@ -52,7 +52,7 @@ def setup_directories(config:cpb.ConstructConfig())->Dict[str, Path]:
   helper_data_dir = scratch_root_dir.joinpath("helper_data")
   faiss_index_dir = helper_data_dir.joinpath("faiss_index")
   hash2name_dir = helper_data_dir.joinpath("hash_to_name")
-  semrep_dir = helper_data_dir.joinpath("semrep")
+  semrep_work_dir = helper_data_dir.joinpath("semrep")
 
   # output dirs
   output_dir = Path(config.output_dir)
@@ -149,7 +149,7 @@ if __name__ == "__main__":
         config=config,
         documents=document_pipeline.get_medline_documents(config),
         ckpt_prefix="medline",
-        semrep_dir=semrep_dir,
+        semrep_work_dir=semrep_work_dir,
     )
 
   if config.HasField("covid_json_dir"):
@@ -157,7 +157,7 @@ if __name__ == "__main__":
         config=config,
         documents=document_pipeline.get_covid_documents(config),
         ckpt_prefix="covid",
-        semrep_dir=semrep_dir,
+        semrep_work_dir=semrep_work_dir,
     )
 
   # At this point, we are going to recover text sources using the checkpoint

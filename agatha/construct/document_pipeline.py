@@ -2,11 +2,12 @@ import dask
 import dask.bag as dbag
 from agatha.construct.checkpoint import ckpt
 from agatha.construct import (
-    text_util,
     construct_config_pb2 as cpb,
+    embedding_util,
     ftp_util,
     graph_util,
-    embedding_util,
+    semrep_util,
+    text_util,
 )
 from agatha.construct.document_parsers import (
   parse_pubmed_xml,
@@ -207,3 +208,6 @@ def perform_document_independent_tasks(
       })
   )
   ckpt("hashed_names", ckpt_prefix)
+
+  # ADD SEMREP FUNCTION CALL HERE
+

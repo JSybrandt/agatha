@@ -1,15 +1,16 @@
 from agatha.construct import (
     checkpoint,
+    construct_config_pb2 as cpb,
     dask_process_global as dpg,
+    document_pipeline,
     embedding_util,
     file_util,
     ftp_util,
     graph_util,
     knn_util,
-    text_util,
     ngram_util,
-    construct_config_pb2 as cpb,
-    document_pipeline,
+    semrep_util,
+    text_util,
 )
 from agatha.construct.checkpoint import ckpt
 from agatha.util import (
@@ -104,6 +105,14 @@ def setup_cluster(config:cpb.ConstructConfig, faiss_index_path:Path)->None:
   preloader.register(*knn_util.get_faiss_index_initializer(
       faiss_index_path=faiss_index_path,
   ))
+  # If semrep is installed and congiured with agatha
+  if (
+      config.semrep.HasField("semrep_install_dir")
+      and config.semrep.HasField("metamap_install_dir")
+  ):
+    preloader.register(*semrep_util.get_metamap_server_initializer(
+      metamap_install_dir=config.semrep_util.metamap_install_dir
+    )
   dpg.add_global_preloader(client=dask_client, preloader=preloader)
 
 def setup_checkpoints(config:cpb.ConstructConfig)->None:

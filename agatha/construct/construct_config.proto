@@ -164,16 +164,12 @@ message SemRepConfig {
   // By default we will _NOT_ run semrep ourselves. Most users will be happy
   // with downloading the latest version of SemRep from:
   // https://semrep.nlm.nih.gov/SemRep.v1.8_Installation.html#Download
-  optional bool enable 1 [default=false];
+  // Enable SemRep by specifying both metamap_install_dir and semrep_install_dir
 
   // The directory where metamap was installed, default name is public_mm
-  optional string public_mm_dir = 2;
+  optional string metamap_install_dir = 1;
 
   // The directory where semrep was installed, default name is public_semrep
-  optional string public_semrep_dir = 3;
-
-  // Optional flags specified when running the semrep bin, such as:
-  // --relaxed_model
-  repeated string flags = 4;
+  optional string semrep_install_dir = 2;
 
 }

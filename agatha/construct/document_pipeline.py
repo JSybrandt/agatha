@@ -209,5 +209,18 @@ def perform_document_independent_tasks(
   )
   ckpt("hashed_names", ckpt_prefix)
 
-  # ADD SEMREP FUNCTION CALL HERE
-
+  # If we're running semrep
+  if (
+      config.semrep.HasField("semrep_install_dir")
+      and config.semrep.HasField("metamap_install_dir")
+  ):
+    prefixed_semrep_work_dir = semrep_work_dir.joinpath(ckpt_prefix)
+    semrep_sentences = \
+        semrep_util.extract_entities_and_predicates_from_sentences(
+            sentence_records=sentences,
+            semrep_install_dir=config.semrep.semrep_install_dir,
+            workdir=prefixed_semrep_work_dir,
+            lexicon_year=config.semrep.lexicon_year,
+            mm_data_year=config.semrep.mm_data_year,
+        )
+    ckpt("semrep_sentences", ckpt_prefix)

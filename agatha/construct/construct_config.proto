@@ -172,4 +172,7 @@ message SemRepConfig {
   // The directory where semrep was installed, default name is public_semrep
   optional string semrep_install_dir = 2;
 
+  optional int32 lexicon_year = 3 [default=2020];
+  optional string mm_data_year = 4 [default="2020AA"];
+
 }

@@ -183,9 +183,11 @@ def perform_document_independent_tasks(
       and semrep_work_dir is not None
   ):
     prefixed_semrep_work_dir = semrep_work_dir.joinpath(ckpt_prefix)
+    prefixed_semrep_work_dir.mkdir(parents=True, exist_ok=True)
     semrep_sentences = \
         semrep_util.extract_entities_and_predicates_from_sentences(
             sentence_records=sentences,
+            unicode_to_ascii_jar_path=config.semrep.unicode_to_ascii_jar_path,
             semrep_install_dir=config.semrep.semrep_install_dir,
             work_dir=prefixed_semrep_work_dir,
             lexicon_year=config.semrep.lexicon_year,

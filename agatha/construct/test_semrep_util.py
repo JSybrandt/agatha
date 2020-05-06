@@ -9,11 +9,27 @@ import agatha.construct.dask_process_global as dpg
 # If SemRep isn't present, don't bother with these tests
 SEMREP_INSTALL_DIR = Path("externals/semrep/2020/public_semrep")
 METAMAP_INSTALL_DIR = Path("externals/semrep/2020/public_mm")
+UNICODE_TO_ASCII_JAR_PATH = Path("externals/semrep/replace_utf8.jar")
 TEST_DATA_PATH = Path("test_data/semrep_input.txt")
 TEST_COVID_DATA_PATH = Path("test_data/semrep_covid_input.txt")
+TEST_SEMREP_SEGFAULT_PATH= Path("test_data/semrep_segfault_input.txt")
 TEST_COVID_XML_PATH = Path("test_data/semrep_covid.xml")
 
-RUN_SEMREP_TESTS = SEMREP_INSTALL_DIR.is_dir() and METAMAP_INSTALL_DIR.is_dir()
+RUN_SEMREP_TESTS = (
+    SEMREP_INSTALL_DIR.is_dir()
+    and METAMAP_INSTALL_DIR.is_dir()
+    and UNICODE_TO_ASCII_JAR_PATH.is_file()
+)
+
+
+def test_unicode_to_ascii():
+  if UNICODE_TO_ASCII_JAR_PATH.is_file():
+    text_in = ["α", "β"]
+    expected = ["alpha", "beta"]
+    u2i = semrep_util.UnicodeToAsciiRunner(UNICODE_TO_ASCII_JAR_PATH)
+    assert u2i(text_in) == expected
+
+## TESTS THAT REQUIRE ALL OF SEMREP BELOW HERE
 
 if RUN_SEMREP_TESTS:
   print("STARTING METAMAP SERVER")
@@ -76,21 +92,11 @@ def test_metamap_server():
   if RUN_SEMREP_TESTS:
     assert metamap_server.running()
 
-def test_another_metamap_server():
-  """
-  Tests that we can actually run a second metamap. The first might not have
-  released ports.
-  """
-  if RUN_SEMREP_TESTS:
-    # A 2'nd metamap server object should NOT start a 2nd metamap server
-    metamap_server = semrep_util.MetaMapServer(METAMAP_INSTALL_DIR)
-    assert metamap_server.running()
-
 def test_run_semrep():
   if RUN_SEMREP_TESTS:
     runner = semrep_util.SemRepRunner(
         semrep_install_dir=SEMREP_INSTALL_DIR,
-        metamap_server=semrep_util.MetaMapServer(METAMAP_INSTALL_DIR),
+        metamap_server=metamap_server,
         lexicon_year=2020,
         mm_data_year="2020AA",
     )
@@ -123,7 +129,10 @@ def test_sentence_to_semrep_input():
       dict(id=2, sent_text="Sentence 2"),
   ]
 
-  actual = semrep_util.sentences_to_semrep_input(sentences)
+  actual = semrep_util.sentences_to_semrep_input(
+      sentences,
+      UNICODE_TO_ASCII_JAR_PATH,
+  )
   expected = ["1|Sentence 1", "2|Sentence 2"]
   assert actual == expected
 
@@ -134,8 +143,24 @@ def test_sentence_to_semrep_input_filter_newline():
       dict(id=2, sent_text="Sentence\n2"),
   ]
 
-  actual = semrep_util.sentences_to_semrep_input(sentences)
+  actual = semrep_util.sentences_to_semrep_input(
+      sentences,
+      UNICODE_TO_ASCII_JAR_PATH
+  )
   expected = ["1|Sentence 1", "2|Sentence 2"]
+  assert actual == expected
+
+def test_sentence_to_semrep_input_filter_unicode():
+  # We can run this test if SemRep is not installed
+  sentences = [
+      dict(id=1, sent_text="Sentence α"),
+      dict(id=2, sent_text="Sentence β"),
+  ]
+  actual = semrep_util.sentences_to_semrep_input(
+      sentences,
+      UNICODE_TO_ASCII_JAR_PATH
+  )
+  expected = ["1|Sentence alpha", "2|Sentence beta"]
   assert actual == expected
 
 def test_semrep_xml_to_records():
@@ -286,7 +311,10 @@ def test_parse_semrep_end_to_end():
       tmp_semrep_output.unlink()
 
     with open(tmp_semrep_input, 'w') as semrep_input_file:
-      for line in semrep_util.sentences_to_semrep_input(records):
+      for line in semrep_util.sentences_to_semrep_input(
+          records,
+          UNICODE_TO_ASCII_JAR_PATH
+      ):
         semrep_input_file.write(f"{line}\n")
 
     runner = semrep_util.SemRepRunner(
@@ -325,6 +353,7 @@ def test_extract_entitites_and_predicates_with_dask():
 
     actual = semrep_util.extract_entities_and_predicates_from_sentences(
         sentence_records=records,
+        unicode_to_ascii_jar_path=UNICODE_TO_ASCII_JAR_PATH,
         semrep_install_dir=SEMREP_INSTALL_DIR,
         work_dir=work_dir,
         lexicon_year=2020,

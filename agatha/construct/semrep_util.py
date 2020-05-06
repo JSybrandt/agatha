@@ -166,6 +166,30 @@ class MetaMapServer():
       subprocess.Popen([str(self.metamap_wsd_server_path), "stop"])
 
 
+class UnicodeToAsciiRunner():
+  "Responsible for running the MetaMap unicode to ascii jar"
+  def __init__(self, unicode_to_ascii_jar_path:str):
+    self.unicode_to_ascii_jar_path = Path(unicode_to_ascii_jar_path)
+
+  def __call__(self, text:List[str])->List[str]:
+    assert self.unicode_to_ascii_jar_path.is_file(), \
+        f"Cannot find unicode to ascii jar: {unicode_to_ascii_jar_path}"
+    u2i_proc = subprocess.Popen(
+        ["java", "-jar", str(self.unicode_to_ascii_jar_path)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+    )
+    for t in text:
+      u2i_proc.stdin.write(f"{t}\n".encode('utf-8'))
+    u2i_proc.stdin.close()
+    res = []
+    for t in u2i_proc.stdout:
+      res.append(t.decode("ascii").strip())
+    u2i_proc.wait()
+    return res
+
+
+
 class SemRepRunner():
   """Responsible for running SemRep.
 
@@ -286,6 +310,7 @@ class SemRepRunner():
     subprocess.run(
         cmd,
         env=env,
+        check=True,
     )
     assert output_path.is_file(), f"SemRep Failed to produce {output_path}"
 
@@ -294,7 +319,10 @@ class SemRepRunner():
 # Dask Utility Functions #######################################################
 ################################################################################
 
-def sentences_to_semrep_input(records:Iterable[Record])->List[str]:
+def sentences_to_semrep_input(
+    records:Iterable[Record],
+    unicode_to_ascii_jar_path:Path,
+)->List[str]:
   """Processes Sentence Records for SemRep Input
 
   The SemRepRunner, with the default single_line_delim_input_w_id flag set,
@@ -313,11 +341,15 @@ def sentences_to_semrep_input(records:Iterable[Record])->List[str]:
   Recommend Usage:
 
   ```python3
-  sentences.map_partitions(sentences_to_semrep_input).to_textfiles(...)
+  sentences.map_partitions(
+    sentences_to_semrep_input,
+    unicode_to_ascii_jar_path,
+  ).to_textfiles(...)
   ```
 
   Args:
     records: Sentence records, each containing `sent_text` and `id`
+    unicode_to_ascii_jar_path: The location of the metamap-provided jar
 
   """
   res = []
@@ -331,7 +363,7 @@ def sentences_to_semrep_input(records:Iterable[Record])->List[str]:
     # Don't want pipe in id
     assert "|" not in id_, "SemRep IDs cannot contain pipe character."
     res.append(f"{id_}|{text}")
-  return res
+  return UnicodeToAsciiRunner(unicode_to_ascii_jar_path)(res)
 
 
 def _semrep_id_to_agatha_sentence_id(semrep_id:str)->str:
@@ -553,6 +585,7 @@ def get_metamap_server_initializer(
 
 def _sentence_partition_to_records(
     records:List[Record],
+    unicode_to_ascii_jar_path:Path,
     input_path:Path,
     output_path:Path,
     semrep_install_dir:Path,
@@ -564,7 +597,7 @@ def _sentence_partition_to_records(
   # Convert Sentences for SemRep Input
   if not input_path.is_file():
     with open(input_path, 'w') as input_file:
-      for line in sentences_to_semrep_input(records):
+      for line in sentences_to_semrep_input(records, unicode_to_ascii_jar_path):
         input_file.write(f"{line}\n")
   # Process text with SemRep
   if not output_path.is_file():
@@ -581,6 +614,7 @@ def _sentence_partition_to_records(
 def extract_entities_and_predicates_from_sentences(
     sentence_records:dbag.Bag,
     semrep_install_dir:Path,
+    unicode_to_ascii_jar_path:Path,
     work_dir:Path,
     lexicon_year:int,
     mm_data_year:str,
@@ -614,6 +648,7 @@ def extract_entities_and_predicates_from_sentences(
     semrep_output_path = semrep_output_dir.joinpath(f"ouput_{part_idx}.xml")
     semrep_tasks.append(dask.delayed(_sentence_partition_to_records)(
         records=partition,
+        unicode_to_ascii_jar_path=unicode_to_ascii_jar_path,
         input_path=semrep_input_path,
         output_path=semrep_output_path,
         semrep_install_dir=semrep_install_dir,

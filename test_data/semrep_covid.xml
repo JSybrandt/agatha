@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE SemRepAnnotation PUBLIC "-//NLM//DTD SemRep Output//EN" "http://semrep.nlm.nih.gov/DTD/SemRepXML_v1.8.dtd">
+<SemRepAnnotation>
+ <Document id="Ds:32353859:1:0" text="A SARS-CoV-2 protein interaction map reveals targets for drug repurposing." >
+ <Utterance id="Ds:32353859:1:0.tx.1" section="tx" number="1" begin="0" end="74" text="A SARS-CoV-2 protein interaction map reveals targets for drug repurposing.">
+  <Entity id="Ds:32353859:1:0.E1" cui="C5203676" name="2019 novel coronavirus" semtypes="virs" text="SARS-CoV-2" score="888" negated="false" begin="2" end="12" />
+  <Entity id="Ds:32353859:1:0.E2" cui="C3178902" name="Protein Interaction Maps" semtypes="ftcn" text="protein interaction map" score="888" negated="false" begin="13" end="36" />
+  <Entity id="Ds:32353859:1:0.E3" cui="C1521840" name="Target" semtypes="ftcn" text="targets" score="966" negated="false" begin="45" end="52" />
+  <Entity id="Ds:32353859:1:0.E4" cui="C2936405" name="Drug Repositioning" semtypes="topp" text="drug repurposing" score="1000" negated="false" begin="57" end="73" />
+ </Utterance>
+</Document>
+ <Document id="Ds:32353859:1:1" text="The novel coronavirus SARS-CoV-2, the causative agent of COVID-19 respiratory disease, has infected over 2.3 million people, killed over 160,000, and caused worldwide social and economic disruption1,2." >
+ <Utterance id="Ds:32353859:1:1.tx.1" section="tx" number="1" begin="0" end="201" text="The novel coronavirus SARS-CoV-2, the causative agent of COVID-19 respiratory disease, has infected over 2.3 million people, killed over 160,000, and caused worldwide social and economic disruption1,2.">
+  <Entity id="Ds:32353859:1:1.E1" cui="C0205314" name="New" semtypes="qlco" text="novel" score="864" negated="false" begin="4" end="9" />
+  <Entity id="Ds:32353859:1:1.E2" cui="C0206750" name="Coronavirus Infections" semtypes="dsyn" text="coronavirus" score="864" negated="false" begin="10" end="21" />
+  <Entity id="Ds:32353859:1:1.E3" cui="C5203676" name="2019 novel coronavirus" semtypes="virs" text="SARS-CoV-2" score="864" negated="false" begin="22" end="32" />
+  <Entity id="Ds:32353859:1:1.E4" cui="C0449411" name="Causative_agents" semtypes="fndg" text="causative agent" score="1000" negated="false" begin="38" end="53" />
+  <Entity id="Ds:32353859:1:1.E5" cui="C5203670" name="COVID-19" semtypes="dsyn" text="COVID-19" score="888" negated="false" begin="57" end="65" />
+  <Entity id="Ds:32353859:1:1.E6" cui="C0035204" name="Respiration Disorders" semtypes="dsyn" text="respiratory disease" score="888" negated="false" begin="66" end="85" />
+  <Entity id="Ds:32353859:1:1.E7" cui="C1519042" name="Phase II/III Trial" semtypes="resa" text="2.3" score="861" negated="false" begin="105" end="108" />
+  <Entity id="Ds:32353859:1:1.E8" cui="C1881839" name="1000000" semtypes="qnco" text="million" score="861" negated="false" begin="109" end="116" />
+  <Entity id="Ds:32353859:1:1.E9" cui="C0027361" name="Persons" semtypes="popg" text="people" score="861" negated="false" begin="117" end="123" />
+  <Entity id="Ds:32353859:1:1.E10" cui="C4319554" name="160" semtypes="qnco" text="160" score="861" negated="false" begin="137" end="140" />
+  <Entity id="Ds:32353859:1:1.E11" cui="C0728831" name="Social" semtypes="ftcn" text="social" score="861" negated="false" begin="167" end="173" />
+  <Entity id="Ds:32353859:1:1.E12" cui="C0013557" name="Economic" semtypes="ftcn" text="economic" score="694" negated="false" begin="178" end="186" />
+ </Utterance>
+</Document>
+ <Document id="Ds:32353859:1:2" text="There are currently no antiviral drugs with proven clinical efficacy, nor are there vaccines for its prevention, and these efforts are hampered by limited knowledge of the molecular details of SARS-CoV-2 infection." >
+ <Utterance id="Ds:32353859:1:2.tx.1" section="tx" number="1" begin="0" end="214" text="There are currently no antiviral drugs with proven clinical efficacy, nor are there vaccines for its prevention, and these efforts are hampered by limited knowledge of the molecular details of SARS-CoV-2 infection.">
+  <Entity id="Ds:32353859:1:2.E1" cui="C0521116" name="Current (present time)" semtypes="tmco" text="currently" score="1000" negated="false" begin="10" end="19" />
+  <Entity id="Ds:32353859:1:2.E2" cui="C0003451" name="Antiviral Agents" semtypes="phsu" text="antiviral drugs" score="1000" negated="false" begin="23" end="38" />
+  <Entity id="Ds:32353859:1:2.E3" cui="C0087113" name="Treatment Effectiveness" semtypes="qlco" text="clinical efficacy" score="901" negated="false" begin="51" end="68" />
+  <Entity id="Ds:32353859:1:2.E4" cui="C0042210" name="Vaccines" semtypes="aapp,imft,phsu" text="vaccines" score="861" negated="false" begin="84" end="92" />
+  <Entity id="Ds:32353859:1:2.E5" cui="C0199176" name="Prophylactic treatment" semtypes="topp" text="prevention" score="1000" negated="false" begin="101" end="111" />
+  <Entity id="Ds:32353859:1:2.E6" cui="C0376554" name="Knowledge" semtypes="inpr" text="knowledge" score="861" negated="false" begin="155" end="164" />
+  <Entity id="Ds:32353859:1:2.E7" cui="C1521991" name="Molecular" semtypes="qlco" text="molecular" score="888" negated="false" begin="172" end="181" />
+  <Entity id="Ds:32353859:1:2.E8" cui="C1522508" name="Details" semtypes="qlco" text="details" score="888" negated="false" begin="182" end="189" />
+  <Entity id="Ds:32353859:1:2.E9" cui="C1175175" name="Severe Acute Respiratory Syndrome" semtypes="dsyn" text="SARS-CoV-2 infection" score="923" negated="false" begin="193" end="213" />
+  <Predication id="Ds:32353859:1:2.P1" negated="true" inferred="false">
+   <Subject maxDist="5" dist="1" entityID="Ds:32353859:1:2.E5" relSemType="topp" />
+   <Predicate type="USES" indicatorType="PREP" begin="93" end="96" />
+   <Object maxDist="3" dist="1" entityID="Ds:32353859:1:2.E4" relSemType="aapp" />
+  </Predication>
+ </Utterance>
+</Document>
+ <Document id="Ds:32353859:1:3" text="To address this, we cloned, tagged and expressed 26 of the 29 SARS-CoV-2 proteins in human cells and identified the human proteins physically associated with each using affinity-purification mass spectrometry (AP-MS), identifying 332 high-confidence SARS-CoV-2-human protein-protein interactions (PPIs)." >
+ <Utterance id="Ds:32353859:1:3.tx.1" section="tx" number="1" begin="0" end="303" text="To address this, we cloned, tagged and expressed 26 of the 29 SARS-CoV-2 proteins in human cells and identified the human proteins physically associated with each using affinity-purification mass spectrometry (AP-MS), identifying 332 high-confidence SARS-CoV-2-human protein-protein interactions (PPIs).">
+  <Entity id="Ds:32353859:1:3.E1" cui="C5203676" name="2019 novel coronavirus" semtypes="virs" text="SARS-CoV-2" score="875" negated="false" begin="62" end="72" />
+  <Entity id="Ds:32353859:1:3.E2" cui="C0033684" name="Proteins" semtypes="aapp,bacs" text="proteins" score="875" negated="false" begin="73" end="81" />
+  <Entity id="Ds:32353859:1:3.E3" cui="C0427861" name="Human cells" semtypes="lbtr" text="human cells" score="1000" negated="false" begin="85" end="96" />
+  <Entity id="Ds:32353859:1:3.E4" cui="C1142652" name="NR4A2 protein, human" semtypes="aapp,bacs" entrezID="4929" entrezName="NR4A2" text="human proteins" score="1000" negated="false" begin="116" end="130" />
+  <Entity id="Ds:32353859:1:3.E5" cui="C0008551" name="Chromatography, Affinity" semtypes="lbpr" text="affinity-purification" score="888" negated="false" begin="169" end="190" />
+  <Entity id="Ds:32353859:1:3.E6" cui="C0037813" name="Mass Spectrometry" semtypes="lbpr" text="mass spectrometry" score="888" negated="false" begin="191" end="208" />
+  <Entity id="Ds:32353859:1:3.E7" cui="C4330261" name="High Confidence" semtypes="fndg" text="high-confidence" score="808" negated="false" begin="234" end="249" />
+  <Entity id="Ds:32353859:1:3.E8" cui="C5203676" name="2019 novel coronavirus" semtypes="virs" text="SARS-CoV-2" score="808" negated="false" begin="250" end="260" />
+  <Entity id="Ds:32353859:1:3.E9" cui="C0086418" name="Homo sapiens" semtypes="humn" text="human" score="808" negated="false" begin="261" end="266" />
+  <Entity id="Ds:32353859:1:3.E10" cui="C0872079" name="Protein-Protein Interaction" semtypes="moft" text="protein-protein interactions" score="808" negated="false" begin="267" end="295" />
+  <Entity id="Ds:32353859:1:3.E11" cui="C3811894" name="Pixels per Inch" semtypes="qnco" text="PPIs" score="966" negated="false" begin="297" end="301" />
+  <Predication id="Ds:32353859:1:3.P1" negated="false" inferred="false">
+   <Subject maxDist="0" dist="0" entityID="Ds:32353859:1:3.E6" relSemType="lbpr" />
+   <Predicate type="USES" indicatorType="MOD_HEAD" begin="169" end="208" />
+   <Object maxDist="0" dist="0" entityID="Ds:32353859:1:3.E5" relSemType="lbpr" />
+  </Predication>
+ </Utterance>
+</Document>
+ <Document id="Ds:32353859:1:4" text="Among these, we identify 66 druggable human proteins or host factors targeted by 69 compounds (29 FDA-approved drugs, 12 drugs in clinical trials, and 28 preclinical compounds)." >
+ <Utterance id="Ds:32353859:1:4.tx.1" section="tx" number="1" begin="0" end="177" text="Among these, we identify 66 druggable human proteins or host factors targeted by 69 compounds (29 FDA-approved drugs, 12 drugs in clinical trials, and 28 preclinical compounds).">
+  <Entity id="Ds:32353859:1:4.E1" cui="C1142652" name="NR4A2 protein, human" semtypes="aapp,bacs" entrezID="4929" entrezName="NR4A2" text="human proteins" score="824" negated="false" begin="38" end="52" />
+  <Entity id="Ds:32353859:1:4.E2" cui="C1521761" name="Factor" semtypes="ftcn" text="factors" score="827" negated="false" begin="61" end="68" />
+  <Entity id="Ds:32353859:1:4.E3" cui="C0205198" name="Compound" semtypes="qlco" text="compounds" score="872" negated="false" begin="84" end="93" />
+  <Entity id="Ds:32353859:1:4.E4" cui="C0041714" name="United States Food and Drug Administration" semtypes="hcro" text="FDA" score="833" negated="false" begin="98" end="101" />
+  <Entity id="Ds:32353859:1:4.E5" cui="C0205540" name="Approved" semtypes="qlco" text="approved" score="833" negated="false" begin="102" end="110" />
+  <Entity id="Ds:32353859:1:4.E6" cui="C0013227" name="Pharmaceutical Preparations" semtypes="phsu" text="drugs" score="833" negated="false" begin="111" end="116" />
+  <Entity id="Ds:32353859:1:4.E7" cui="C0013227" name="Pharmaceutical Preparations" semtypes="phsu" text="drugs" score="861" negated="false" begin="121" end="126" />
+  <Entity id="Ds:32353859:1:4.E8" cui="C0008976" name="Clinical Trials" semtypes="resa" text="clinical trials" score="1000" negated="false" begin="130" end="145" />
+  <Entity id="Ds:32353859:1:4.E9" cui="C1709630" name="Preclinical" semtypes="qlco" text="preclinical" score="773" negated="false" begin="154" end="165" />
+  <Entity id="Ds:32353859:1:4.E10" cui="C0205198" name="Compound" semtypes="qlco" text="compounds" score="773" negated="false" begin="166" end="175" />
+ </Utterance>
+</Document>
+ <Document id="Ds:32353859:1:5" text="Screening a subset of these in multiple viral assays identified two sets of pharmacological agents that displayed antiviral activity: inhibitors of mRNA translation and predicted regulators of the Sigma1 and Sigma2 receptors." >
+ <Utterance id="Ds:32353859:1:5.tx.1" section="tx" number="1" begin="0" end="225" text="Screening a subset of these in multiple viral assays identified two sets of pharmacological agents that displayed antiviral activity: inhibitors of mRNA translation and predicted regulators of the Sigma1 and Sigma2 receptors.">
+  <Entity id="Ds:32353859:1:5.E1" cui="C1515021" name="Subgroup" semtypes="clas" text="subset" score="1000" negated="false" begin="12" end="18" />
+  <Entity id="Ds:32353859:1:5.E2" cui="C0439064" name="Numerous" semtypes="qnco" text="multiple" score="764" negated="false" begin="31" end="39" />
+  <Entity id="Ds:32353859:1:5.E3" cui="C0521026" name="Viral" semtypes="ftcn" text="viral" score="764" negated="false" begin="40" end="45" />
+  <Entity id="Ds:32353859:1:5.E4" cui="C1510438" name="Assay" semtypes="lbpr" text="assays" score="764" negated="false" begin="46" end="52" />
+  <Entity id="Ds:32353859:1:5.E5" cui="C0205448" name="Two" semtypes="qnco" text="two" score="694" negated="false" begin="64" end="67" />
+  <Entity id="Ds:32353859:1:5.E6" cui="C1254351" name="Pharmacologic Substance" semtypes="phsu" text="pharmacological agents" score="933" negated="false" begin="76" end="98" />
+  <Entity id="Ds:32353859:1:5.E7" cui="C0439167" name="Percent Activity" semtypes="qnco" text="activity" score="861" negated="false" begin="124" end="132" />
+  <Entity id="Ds:32353859:1:5.E8" cui="C0243077" name="inhibitors" semtypes="chvf" text="inhibitors" score="1000" negated="false" begin="134" end="144" />
+  <Entity id="Ds:32353859:1:5.E9" cui="C0597295" name="Protein Biosynthesis" semtypes="moft" text="mRNA translation" score="1000" negated="false" begin="148" end="164" />
+  <Entity id="Ds:32353859:1:5.E10" cui="C1882327" name="Percent of Predicted Value" semtypes="qnco" text="predicted" score="694" negated="false" begin="169" end="178" />
+  <Entity id="Ds:32353859:1:5.E11" cui="C0597357" name="receptor" semtypes="aapp,rcpt" text="receptors" score="861" negated="false" begin="215" end="224" />
+ </Utterance>
+</Document>
+ <Document id="Ds:32353859:1:6" text="Further studies of these host factor targeting agents, including their combination with drugs that directly target viral enzymes, could lead to a therapeutic regimen to treat COVID-19." >
+ <Utterance id="Ds:32353859:1:6.tx.1" section="tx" number="1" begin="0" end="184" text="Further studies of these host factor targeting agents, including their combination with drugs that directly target viral enzymes, could lead to a therapeutic regimen to treat COVID-19.">
+  <Entity id="Ds:32353859:1:6.E1" cui="C1517331" name="Further" semtypes="spco" text="Further" score="888" negated="false" begin="0" end="7" />
+  <Entity id="Ds:32353859:1:6.E2" cui="C1521761" name="Factor" semtypes="ftcn" text="factor" score="764" negated="false" begin="30" end="36" />
+  <Entity id="Ds:32353859:1:6.E3" cui="C1521840" name="Target" semtypes="ftcn" text="targeting" score="764" negated="false" begin="37" end="46" />
+  <Entity id="Ds:32353859:1:6.E4" cui="C1254351" name="Pharmacologic Substance" semtypes="phsu" text="agents" score="764" negated="false" begin="47" end="53" />
+  <Entity id="Ds:32353859:1:6.E5" cui="C0205195" name="Combined" semtypes="qlco" text="combination" score="1000" negated="false" begin="71" end="82" />
+  <Entity id="Ds:32353859:1:6.E6" cui="C0013227" name="Pharmaceutical Preparations" semtypes="phsu" text="drugs" score="1000" negated="false" begin="88" end="93" />
+  <Entity id="Ds:32353859:1:6.E7" cui="C1947931" name="Direct (qualifier)" semtypes="qlco" text="directly" score="1000" negated="false" begin="99" end="107" />
+  <Entity id="Ds:32353859:1:6.E8" cui="C0521026" name="Viral" semtypes="ftcn" text="viral" score="888" negated="false" begin="115" end="120" />
+  <Entity id="Ds:32353859:1:6.E9" cui="C0014442" name="Enzymes" semtypes="aapp,enzy" text="enzymes" score="888" negated="false" begin="121" end="128" />
+  <Entity id="Ds:32353859:1:6.E10" cui="C1276413" name="Therapeutic regimen" semtypes="topp" text="therapeutic regimen" score="1000" negated="false" begin="146" end="165" />
+  <Entity id="Ds:32353859:1:6.E11" cui="C5203670" name="COVID-19" semtypes="dsyn" text="COVID-19" score="1000" negated="false" begin="175" end="183" />
+  <Predication id="Ds:32353859:1:6.P1" negated="false" inferred="false">
+   <Subject maxDist="6" dist="1" entityID="Ds:32353859:1:6.E10" relSemType="topp" />
+   <Predicate type="TREATS" indicatorType="VERB" begin="169" end="174" />
+   <Object maxDist="1" dist="1" entityID="Ds:32353859:1:6.E11" relSemType="dsyn" />
+  </Predication>
+ </Utterance>
+</Document>
+</SemRepAnnotation>

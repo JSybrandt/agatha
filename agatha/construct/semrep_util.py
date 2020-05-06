@@ -19,7 +19,12 @@ from multiprocessing import Process
 import os
 from pathlib import Path
 import subprocess
-from typing import Dict, Tuple, List, Iterable
+from typing import Dict, Tuple, List, Iterable, Callable, Any
+import lxml
+import lxml.etree
+from agatha.util.entity_types import SENTENCE_TYPE
+import re
+from copy import deepcopy
 
 def get_paths(
     semrep_install_dir:Path=None,
@@ -213,7 +218,6 @@ class SemRepRunner():
     self.semrep_bin_path = paths["semrep_bin_path"]
     # Set serer
     self.metamap_server=metamap_server
-
     self.anaphora_resolution = anaphora_resolution
     self.dysonym_processing = dysonym_processing
     self.lexicon_year = lexicon_year
@@ -301,7 +305,7 @@ def sentence_to_semrep_input(records:Iterable[Record])->List[str]:
     ...
   ```
 
-  This function converts Agatha sentence records, containing the `text_data` and
+  This function converts Agatha sentence records, containing the `sent_text` and
   `id` fields into the single_line_delim_input_w_id format. Because each
   sentence must occur on its own line, this function will replace newline
   characters with spaces in output.
@@ -313,18 +317,224 @@ def sentence_to_semrep_input(records:Iterable[Record])->List[str]:
   ```
 
   Args:
-    records: Sentence records, each containing `text_data` and `id`
+    records: Sentence records, each containing `sent_text` and `id`
 
   """
   res = []
   for record in records:
-    assert "text_data" in record, "Record missing text_data field"
+    assert "sent_text" in record, "Record missing sent_text field"
     assert "id" in record, "Record missing id field"
-    text = str(record["text_data"])
+    text = str(record["sent_text"])
     id_ = str(record["id"])
     # Don't want newlines in text
     text = text.replace("\n", " ")
     # Don't want pipe in id
     assert "|" not in id_, "SemRep IDs cannot contain pipe character."
     res.append(f"{id_}|{text}")
+  return res
+
+
+def _semrep_id_to_agatha_sentence_id(semrep_id:str)->str:
+  """Cleans the SemRep ID for Agatha
+
+  When running SemRep following `sentence_to_semrep_input`, the `id` attribute
+  of each xml element will help cross-reference the XML results to the rest of
+  the data for each sentence. However, SemRep will pre-pend a 'D'. For entities
+  and predicates, a suffix of `.E#` or `.P#` will also be added. Utterances
+  receive suffixes like `.tx.1` based on the count and type.
+
+  Args:
+    semrep_id: An id like: "Ds:32353859:1:6", "Ds:32353859:1:6.E11",
+      or "Ds:32353859:1:6.tx.1".
+
+  Returns:
+    A cleaned id, like "s:32353859:1:6"
+  """
+  assert semrep_id[0] == "D", "Invalid semrep id. Expected to start with D"
+  # This will match a string that starts with a properly formatted agatha
+  # sentence ID. Note, CORD-19 ids, such as those for PMC articles, may have
+  # any alphanumeric id instead of a numeric pmid
+  regex_starts_with_sentence_id = "^s:[a-zA-Z0-9]+:[0-9]+:[0-9]+"
+  # We already established that the first character is "D". Now the rest
+  # of the string needs to start with the sentence_id
+  found_pattern = re.search(regex_starts_with_sentence_id, semrep_id[1:])
+  assert found_pattern is not None, f"Invalid sentence id: {semrep_id}"
+  return found_pattern.group(0)
+
+def _str_to_bool(s:str)->bool:
+  "Converts 'true' and 'false' to True and False"
+  if s.lower() == "true":
+    return True
+  if s.lower() == "false":
+    return False
+  raise ValueError(f"Invalid bool string: {s}")
+
+def _set_or_none(
+    rec:Record,
+    xml:lxml.etree._Element,
+    attr:str,
+    fn:Callable[[str], Any]=str,
+)->None:
+  """Sets rec[attr] = fn(xml.attrib[attr]) safely.
+
+  If xml does not have attr, rec[attr] = None
+
+  Args:
+    rec: Record to set
+    xml: Xml element with attributes we want to select
+    attr: Name of xml attribute
+    fn: Conversion from string. Defaults to str.
+  """
+  if attr in xml.attrib:
+    rec[attr] = fn(xml.attrib[attr])
+  else:
+    rec[attr] = None
+
+def _parse_semrep_xml_entity(xml_entity:lxml.etree._Element)->Record:
+  "Collects attributes from SemRep Entities"
+  res = {}
+  _set_or_none(res, xml_entity, "id", _semrep_id_to_agatha_sentence_id)
+  _set_or_none(res, xml_entity, "cui", str)
+  _set_or_none(res, xml_entity, "name", str)
+  _set_or_none(res, xml_entity, "score", int)
+  _set_or_none(res, xml_entity, "negated", _str_to_bool)
+  _set_or_none(res, xml_entity, "begin", int)
+  _set_or_none(res, xml_entity, "end", int)
+  return res
+
+def _parse_semrep_xml_predication(
+    xml_predication:lxml.etree._Element,
+    semrepid2entity:Dict[str, Record],
+)->Record:
+  """Parses a predication object, and dereferences entity ids.
+
+  Example:
+  ```
+  <Predication id="Ds:123:1:2.P1" negated="true" inferred="false">
+   <Subject maxDist="5" dist="1" entityID="Ds:123:1:2.E5" relSemType="topp" />
+   <Predicate type="USES" indicatorType="PREP" begin="93" end="96" />
+   <Object maxDist="3" dist="1" entityID="Ds:123:1:2.E4" relSemType="aapp" />
+  </Predication>
+  ```
+
+  Becomes:
+  ```
+  {
+    "id": s:123:1:2,
+    "negated"=True,
+    "inferred"=False,
+    "subject": {
+      "cui": "C0199176",
+      "name": "Prophylactic treatment",
+      "semtypes": "topp",
+      "text": "prevention",
+      "score": 1000,
+      "negated": False,
+      "begin": 101,
+      "end": 111,
+    }
+    "predicate": {
+      "type": "USES",
+      "indicatorType": "PREP",
+      "begin": 93,
+      "end": 96,
+    }
+    "object": {
+      ...
+    }
+  }
+  ```
+  """
+  xml_subject = xml_predication.find("Subject")
+  xml_pred = xml_predication.find("Predicate")
+  xml_object = xml_predication.find("Object")
+  assert xml_subject is not None, "Predication missing Subject"
+  assert xml_pred is not None, "Predication missing Predicate"
+  assert xml_object is not None, "Predication missing Object"
+
+  def prep_entity(xml_entity):
+    assert xml_entity.attrib["entityID"] in semrepid2entity, \
+      f"Predicate references unknown entity: {xml_entity.attrib['entityID']}"
+    ent =  deepcopy(semrepid2entity[xml_entity.attrib["entityID"]])
+    _set_or_none(ent, xml_entity, "maxDist", int)
+    _set_or_none(ent, xml_entity, "dist", int)
+    _set_or_none(ent, xml_entity, "relSemType")
+    return ent
+
+  pred = {}
+  _set_or_none(pred, xml_pred, "type")
+  _set_or_none(pred, xml_pred, "indicatorType")
+  _set_or_none(pred, xml_pred, "begin", int)
+  _set_or_none(pred, xml_pred, "end", int)
+
+  res = {}
+  _set_or_none(res, xml_predication, "negated", _str_to_bool)
+  _set_or_none(res, xml_predication, "inferred", _str_to_bool)
+  res["subject"] = prep_entity(xml_subject)
+  res["predicate"] = pred
+  res["object"] = prep_entity(xml_object)
+  return res
+
+
+def semrep_xml_to_records(xml_path:Path)->List[Record]:
+  """Parses SemRep XML records to produce Predicate Records
+
+  This parses SemRep XML output, generated by SemRep v1.8 via the
+  `--xml_output_format` flag. Take a look [here][1] to get more details on the
+  XML spec. Additional details below. We specifically focus on parsing XML
+  records produced by the SemRepRunner.
+
+  XML Format Summary: The XML file starts with an overarching SemRepAnnotation
+  object, containing multiple `Document` records, one per input text. These
+  documents contain identified UMLS terms (`Document > Utterance > Entity`) and
+  predicates (`Document > Utterance > Predication`). One document may have
+  multiple utterances.
+
+  Args:
+    xml_path: Location of XML file to parse.
+
+  Returns:
+    A list of python dicts wherein each corresponds to a detected predicate.
+
+  [1]:https://semrep.nlm.nih.gov/SemRep.v1.8_XML_output_desc.html
+
+  """
+  res = []
+  xml_path = Path(xml_path)
+  assert xml_path.is_file(), f"Failed to find semrep_xml file: {xml_path}"
+  with open(xml_path, 'rb') as xml_file:
+    # For each document. One document corresponds to one sentence
+    for _, xml_doc in lxml.etree.iterparse(xml_file, tag="Document"):
+
+      # document data
+      semrepid2entity = {}
+      predicates = []
+
+      # For each sentence, typically there will only be one, unless the SemRep
+      # sentence splitter makes a different decision than us
+      xml_uttrs = xml_doc.findall("Utterance")
+      if xml_uttrs is not None:
+        for xml_uttr in xml_uttrs:
+
+          # Collect the mentioned UMLS terms
+          xml_ents = xml_uttr.findall("Entity")
+          if xml_ents is not None:
+            for xml_ent in xml_ents:
+              semrepid2entity[xml_ent.attrib["id"]] = \
+                  _parse_semrep_xml_entity(xml_ent)
+
+          # Collect the identified predicates
+          xml_preds = xml_uttr.findall("Predication")
+          if xml_preds is not None:
+            for xml_predication in xml_preds:
+              predicates.append(
+                  _parse_semrep_xml_predication(
+                    xml_predication,
+                    semrepid2entity
+              ))
+      res.append({
+        "id": _semrep_id_to_agatha_sentence_id(xml_doc.attrib["id"]),
+        "entities": list(semrepid2entity.keys()),
+        "predicates": predicates
+      })
   return res

@@ -2,6 +2,9 @@ from agatha.construct import semrep_util
 from pathlib import Path
 import pytest
 import lxml
+import dask.bag as dbag
+import agatha.construct.dask_process_global as dpg
+
 
 # If SemRep isn't present, don't bother with these tests
 SEMREP_INSTALL_DIR = Path("externals/semrep/2020/public_semrep")
@@ -11,6 +14,13 @@ TEST_COVID_DATA_PATH = Path("test_data/semrep_covid_input.txt")
 TEST_COVID_XML_PATH = Path("test_data/semrep_covid.xml")
 
 RUN_SEMREP_TESTS = SEMREP_INSTALL_DIR.is_dir() and METAMAP_INSTALL_DIR.is_dir()
+
+if RUN_SEMREP_TESTS:
+  print("STARTING METAMAP SERVER")
+  # The metamap server takes about 30 seconds to initialize, so we'll just do
+  # that once.
+  metamap_server = semrep_util.MetaMapServer(METAMAP_INSTALL_DIR)
+  metamap_server.start()
 
 def test_get_all_paths():
   "Tests that getting semrep paths gets all needed paths"
@@ -64,12 +74,7 @@ def test_get_semrep_paths_fails():
 def test_metamap_server():
   "Tests that we can actually run metamap"
   if RUN_SEMREP_TESTS:
-    metamap_server = semrep_util.MetaMapServer(METAMAP_INSTALL_DIR)
-    assert not metamap_server.running()
-    metamap_server.start()
     assert metamap_server.running()
-    metamap_server.stop()
-    assert not metamap_server.running()
 
 def test_another_metamap_server():
   """
@@ -77,12 +82,9 @@ def test_another_metamap_server():
   released ports.
   """
   if RUN_SEMREP_TESTS:
+    # A 2'nd metamap server object should NOT start a 2nd metamap server
     metamap_server = semrep_util.MetaMapServer(METAMAP_INSTALL_DIR)
-    assert not metamap_server.running()
-    metamap_server.start()
     assert metamap_server.running()
-    metamap_server.stop()
-    assert not metamap_server.running()
 
 def test_run_semrep():
   if RUN_SEMREP_TESTS:
@@ -103,7 +105,7 @@ def test_run_semrep_covid():
   if RUN_SEMREP_TESTS:
     runner = semrep_util.SemRepRunner(
         semrep_install_dir=SEMREP_INSTALL_DIR,
-        metamap_server=semrep_util.MetaMapServer(METAMAP_INSTALL_DIR),
+        metamap_server=metamap_server,
         lexicon_year=2020,
         mm_data_year="2020AA",
     )
@@ -289,7 +291,7 @@ def test_parse_semrep_end_to_end():
 
     runner = semrep_util.SemRepRunner(
         semrep_install_dir=SEMREP_INSTALL_DIR,
-        metamap_server=semrep_util.MetaMapServer(METAMAP_INSTALL_DIR),
+        metamap_server=metamap_server,
         lexicon_year=2020,
         mm_data_year="2020AA",
     )
@@ -299,3 +301,34 @@ def test_parse_semrep_end_to_end():
     # should return one per document
     records = semrep_util.semrep_xml_to_records(tmp_semrep_output)
     assert len(records) == 2
+
+def test_extract_entitites_and_predicates_with_dask():
+  if RUN_SEMREP_TESTS:
+    records = dbag.from_sequence([
+        {
+          "id": "s:1234:1:2",
+          "sent_text": "Tobacco causes cancer in mice."
+        },
+        {
+          "id": "s:2345:1:2",
+          "sent_text": "Tobacco causes cancer in humans."
+        },
+    ], npartitions=1)
+    work_dir = Path("/tmp/test_extract_entitites_and_predicates_with_dask")
+    work_dir.mkdir(exist_ok=True, parents=True)
+    # Configure Metamap Server through DPG
+    preloader = dpg.WorkerPreloader()
+    preloader.register(*semrep_util.get_metamap_server_initializer(
+      metamap_install_dir=METAMAP_INSTALL_DIR,
+    ))
+    dpg.add_global_preloader(preloader=preloader)
+
+    actual = semrep_util.extract_entities_and_predicates_from_sentences(
+        sentence_records=records,
+        semrep_install_dir=SEMREP_INSTALL_DIR,
+        work_dir=work_dir,
+        lexicon_year=2020,
+        mm_data_year="2020AA",
+    ).compute()
+    assert len(actual) == 2
+

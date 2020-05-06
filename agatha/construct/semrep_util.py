@@ -15,7 +15,6 @@ servers are started we are free to run `semrep`.
 import agatha.construct.dask_process_global as dpg
 from agatha.construct import text_util
 from agatha.util.misc_util import Record
-from multiprocessing import Process
 import os
 from pathlib import Path
 import subprocess
@@ -27,6 +26,8 @@ import re
 from copy import deepcopy
 import dask
 import dask.bag as dbag
+import socket
+import time
 
 def get_paths(
     semrep_install_dir:Path=None,
@@ -125,41 +126,44 @@ class MetaMapServer():
   """
   def __init__(self, metamap_install_dir:Path):
     # Get paths to pos and wsd servers
-    self.pos_server_proc = None
-    self.wsd_server_proc = None
     paths = get_paths(metamap_install_dir=metamap_install_dir)
     self.metamap_pos_server_path = paths["metamap_pos_server_path"]
     self.metamap_wsd_server_path = paths["metamap_wsd_server_path"]
+    self.wsd_server_port = 5554
+    self.pos_server_port = 1795
+
+  def _is_port_open(self, port:int):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    val = sock.connect_ex(("localhost", port)) == 0
+    sock.close()
+    return val
+
+  def running(self):
+    return (
+        self._is_port_open(self.wsd_server_port)
+        and self._is_port_open(self.pos_server_port)
+    )
+
+  def _wait_until_running(self, interval:int=2):
+    while not self.running():
+      time.sleep(interval)
 
   def __del__(self):
     self.stop()
 
   def start(self):
     "Call to start the MetaMap servers, if not already running."
-    if not self.running():
-      self.pos_server_proc = Process(
-          target=self.metamap_pos_server_path,
-          args=["start"]
-      )
-      self.wsd_server_proc = Process(
-          target=self.metamap_wsd_server_path,
-          args=["start"]
-      )
-      self.pos_server_proc.start()
-      self.wsd_server_proc.start()
+    if not self._is_port_open(self.pos_server_port):
+      subprocess.Popen([str(self.metamap_pos_server_path), "start"])
+    if not self._is_port_open(self.wsd_server_port):
+      subprocess.Popen([str(self.metamap_wsd_server_path), "start"])
+    self._wait_until_running()
 
   def stop(self):
     "Stops the MetaMap servers, if running"
-    if self.pos_server_proc is not None:
-      self.pos_server_proc.kill()
-      self.pos_server_proc = None
-    if self.wsd_server_proc is not None:
-      self.wsd_server_proc.kill()
-      self.wsd_server_proc = None
-
-  def running(self):
-    "Returns True if `start` was called"
-    return self.pos_server_proc is not None and self.wsd_server_proc is not None
+    if self.running():
+      subprocess.Popen([str(self.metamap_pos_server_path), "stop"])
+      subprocess.Popen([str(self.metamap_wsd_server_path), "stop"])
 
 
 class SemRepRunner():
@@ -225,7 +229,7 @@ class SemRepRunner():
     "Adds the necessary semrep_lib_dir to LD_LIBRARY_PATH"
     env = os.environ.copy()
     if "LD_LIBRARY_PATH" in env:
-      env["LD_LIBRARY_PATH"] += f":{self.semrep_lib_dir}"
+      env["LD_LIBRARY_PATH"] += f":{self.semrep_lib_dir.absolute()}"
     else:
       env["LD_LIBRARY_PATH"] = str(self.semrep_lib_dir)
     return env
@@ -275,9 +279,13 @@ class SemRepRunner():
     input_path = Path(input_path)
     assert input_path.is_file(), f"Failed to find {input_path}"
     assert not output_path.exists(), f"Refusing to overwrite {output_path}"
+    cmd = self._get_flags(input_path, output_path)
+    env = self._get_env()
+    print("Running:", cmd)
+    print("LD_LIBRARY_PATH:", env["LD_LIBRARY_PATH"])
     subprocess.run(
-        self._get_flags(input_path, output_path),
-        env=self._get_env()
+        cmd,
+        env=env,
     )
     assert output_path.is_file(), f"SemRep Failed to produce {output_path}"
 
@@ -546,34 +554,34 @@ def get_metamap_server_initializer(
 def _sentence_partition_to_records(
     records:List[Record],
     input_path:Path,
-    output_Path,
+    output_path:Path,
     semrep_install_dir:Path,
     lexicon_year:int,
     mm_data_year:str,
 )->List[Record]:
   input_path = Path(input_path)
-  ouput_path = Path(ouput_path)
+  output_path = Path(output_path)
   # Convert Sentences for SemRep Input
   if not input_path.is_file():
     with open(input_path, 'w') as input_file:
       for line in sentences_to_semrep_input(records):
         input_file.write(f"{line}\n")
   # Process text with SemRep
-  if not ouput_path.is_file():
+  if not output_path.is_file():
     SemRepRunner(
         semrep_install_dir=semrep_install_dir,
         metamap_server=dpg.get("semrep:metamap_server"),
         lexicon_year=lexicon_year,
         mm_data_year=mm_data_year,
-    ).run(input_path, ouput_path)
+    ).run(input_path, output_path)
   # Return python records
-  return semrep_xml_to_records(ouput_path)
+  return semrep_xml_to_records(output_path)
 
 
 def extract_entities_and_predicates_from_sentences(
     sentence_records:dbag.Bag,
     semrep_install_dir:Path,
-    workdir:Path,
+    work_dir:Path,
     lexicon_year:int,
     mm_data_year:str,
 )->dbag.Bag:
@@ -583,7 +591,7 @@ def extract_entities_and_predicates_from_sentences(
 
   Args:
     sentence_records: Each record needs `id` and `sent_text`.
-    workdir: A directory visible to all workers where SemRep intermediate files
+    work_dir: A directory visible to all workers where SemRep intermediate files
       will be stored.
     semrep_install_dir: The path where semrep was installed.
 
@@ -594,14 +602,14 @@ def extract_entities_and_predicates_from_sentences(
   """
 
   work_dir = Path(work_dir)
-  assert work_dir.is_dir(), f"Failed to find shared workdir: {workdir}"
-  semrep_input_dir = workdir.joinpath("input_files")
-  semrep_output_dir = workdir.joinpath("output_files")
+  assert work_dir.is_dir(), f"Failed to find shared work_dir: {work_dir}"
+  semrep_input_dir = work_dir.joinpath("input_files")
+  semrep_output_dir = work_dir.joinpath("output_files")
   semrep_input_dir.mkdir(exist_ok=True, parents=True)
   semrep_output_dir.mkdir(exist_ok=True, parents=True)
 
   semrep_tasks = []
-  for part_idx, partition in sentences.to_delayed():
+  for part_idx, partition in enumerate(sentence_records.to_delayed()):
     semrep_input_path = semrep_input_dir.joinpath(f"input_{part_idx}.txt")
     semrep_output_path = semrep_output_dir.joinpath(f"ouput_{part_idx}.xml")
     semrep_tasks.append(dask.delayed(_sentence_partition_to_records)(

@@ -187,7 +187,7 @@ def perform_document_independent_tasks(
         semrep_util.extract_entities_and_predicates_from_sentences(
             sentence_records=sentences,
             semrep_install_dir=config.semrep.semrep_install_dir,
-            workdir=prefixed_semrep_work_dir,
+            work_dir=prefixed_semrep_work_dir,
             lexicon_year=config.semrep.lexicon_year,
             mm_data_year=config.semrep.mm_data_year,
         )

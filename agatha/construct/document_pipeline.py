@@ -15,6 +15,7 @@ from agatha.construct.document_parsers import (
 )
 from agatha.util import misc_util
 from pathlib import Path
+from typing import Optional
 
 def get_medline_documents(
     config:cpb.ConstructConfig,
@@ -213,6 +214,7 @@ def perform_document_independent_tasks(
   if (
       config.semrep.HasField("semrep_install_dir")
       and config.semrep.HasField("metamap_install_dir")
+      and semrep_work_dir is not None
   ):
     prefixed_semrep_work_dir = semrep_work_dir.joinpath(ckpt_prefix)
     semrep_sentences = \

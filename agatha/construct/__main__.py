@@ -111,8 +111,8 @@ def setup_cluster(config:cpb.ConstructConfig, faiss_index_path:Path)->None:
       and config.semrep.HasField("metamap_install_dir")
   ):
     preloader.register(*semrep_util.get_metamap_server_initializer(
-      metamap_install_dir=config.semrep_util.metamap_install_dir
-    )
+      metamap_install_dir=config.semrep.metamap_install_dir
+    ))
   dpg.add_global_preloader(client=dask_client, preloader=preloader)
 
 def setup_checkpoints(config:cpb.ConstructConfig)->None:

@@ -25,6 +25,8 @@ import lxml.etree
 from agatha.util.entity_types import SENTENCE_TYPE
 import re
 from copy import deepcopy
+import dask
+import dask.bag as dbag
 
 def get_paths(
     semrep_install_dir:Path=None,
@@ -109,10 +111,6 @@ def get_paths(
     res["semrep_bin_path"] = semrep_bin_path
   return res
 
-################################################################################
-# Per-Node Server ##############################################################
-################################################################################
-
 class MetaMapServer():
   """Manages connection to MetaMap
 
@@ -163,12 +161,6 @@ class MetaMapServer():
     "Returns True if `start` was called"
     return self.pos_server_proc is not None and self.wsd_server_proc is not None
 
-def get_metamap_server_initializer(
-    metamap_install_dir:Path,
-)->Tuple[str, dpg.Initializer]:
-  def _init():
-    return MetaMapServer(metamap_install_dir)
-  return f"semrep:metamap_server", _init
 
 class SemRepRunner():
   """Responsible for running SemRep.
@@ -294,7 +286,7 @@ class SemRepRunner():
 # Dask Utility Functions #######################################################
 ################################################################################
 
-def sentence_to_semrep_input(records:Iterable[Record])->List[str]:
+def sentences_to_semrep_input(records:Iterable[Record])->List[str]:
   """Processes Sentence Records for SemRep Input
 
   The SemRepRunner, with the default single_line_delim_input_w_id flag set,
@@ -313,7 +305,7 @@ def sentence_to_semrep_input(records:Iterable[Record])->List[str]:
   Recommend Usage:
 
   ```python3
-  sentences.map_partitions(sentence_to_semrep_input).to_textfiles(...)
+  sentences.map_partitions(sentences_to_semrep_input).to_textfiles(...)
   ```
 
   Args:
@@ -337,7 +329,7 @@ def sentence_to_semrep_input(records:Iterable[Record])->List[str]:
 def _semrep_id_to_agatha_sentence_id(semrep_id:str)->str:
   """Cleans the SemRep ID for Agatha
 
-  When running SemRep following `sentence_to_semrep_input`, the `id` attribute
+  When running SemRep following `sentences_to_semrep_input`, the `id` attribute
   of each xml element will help cross-reference the XML results to the rest of
   the data for each sentence. However, SemRep will pre-pend a 'D'. For entities
   and predicates, a suffix of `.E#` or `.P#` will also be added. Utterances
@@ -538,3 +530,86 @@ def semrep_xml_to_records(xml_path:Path)->List[Record]:
         "predicates": predicates
       })
   return res
+
+################################################################################
+# Dask Function ################################################################
+################################################################################
+
+# Used to launch metamap once per machine
+def get_metamap_server_initializer(
+    metamap_install_dir:Path,
+)->Tuple[str, dpg.Initializer]:
+  def _init():
+    return MetaMapServer(metamap_install_dir)
+  return f"semrep:metamap_server", _init
+
+def _sentence_partition_to_records(
+    records:List[Record],
+    input_path:Path,
+    output_Path,
+    semrep_install_dir:Path,
+    lexicon_year:int,
+    mm_data_year:str,
+)->List[Record]:
+  input_path = Path(input_path)
+  ouput_path = Path(ouput_path)
+  # Convert Sentences for SemRep Input
+  if not input_path.is_file():
+    with open(input_path, 'w') as input_file:
+      for line in sentences_to_semrep_input(records):
+        input_file.write(f"{line}\n")
+  # Process text with SemRep
+  if not ouput_path.is_file():
+    SemRepRunner(
+        semrep_install_dir=semrep_install_dir,
+        metamap_server=dpg.get("semrep:metamap_server"),
+        lexicon_year=lexicon_year,
+        mm_data_year=mm_data_year,
+    ).run(input_path, ouput_path)
+  # Return python records
+  return semrep_xml_to_records(ouput_path)
+
+
+def extract_entities_and_predicates_from_sentences(
+    sentence_records:dbag.Bag,
+    semrep_install_dir:Path,
+    workdir:Path,
+    lexicon_year:int,
+    mm_data_year:str,
+)->dbag.Bag:
+  """Runs each sentence through SemRep. Identifies Predicates and Entities
+
+  Requires get_metamap_server_initializer added to dask_process_global.
+
+  Args:
+    sentence_records: Each record needs `id` and `sent_text`.
+    workdir: A directory visible to all workers where SemRep intermediate files
+      will be stored.
+    semrep_install_dir: The path where semrep was installed.
+
+  Returns:
+    One record per input sentence, where `id` of the new record matches the
+    input. However, returned records will only have `entites` and `predicates`
+
+  """
+
+  work_dir = Path(work_dir)
+  assert work_dir.is_dir(), f"Failed to find shared workdir: {workdir}"
+  semrep_input_dir = workdir.joinpath("input_files")
+  semrep_output_dir = workdir.joinpath("output_files")
+  semrep_input_dir.mkdir(exist_ok=True, parents=True)
+  semrep_output_dir.mkdir(exist_ok=True, parents=True)
+
+  semrep_tasks = []
+  for part_idx, partition in sentences.to_delayed():
+    semrep_input_path = semrep_input_dir.joinpath(f"input_{part_idx}.txt")
+    semrep_output_path = semrep_output_dir.joinpath(f"ouput_{part_idx}.xml")
+    semrep_tasks.append(dask.delayed(_sentence_partition_to_records)(
+        records=partition,
+        input_path=semrep_input_path,
+        output_path=semrep_output_path,
+        semrep_install_dir=semrep_install_dir,
+        lexicon_year=lexicon_year,
+        mm_data_year=mm_data_year,
+    ))
+  return dbag.from_delayed(semrep_tasks)

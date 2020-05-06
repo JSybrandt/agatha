@@ -121,7 +121,7 @@ def test_sentence_to_semrep_input():
       dict(id=2, sent_text="Sentence 2"),
   ]
 
-  actual = semrep_util.sentence_to_semrep_input(sentences)
+  actual = semrep_util.sentences_to_semrep_input(sentences)
   expected = ["1|Sentence 1", "2|Sentence 2"]
   assert actual == expected
 
@@ -132,7 +132,7 @@ def test_sentence_to_semrep_input_filter_newline():
       dict(id=2, sent_text="Sentence\n2"),
   ]
 
-  actual = semrep_util.sentence_to_semrep_input(sentences)
+  actual = semrep_util.sentences_to_semrep_input(sentences)
   expected = ["1|Sentence 1", "2|Sentence 2"]
   assert actual == expected
 
@@ -284,7 +284,7 @@ def test_parse_semrep_end_to_end():
       tmp_semrep_output.unlink()
 
     with open(tmp_semrep_input, 'w') as semrep_input_file:
-      for line in semrep_util.sentence_to_semrep_input(records):
+      for line in semrep_util.sentences_to_semrep_input(records):
         semrep_input_file.write(f"{line}\n")
 
     runner = semrep_util.SemRepRunner(

@@ -486,6 +486,28 @@ import torch
 model = torch.load(...)
 ```
 
+## Running your new model.
+
+Now that you have a model that you can load (either through
+`load_from_checkpoint` or `torch.load`, you can run some examples to ensure that
+everything has been configured properly. The simplest way to do this is to run a
+little script like this in your python terminal:
+
+```python3
+from agatha.ml.hypothesis_predictor import HypothesisPredictor
+model = HypothesisPredictor.load_from_checkpoint("...")
+# - OR -
+import torch
+torch.load("...")
+
+# C0006826 is the term for Tobacco
+# C0040329 is the term for Cancer
+print(model.predict_from_terms([("C0006826", "C0040329")]))
+```
+
+If this outputs something like `[0.9]` (or any other float, if your model hasn't
+really been trained), then you're good!
+
 [1]:https://pytorch.org/
 [2]:https://github.com/PytorchLightning/pytorch-lightning
 [3]:https://pytorch.org/docs/stable/nn.html#torch.nn.MarginRankingLoss

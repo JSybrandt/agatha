@@ -287,6 +287,35 @@ the model.
   `weights_save_path/checkpoints/version_X/`. Recommended that this is set to
   the same value as `default_root_dir`.
 
+## Subset Data with Percent Check Flags
+
+In the list of model flags are two that deserve more explanation:
+`train_percent_check`, and `val_percent_check`. When debugging the model
+training process to ensure everything has been setup correctly, it is worthwhile
+to run the training routine through a couple of epochs quickly. This will ensure
+that the model output checkpoints are created properly. To do so, set
+`train_percent_check` and `val_percent_check` to a very small value, such as
+`0.0001`. Preferably, this will be small enough to complete an epoch in a couple
+of minutes. Warning, you set this value too low, you will filter out _all_ of
+the training data and will create problems.
+
+When you _actually_ want to train the model, you still might want a modest
+`train_percent_check` and `val_percent_check`. For instance, if the estimated
+time per epoch is greater than a couple of hours, you might want more frequent
+check pointing. What we want to avoid is the amount of training time that is
+lost when an unpredictable system failure causes an outage 40 hours into
+training, and we haven't created our first checkpoint yet. If this were to
+happen, we would simply lose all of the progress we had made for nearly two days
+worth of computational effort.
+
+Therefore, I recommend setting these values to something that reduces the time
+per epoch to the single-digit hours. Keep in mind that when you reduce the
+training set, and especially when you reduce the validation set, you should
+expect poorer convergence in the final model. Therefore, if at all possible, it
+is recommend that you increase the number of training processes by adding more
+distributed workers. Once you have as many machines as you can afford, then tune
+this parameter.
+
 ## Running Distributed Training
 
 In order to preform distributed training, you will need to ensure that your

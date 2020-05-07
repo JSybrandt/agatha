@@ -254,11 +254,16 @@ class SemRepRunner():
 
   def _get_env(self)->Dict[str,str]:
     "Adds the necessary semrep_lib_dir to LD_LIBRARY_PATH"
+    lib_dirs = [
+        self.semrep_lib_dir,
+        self.semrep_bin_path.parent,
+    ]
+    lib_str = ":".join([str(p.absolute()) for p in lib_dirs])
     env = os.environ.copy()
     if "LD_LIBRARY_PATH" in env:
-      env["LD_LIBRARY_PATH"] += f":{self.semrep_lib_dir.absolute()}"
+      env["LD_LIBRARY_PATH"] += f":{lib_str}"
     else:
-      env["LD_LIBRARY_PATH"] = str(self.semrep_lib_dir)
+      env["LD_LIBRARY_PATH"] = libstr
     return env
 
   def _get_flags(self, input_path:Path, output_path:Path)->List[str]:

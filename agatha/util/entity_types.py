@@ -1,3 +1,5 @@
+from functools import partial
+
 DATA_BANK_TYPE="d"
 ENTITY_TYPE="e"
 GENE_TYPE="a"
@@ -19,6 +21,35 @@ ALL_KEYS = set([
   SENTENCE_TYPE,
   UMLS_TERM_TYPE,
 ])
+
+# All keys must be one character long
+assert all(map(lambda k: len(k)==1, ALL_KEYS)), "INVALID TYPE KEY"
+
+def is_type(type_key:str, name:str)->bool:
+  """True if name is an appropriately formatted key of the specified type.
+
+  Names should be in the form "{type_key}:{name}"
+
+  Args:
+    name: Unsure name we're querying
+    type_key: Single character type, such as one of the strings in this module.
+
+  """
+  assert type_key in ALL_KEYS, \
+      f"type_key ({type_key}) must be one of: {ALL_KEYS}"
+  return len(name) > 2 and name[0] == type_key and name[1] == ":"
+
+# Define type-specific functions
+is_data_bank_type = partial(is_type, DATA_BANK_TYPE)
+is_entity_type = partial(is_type, ENTITY_TYPE)
+is_gene_type = partial(is_type, GENE_TYPE)
+is_lemma_type = partial(is_type, LEMMA_TYPE)
+is_mesh_term_type = partial(is_type, MESH_TERM_TYPE)
+is_ngram_type = partial(is_type, NGRAM_TYPE)
+is_predicate_type = partial(is_type, PREDICATE_TYPE)
+is_sentence_type = partial(is_type, SENTENCE_TYPE)
+is_umls_term_type = partial(is_type, UMLS_TERM_TYPE)
+
 
 def is_graph_key(name:str)->bool:
   if name != name.lower():

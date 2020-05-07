@@ -2,7 +2,12 @@ from agatha.ml.util.embedding_lookup import EmbeddingLookupTable
 from agatha.util.sqlite3_lookup import Sqlite3LookupTable
 import numpy as np
 from typing import List, Tuple, Set
-from agatha.util.entity_types import PREDICATE_TYPE, UMLS_TERM_TYPE
+from agatha.util.entity_types import (
+    PREDICATE_TYPE,
+    UMLS_TERM_TYPE,
+    is_predicate_type,
+    is_umls_term_type,
+)
 import random
 import torch
 from dataclasses import dataclass
@@ -21,7 +26,7 @@ def clean_coded_term(term:str)->str:
   If term is not formatted as an agatha coded term key, produces a coded term
   key. Otherwise, just returns the term.
   """
-  if term[0] == UMLS_TERM_TYPE and term[1] == ":":
+  if is_umls_term_type:
     return term.lower()
   else:
     return f"{UMLS_TERM_TYPE}:{term}".lower()
@@ -42,6 +47,8 @@ def parse_predicate_name(predicate_name:str)->Tuple[str, str]:
     The subject and object formulated as coded-term names.
 
   """
+  assert is_predicate_type(predicate_name), \
+      f"Not a predicate name: {predicate_name}"
   typ, sub, vrb, obj = predicate_name.lower().split(":")
   assert typ == PREDICATE_TYPE
   return clean_coded_term(sub), clean_coded_term(obj)
@@ -79,11 +86,10 @@ def to_predicate_name(
     be set to "UNKNOWN"
 
   """
-  def assert_coded_term(t):
-    assert t[0]== UMLS_TERM_TYPE, f"{t} is not a coded term"
-    assert t[1]== ":", f"{t} is not a properly formatted name"
-  assert_coded_term(subj)
-  assert_coded_term(obj)
+  assert is_umls_term_type(subj), \
+    f"Called to_predicate_name with bad subject: {subj})"
+  assert is_umls_term_type(obj), \
+    f"Called to_predicate_name with bad object: {obj})"
   assert ":" not in verb, "Verb cannot contain colon character"
   subj = subj[2:]
   obj = obj[2:]
@@ -120,8 +126,8 @@ class PredicateObservationGenerator():
   )->Tuple[List[str], List[str]]:
     assert subj in self.graph, f"Failed to find {subj} in graph."
     assert obj in self.graph, f"Failed to find {obj} in graph."
-    s = set(filter(lambda k: k[0]==PREDICATE_TYPE, self.graph[subj]))
-    o = set(filter(lambda k: k[0]==PREDICATE_TYPE, self.graph[obj]))
+    s = set(filter(is_predicate_type, self.graph[subj]))
+    o = set(filter(is_predicate_type, self.graph[obj]))
     s, o = (s-o, o-s)
     return self._sample_neighborhood(s), self._sample_neighborhood(o)
 

@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 from argparse import Namespace, ArgumentParser
 from agatha.ml.util.lamb_optimizer import Lamb
 from typing import List, Tuple, Dict, Any, Optional
-from agatha.util.entity_types import UMLS_TERM_TYPE, PREDICATE_TYPE
+from agatha.util.entity_types import is_umls_term_type, is_predicate_type
 from agatha.util.sqlite3_lookup import Sqlite3Graph
 from agatha.ml.util.embedding_lookup import EmbeddingLookupTable
 from agatha.util.misc_util import iter_to_batches
@@ -201,14 +201,8 @@ class HypothesisPredictor(pl.LightningModule):
         "Must call configure_paths before prepare_for_training"
     entities = self.embeddings.keys()
     assert len(entities) > 0, "Failed to find embedding entities."
-    self.coded_terms = list(filter(
-      lambda k: k[0] == UMLS_TERM_TYPE,
-      entities
-    ))
-    self.predicates = list(filter(
-      lambda k: k[0] == PREDICATE_TYPE,
-      entities
-    ))
+    self.coded_terms = list(filter(is_umls_term_type, entities))
+    self.predicates = list(filter(is_predicate_type, entities))
     self._vprint("Splitting train/validation")
     validation_size = int(
         len(self.predicates) * self.hparams.validation_fraction

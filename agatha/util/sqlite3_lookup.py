@@ -417,6 +417,7 @@ class Sqlite3Bow(Sqlite3LookupTable):
       table_name:str="sentences",
       key_column_name:str="id",
       value_column_name:str="bow",
+        **kwargs
   ):
     Sqlite3LookupTable.__init__(
         self,

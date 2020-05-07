@@ -57,6 +57,7 @@ python3 -m agatha.ml.hypothesis_predictor                                     \
   --warmup-steps 100                                                          \
   --weight-decay 0.01                                                         \
   --weights_save_path $MODEL_DIR                                              \
+  --disable-cache \
   $VERBOSE_FLAG
 """
 

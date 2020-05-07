@@ -31,7 +31,7 @@ class EmbeddingLookupTable():
     entity_db = Path(entity_db)
     assert embedding_dir.is_dir(), "Failed to find embedding_dir"
     assert entity_db.is_file(), "Failed to find entities"
-    self.entities = Sqlite3LookupTable(entity_db)
+    self.entities = Sqlite3LookupTable(entity_db, disable_cache=disable_cache)
     self._type_part2path = {
         parse_embedding_path(embedding_path): embedding_path
         for embedding_path

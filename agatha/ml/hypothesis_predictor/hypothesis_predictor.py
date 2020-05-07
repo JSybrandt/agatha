@@ -27,6 +27,7 @@ class HypothesisPredictor(pl.LightningModule):
           graph_db=hparams.graph_db,
           entity_db=hparams.entity_db,
           embedding_dir=hparams.embedding_dir,
+          disable_cache=hparams.disable_cache,
       )
     else: # Otherwise, the user will need to call configure_paths themselves
       self.graph = None
@@ -80,6 +81,7 @@ class HypothesisPredictor(pl.LightningModule):
       graph_db:Path,
       entity_db:Path,
       embedding_dir:Path,
+      disable_cache:bool=False
   ):
     graph_db = Path(graph_db)
     entity_db = Path(entity_db)
@@ -90,8 +92,12 @@ class HypothesisPredictor(pl.LightningModule):
     self.embeddings = EmbeddingLookupTable(
         embedding_dir=embedding_dir,
         entity_db=entity_db,
+        disable_cache=disable_cache,
     )
-    self.graph=Sqlite3Graph(graph_db)
+    self.graph=Sqlite3Graph(
+        graph_db,
+        disable_cache=disable_cache,
+    )
 
   def paths_set(self)->bool:
     return self.embeddings is not None and self.graph is not None
@@ -437,6 +443,7 @@ class HypothesisPredictor(pl.LightningModule):
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--warmup-steps", type=int)
     parser.add_argument("--weight-decay", type=float)
+    parser.add_argument("--disable-cache", action="store_true")
     return parser
 
   def init_ddp_connection(

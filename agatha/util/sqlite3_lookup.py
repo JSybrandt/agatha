@@ -175,6 +175,7 @@ class Sqlite3LookupTable():
       Sqlite3LookupTable will depend on whether an index has been created on
       `key_column_name`.
     value_column_name: The json-encoded string column of `table_name`
+    disable_cache: If set, objects resulted from json parsing will not be cached
 
   """
   def __init__(
@@ -423,6 +424,7 @@ class Sqlite3Bow(Sqlite3LookupTable):
         table_name=table_name,
         key_column_name=key_column_name,
         value_column_name=value_column_name,
+        **kwargs
     )
 
 class Sqlite3Graph(Sqlite3LookupTable):
@@ -437,6 +439,7 @@ class Sqlite3Graph(Sqlite3LookupTable):
       table_name:str="graph",
       key_column_name:str="node",
       value_column_name:str="neighbors",
+      **kwargs
   ):
     Sqlite3LookupTable.__init__(
         self,
@@ -444,4 +447,5 @@ class Sqlite3Graph(Sqlite3LookupTable):
         table_name=table_name,
         key_column_name=key_column_name,
         value_column_name=value_column_name,
+        **kwargs
     )

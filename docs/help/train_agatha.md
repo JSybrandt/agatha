@@ -412,6 +412,51 @@ export MASTER_ADDR=$(head -1 $NODEFILE)
 export MASTER_PORT=12910
 ```
 
+# Loading the Trained Model
+
+Once you've completed a few epochs of training, you will hopefully a see a file
+appear in
+`{weights_save_path}/lightning_logs/version_{#}/checkpoints/epoch={#}.ckpt`
+
+If course, `weights_save_path` refers to whatever directory you listed in
+`--weights_save_path` in the training command-line arguments. The version number
+refers to the model version that pytorch-lightning deduces while training. Each
+time you run the training script with the same checkpoint directory, this number
+will increment. Then the epoch number will refer to whatever epoch this model
+last updated its checkpoint. Note here that the epoch number might be less than
+the number of epochs you've actually computed, because we will only update the
+checkpoint when the validation loss is improved.
+
+To load the checkpoint in python, use:
+
+```python3
+from agatha.ml.hypothesis_predictor import HypothesisPredictor
+model = HypothesisPredictor.load_from_checkpoint( ... )
+```
+
+When you want to give this model to someone else, you often don't want to give
+them the whole checkpoint. For this, you can use a simpler pytorch model format.
+The conversion is really simple:
+
+```python3
+checkpoint_path = ...
+output_path = ...
+import torch
+from agatha.ml.hypothesis_predictor import HypothesisPredictor
+
+# Load model from checkpoint
+model = HypothesisPredictor.load_from_checkpoint(checkpoint_path)
+# Save model in pytorch model format
+torch.save(model, output_path)
+```
+
+The reason to do this is so future users can load your model with:
+
+```python3
+import torch
+model = torch.load(...)
+```
+
 [1]:https://pytorch.org/
 [2]:https://github.com/PytorchLightning/pytorch-lightning
 [3]:https://pytorch.org/docs/stable/nn.html#torch.nn.MarginRankingLoss

@@ -26,7 +26,7 @@ def clean_coded_term(term:str)->str:
   If term is not formatted as an agatha coded term key, produces a coded term
   key. Otherwise, just returns the term.
   """
-  if is_umls_term_type:
+  if is_umls_term_type(term):
     return term.lower()
   else:
     return f"{UMLS_TERM_TYPE}:{term}".lower()

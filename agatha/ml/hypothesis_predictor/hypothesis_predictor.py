@@ -460,17 +460,21 @@ class HypothesisPredictor(pl.LightningModule):
         world_size: Number of GPUs being use across all nodes. (num_nodes * num_gpus).
         is_slurm_managing_tasks: is cluster managed by SLURM.
     """
-    if 'MASTER_ADDR' not in os.environ:
-      print("MASTER_ADDR environment variable is not defined. Set as localhost")
-      os.environ['MASTER_ADDR'] = '127.0.0.1'
 
-    if 'MASTER_PORT' not in os.environ:
-      print("MASTER_PORT environment variable is not defined. Set as 12910")
-      os.environ['MASTER_PORT'] = '12910'
+    if self.hparams.num_nodes <= 1:
+      print("Number of nodes set to 1. Ignoring environment variables.")
+      print("MASTER_ADDR = 127.0.0.1")
+      os.environ["MASTER_ADDR"] = '127.0.0.1'
+      print("MASTER_PORT = 12910")
+      os.environ["MASTER_PORT"] = '12910'
+    else:
+      if 'MASTER_ADDR' not in os.environ:
+        print("MASTER_ADDR environment variable missing. Set as localhost")
+        os.environ['MASTER_ADDR'] = '127.0.0.1'
 
-    if 'WORLD_SIZE' in os.environ and os.environ['WORLD_SIZE'] != world_size:
-      print("WORLD_SIZE environment variable is not equal to the computed "
-            "world size. Ignored.")
+      if 'MASTER_PORT' not in os.environ:
+        print("MASTER_PORT environment variable is not defined. Set as 12910")
+        os.environ['MASTER_PORT'] = '12910'
 
     # Reverting to GLOO until nccl upgrades in pytorch are complete
     #torch_backend = "nccl" if self.trainer.on_gpu else "gloo"
@@ -479,7 +483,7 @@ class HypothesisPredictor(pl.LightningModule):
     self._vprint(
         "Attempting connection:",
         torch_backend,
-        os.environ["MASTER_ADDR"], proc_rank
+        os.environ["MASTER_ADDR"], proc_rank, world_size
     )
     self._distributed = True
     torch.distributed.init_process_group(

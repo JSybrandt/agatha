@@ -23,6 +23,14 @@ Take a look at
 [scripts/train_2020.sh][https://github.com/JSybrandt/agatha/blob/master/scripts/train_2020.sh]
 for how to train the agatha model.
 
+If you are running the training process on one machine and only one gpu, you
+will want to remove the `distributed_backend` flag, and make sure `num_nodes` is
+set to one. If you are using multiple machines, or _multiple gpus on one
+machine_, then you will want to make sure that `distributed_backend="ddp"` and
+you should take a look at setting the distributed environment variables if you
+run into errors. In the multi-gpu one-machine case, these variables should be
+set automatically.
+
 
 ## Background
 
@@ -106,6 +114,10 @@ faster training times. However, note that if you install apex on a node that has
 one type of GPU, you will get an error if you try and train on another. This
 means that you **need** to install this dependency on a training node with the
 appropriate GPU.
+
+Warning: Apex is going to require a different version of GCC than we typically
+use. If you're on palmetto, you can run: `module rm gcc/8.1.0; module load
+gcc/6.3.0`
 
 To install apex, first select a location such as `~/software` to keep the files.
 Next, download apex with git `git clone https://github.com/NVIDIA/apex.git`.

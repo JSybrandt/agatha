@@ -28,6 +28,8 @@ import dask
 import dask.bag as dbag
 import socket
 import time
+from threading import Thread
+
 
 def get_paths(
     semrep_install_dir:Path=None,
@@ -174,20 +176,21 @@ class UnicodeToAsciiRunner():
   def __call__(self, text:List[str])->List[str]:
     assert self.unicode_to_ascii_jar_path.is_file(), \
         f"Cannot find unicode to ascii jar: {unicode_to_ascii_jar_path}"
-    u2i_proc = subprocess.Popen(
+    u2a_proc = subprocess.Popen(
         ["java", "-jar", str(self.unicode_to_ascii_jar_path)],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
     )
-    for t in text:
-      u2i_proc.stdin.write(f"{t}\n".encode('utf-8'))
-    u2i_proc.stdin.close()
-    res = []
-    for t in u2i_proc.stdout:
-      res.append(t.decode("ascii").strip())
-    u2i_proc.wait()
-    return res
 
+    # Concatinate input text, and write in utf-8
+    stdout, _ = u2a_proc.communicate("\n".join(text).encode('utf-8'))
+    # Read out ascii text and split back into sentences
+    return [
+        ascii_line
+        for ascii_line
+        in stdout.decode("ascii").split("\n")
+        if len(ascii_line) > 0
+    ]
 
 
 class SemRepRunner():

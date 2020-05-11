@@ -12,7 +12,6 @@ METAMAP_INSTALL_DIR = Path("externals/semrep/2020/public_mm")
 UNICODE_TO_ASCII_JAR_PATH = Path("externals/semrep/replace_utf8.jar")
 TEST_DATA_PATH = Path("test_data/semrep_input.txt")
 TEST_COVID_DATA_PATH = Path("test_data/semrep_covid_input.txt")
-TEST_SEMREP_SEGFAULT_PATH= Path("test_data/semrep_segfault_input.txt")
 TEST_COVID_XML_PATH = Path("test_data/semrep_covid.xml")
 
 RUN_SEMREP_TESTS = (
@@ -163,6 +162,19 @@ def test_sentence_to_semrep_input_filter_unicode():
   expected = ["1|Sentence alpha", "2|Sentence beta"]
   assert actual == expected
 
+def test_sentence_to_semrep_input_filter_single_quote():
+  # We can run this test if SemRep is not installed
+  sentences = [
+      dict(id=1, sent_text="Sentence α'"),
+      dict(id=2, sent_text="Sentence β'"),
+  ]
+  actual = semrep_util.sentences_to_semrep_input(
+      sentences,
+      UNICODE_TO_ASCII_JAR_PATH
+  )
+  expected = ["1|Sentence alpha", "2|Sentence beta"]
+  assert actual == expected
+
 def test_semrep_xml_to_records():
   "Ensures that parsing xml files happens without error"
   predicates = semrep_util.semrep_xml_to_records(TEST_COVID_XML_PATH)
@@ -305,6 +317,50 @@ def test_parse_semrep_end_to_end():
 
     tmp_semrep_input = Path("/tmp/test_parse_semrep_end_to_end_input")
     tmp_semrep_output = Path("/tmp/test_parse_semrep_end_to_end_output")
+    if tmp_semrep_input.is_file():
+      tmp_semrep_input.unlink()
+    if tmp_semrep_output.is_file():
+      tmp_semrep_output.unlink()
+
+    with open(tmp_semrep_input, 'w') as semrep_input_file:
+      for line in semrep_util.sentences_to_semrep_input(
+          records,
+          UNICODE_TO_ASCII_JAR_PATH
+      ):
+        semrep_input_file.write(f"{line}\n")
+
+    runner = semrep_util.SemRepRunner(
+        semrep_install_dir=SEMREP_INSTALL_DIR,
+        metamap_server=metamap_server,
+        lexicon_year=2020,
+        mm_data_year="2020AA",
+    )
+    runner.run(tmp_semrep_input, tmp_semrep_output)
+    assert tmp_semrep_output.is_file()
+
+    # should return one per document
+    records = semrep_util.semrep_xml_to_records(tmp_semrep_output)
+    assert len(records) == 2
+
+def test_parse_semrep_end_to_end_difficult():
+  # Run SemRep
+  if RUN_SEMREP_TESTS:
+    # These records contain text that would cause errors if not properly cleaned.
+    records = [
+        {
+          "id": "s:31839740:1:4",
+          "sent_text": "Real-time polymerase chain reaction (RT-PCR) was used "
+                       "to study the effects of BPs at a dose of 10-9 M on the "
+                       "expression of FGF, CTGF, TGF-β1, TGFβR1, TGFβR2, "
+                       "TGFβR3, DDR2, α-actin, fibronectin, decorin, and "
+                       "elastin."
+        },
+    ]
+
+    tmp_semrep_input = \
+        Path("/tmp/test_parse_semrep_end_to_end_difficult_input")
+    tmp_semrep_output = \
+        Path("/tmp/test_parse_semrep_end_to_end_difficult_output")
     if tmp_semrep_input.is_file():
       tmp_semrep_input.unlink()
     if tmp_semrep_output.is_file():

@@ -351,7 +351,7 @@ If `~/.nodefile` is the path to your nodefile, then you can set these values
 with:
 
 ```bash
-export NODEFILE="~/.nodefile"
+export NODEFILE=$HOME/.nodefile
 export NODE_RANK=$(grep -n $HOSTNAME $NODEFILE | awk 'BEGIN{FS=":"}{print $1-1}')
 export MASTER_ADDR=$(head -1 $NODEFILE)
 export MASTER_PORT=12910

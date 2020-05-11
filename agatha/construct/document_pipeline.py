@@ -16,6 +16,7 @@ from agatha.construct.document_parsers import (
 from agatha.util import misc_util
 from pathlib import Path
 from typing import Optional
+from datetime import datetime
 
 def get_medline_documents(
     config:cpb.ConstructConfig,

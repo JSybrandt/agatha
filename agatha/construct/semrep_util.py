@@ -173,6 +173,11 @@ class UnicodeToAsciiRunner():
   def __init__(self, unicode_to_ascii_jar_path:str):
     self.unicode_to_ascii_jar_path = Path(unicode_to_ascii_jar_path)
 
+  def clean_text_for_metamap(self, s:str)->str:
+    """Metamap has a bunch of stupid rules.
+    """
+    return s.replace("'", "")
+
   def __call__(self, text:List[str])->List[str]:
     assert self.unicode_to_ascii_jar_path.is_file(), \
         f"Cannot find unicode to ascii jar: {unicode_to_ascii_jar_path}"
@@ -183,12 +188,17 @@ class UnicodeToAsciiRunner():
     )
 
     # Concatinate input text, and write in utf-8
-    stdout, _ = u2a_proc.communicate("\n".join(text).encode('utf-8'))
+    stdout, _ = u2a_proc.communicate(
+        "\n".join(
+          map(self.clean_text_for_metamap, text)
+        ).encode('utf-8')
+    )
     # Read out ascii text and split back into sentences
+    # Amazingly, the ascii tool DOES NOT output ascii
     return [
         ascii_line
         for ascii_line
-        in stdout.decode("ascii").split("\n")
+        in stdout.decode("utf-8").split("\n")
         if len(ascii_line) > 0
     ]
 
@@ -313,8 +323,7 @@ class SemRepRunner():
     assert not output_path.exists(), f"Refusing to overwrite {output_path}"
     cmd = self._get_flags(input_path, output_path)
     env = self._get_env()
-    print("Running:", cmd)
-    print("LD_LIBRARY_PATH:", env["LD_LIBRARY_PATH"])
+    print("Running:", " ".join(cmd))
     subprocess.run(
         cmd,
         env=env,

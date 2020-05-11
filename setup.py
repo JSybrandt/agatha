@@ -18,7 +18,6 @@ def parse_requirements(deps_path):
   return res
 
 proto_src_files = [
-    "agatha/config/config.proto",
     "agatha/construct/construct_config.proto",
     "agatha/ml/abstract_generator/sentencepiece.proto",
     "agatha/topic_query/topic_query_config.proto",

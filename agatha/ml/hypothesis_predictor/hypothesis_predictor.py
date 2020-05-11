@@ -164,12 +164,12 @@ class HypothesisPredictor(pl.LightningModule):
     result = []
     for predicate_batch in iter_to_batches(predicates, batch_size):
       # Get a tensor representing each stacked sample
-      embeddings = predicate_util.collate_predicate_embeddings(
+      batch = predicate_util.collate_predicate_embeddings(
           [observation_generator[p] for p in predicate_batch]
       )
-      # Move embeddings to device
-      embeddings.to(self.get_device())
-      result += self.forward(embeddings).detach().cpu().numpy().tolist()
+      # Move batch to device
+      batch = batch.to(self.get_device())
+      result += self.forward(batch).detach().cpu().numpy().tolist()
     return result
 
   def preload(self, include_embeddings:bool=False)->None:

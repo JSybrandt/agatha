@@ -4,32 +4,29 @@ import pytest
 import lxml
 import dask.bag as dbag
 import agatha.construct.dask_process_global as dpg
-
+import os
+import pytest
 
 # If SemRep isn't present, don't bother with these tests
 SEMREP_INSTALL_DIR = Path("externals/semrep/2020/public_semrep")
 METAMAP_INSTALL_DIR = Path("externals/semrep/2020/public_mm")
 UNICODE_TO_ASCII_JAR_PATH = Path("externals/semrep/replace_utf8.jar")
-TEST_DATA_PATH = Path("test_data/semrep_input.txt")
-TEST_COVID_DATA_PATH = Path("test_data/semrep_covid_input.txt")
-TEST_COVID_XML_PATH = Path("test_data/semrep_covid.xml")
-
 RUN_SEMREP_TESTS = (
     SEMREP_INSTALL_DIR.is_dir()
     and METAMAP_INSTALL_DIR.is_dir()
     and UNICODE_TO_ASCII_JAR_PATH.is_file()
+    and "RUN_SEMREP_TESTS" in os.environ
 )
+# Skip whole module if not configured properly
+pytestmark = pytest.mark.skipif(
+    not RUN_SEMREP_TESTS,
+    reason="Must set $RUN_SEMREP_TESTS and install SemRep and MetaMap."
+)
+TEST_DATA_PATH = Path("test_data/semrep_input.txt")
+TEST_COVID_DATA_PATH = Path("test_data/semrep_covid_input.txt")
+TEST_COVID_XML_PATH = Path("test_data/semrep_covid.xml")
 
-
-def test_unicode_to_ascii():
-  if UNICODE_TO_ASCII_JAR_PATH.is_file():
-    text_in = ["α", "β"]
-    expected = ["alpha", "beta"]
-    u2i = semrep_util.UnicodeToAsciiRunner(UNICODE_TO_ASCII_JAR_PATH)
-    assert u2i(text_in) == expected
-
-## TESTS THAT REQUIRE ALL OF SEMREP BELOW HERE
-
+# If configured properly
 if RUN_SEMREP_TESTS:
   print("STARTING METAMAP SERVER")
   # The metamap server takes about 30 seconds to initialize, so we'll just do
@@ -37,89 +34,89 @@ if RUN_SEMREP_TESTS:
   metamap_server = semrep_util.MetaMapServer(METAMAP_INSTALL_DIR)
   metamap_server.start()
 
+def test_unicode_to_ascii():
+  text_in = ["α", "β"]
+  expected = ["alpha", "beta"]
+  u2i = semrep_util.UnicodeToAsciiRunner(UNICODE_TO_ASCII_JAR_PATH)
+  assert u2i(text_in) == expected
+
+
 def test_get_all_paths():
   "Tests that getting semrep paths gets all needed paths"
-  if RUN_SEMREP_TESTS:
-    paths = semrep_util.get_paths(
-        semrep_install_dir=SEMREP_INSTALL_DIR,
-        metamap_install_dir=METAMAP_INSTALL_DIR
-    )
-    assert "metamap_install_dir" in paths
-    assert "metamap_pos_server_path" in paths
-    assert "metamap_wsd_server_path" in paths
-    assert "semrep_install_dir" in paths
-    assert "semrep_lib_dir" in paths
-    assert "semrep_preamble_path" in paths
-    assert "semrep_bin_path" in paths
+  paths = semrep_util.get_paths(
+      semrep_install_dir=SEMREP_INSTALL_DIR,
+      metamap_install_dir=METAMAP_INSTALL_DIR
+  )
+  assert "metamap_install_dir" in paths
+  assert "metamap_pos_server_path" in paths
+  assert "metamap_wsd_server_path" in paths
+  assert "semrep_install_dir" in paths
+  assert "semrep_lib_dir" in paths
+  assert "semrep_preamble_path" in paths
+  assert "semrep_bin_path" in paths
 
 def test_semrep_paths():
   "Tests that if we just need the semrep paths, we can get those"
-  if RUN_SEMREP_TESTS:
-    paths = semrep_util.get_paths(
-        semrep_install_dir=SEMREP_INSTALL_DIR,
-    )
-    assert "semrep_install_dir" in paths
-    assert "semrep_lib_dir" in paths
-    assert "semrep_preamble_path" in paths
-    assert "semrep_bin_path" in paths
+  paths = semrep_util.get_paths(
+      semrep_install_dir=SEMREP_INSTALL_DIR,
+  )
+  assert "semrep_install_dir" in paths
+  assert "semrep_lib_dir" in paths
+  assert "semrep_preamble_path" in paths
+  assert "semrep_bin_path" in paths
 
 def test_get_metamap_paths():
   "Tests that getting semrep paths gets all needed paths"
-  if RUN_SEMREP_TESTS:
-    paths = semrep_util.get_paths(
-        metamap_install_dir=METAMAP_INSTALL_DIR
-    )
-    assert "metamap_install_dir" in paths
-    assert "metamap_pos_server_path" in paths
-    assert "metamap_wsd_server_path" in paths
+  paths = semrep_util.get_paths(
+      metamap_install_dir=METAMAP_INSTALL_DIR
+  )
+  assert "metamap_install_dir" in paths
+  assert "metamap_pos_server_path" in paths
+  assert "metamap_wsd_server_path" in paths
 
 def test_get_semrep_paths_fails():
   "Tests that if you give semrep paths bad install locations, it fails"
-  if RUN_SEMREP_TESTS:
-    with pytest.raises(AssertionError):
-      semrep_util.get_paths(SEMREP_INSTALL_DIR, Path("."))
-    with pytest.raises(AssertionError):
-      semrep_util.get_paths(Path("."), METAMAP_INSTALL_DIR)
-    with pytest.raises(AssertionError):
-      semrep_util.get_paths(Path("."), Path("."))
-    with pytest.raises(AssertionError):
-      semrep_util.get_paths(semrep_install_dir=Path("."))
-      semrep_util.get_paths(metamap_install_dir=Path("."))
+  with pytest.raises(AssertionError):
+    semrep_util.get_paths(SEMREP_INSTALL_DIR, Path("."))
+  with pytest.raises(AssertionError):
+    semrep_util.get_paths(Path("."), METAMAP_INSTALL_DIR)
+  with pytest.raises(AssertionError):
+    semrep_util.get_paths(Path("."), Path("."))
+  with pytest.raises(AssertionError):
+    semrep_util.get_paths(semrep_install_dir=Path("."))
+    semrep_util.get_paths(metamap_install_dir=Path("."))
 
 def test_metamap_server():
   "Tests that we can actually run metamap"
-  if RUN_SEMREP_TESTS:
-    assert metamap_server.running()
+  assert metamap_server.running()
 
 def test_run_semrep():
-  if RUN_SEMREP_TESTS:
-    runner = semrep_util.SemRepRunner(
-        semrep_install_dir=SEMREP_INSTALL_DIR,
-        metamap_server=metamap_server,
-        lexicon_year=2020,
-        mm_data_year="2020AA",
-    )
-    output_file = Path("/tmp/test_run_semrep.xml")
-    if output_file.is_file():
-      output_file.unlink()
-    assert not output_file.exists()
-    runner.run(TEST_DATA_PATH, output_file)
-    assert output_file.is_file()
+  runner = semrep_util.SemRepRunner(
+      semrep_install_dir=SEMREP_INSTALL_DIR,
+      metamap_server=metamap_server,
+      lexicon_year=2020,
+      mm_data_year="2020AA",
+  )
+  output_file = Path("/tmp/test_run_semrep.xml")
+  if output_file.is_file():
+    output_file.unlink()
+  assert not output_file.exists()
+  runner.run(TEST_DATA_PATH, output_file)
+  assert output_file.is_file()
 
 def test_run_semrep_covid():
-  if RUN_SEMREP_TESTS:
-    runner = semrep_util.SemRepRunner(
-        semrep_install_dir=SEMREP_INSTALL_DIR,
-        metamap_server=metamap_server,
-        lexicon_year=2020,
-        mm_data_year="2020AA",
-    )
-    output_file = Path("/tmp/test_run_semrep_covid.xml")
-    if output_file.is_file():
-      output_file.unlink()
-    assert not output_file.exists()
-    runner.run(TEST_COVID_DATA_PATH, output_file)
-    assert output_file.is_file()
+  runner = semrep_util.SemRepRunner(
+      semrep_install_dir=SEMREP_INSTALL_DIR,
+      metamap_server=metamap_server,
+      lexicon_year=2020,
+      mm_data_year="2020AA",
+  )
+  output_file = Path("/tmp/test_run_semrep_covid.xml")
+  if output_file.is_file():
+    output_file.unlink()
+  assert not output_file.exists()
+  runner.run(TEST_COVID_DATA_PATH, output_file)
+  assert output_file.is_file()
 
 def test_sentence_to_semrep_input():
   # We can run this test if SemRep is not installed
@@ -127,7 +124,6 @@ def test_sentence_to_semrep_input():
       dict(id=1, sent_text="Sentence 1"),
       dict(id=2, sent_text="Sentence 2"),
   ]
-
   actual = semrep_util.sentences_to_semrep_input(
       sentences,
       UNICODE_TO_ASCII_JAR_PATH,
@@ -141,7 +137,6 @@ def test_sentence_to_semrep_input_filter_newline():
       dict(id=1, sent_text="Sentence\n1"),
       dict(id=2, sent_text="Sentence\n2"),
   ]
-
   actual = semrep_util.sentences_to_semrep_input(
       sentences,
       UNICODE_TO_ASCII_JAR_PATH
@@ -303,117 +298,106 @@ def test_parse_semrep_xml_predication():
 
 def test_parse_semrep_end_to_end():
   # Run SemRep
-  if RUN_SEMREP_TESTS:
-    records = [
-        {
-          "id": "s:1234:1:2",
-          "sent_text": "Tobacco causes cancer in mice."
-        },
-        {
-          "id": "s:2345:1:2",
-          "sent_text": "Tobacco causes cancer in humans."
-        },
-    ]
-
-    tmp_semrep_input = Path("/tmp/test_parse_semrep_end_to_end_input")
-    tmp_semrep_output = Path("/tmp/test_parse_semrep_end_to_end_output")
-    if tmp_semrep_input.is_file():
-      tmp_semrep_input.unlink()
-    if tmp_semrep_output.is_file():
-      tmp_semrep_output.unlink()
-
-    with open(tmp_semrep_input, 'w') as semrep_input_file:
-      for line in semrep_util.sentences_to_semrep_input(
-          records,
-          UNICODE_TO_ASCII_JAR_PATH
-      ):
-        semrep_input_file.write(f"{line}\n")
-
-    runner = semrep_util.SemRepRunner(
-        semrep_install_dir=SEMREP_INSTALL_DIR,
-        metamap_server=metamap_server,
-        lexicon_year=2020,
-        mm_data_year="2020AA",
-    )
-    runner.run(tmp_semrep_input, tmp_semrep_output)
-    assert tmp_semrep_output.is_file()
-
-    # should return one per document
-    records = semrep_util.semrep_xml_to_records(tmp_semrep_output)
-    assert len(records) == 2
+  records = [
+      {
+        "id": "s:1234:1:2",
+        "sent_text": "Tobacco causes cancer in mice."
+      },
+      {
+        "id": "s:2345:1:2",
+        "sent_text": "Tobacco causes cancer in humans."
+      },
+  ]
+  tmp_semrep_input = Path("/tmp/test_parse_semrep_end_to_end_input")
+  tmp_semrep_output = Path("/tmp/test_parse_semrep_end_to_end_output")
+  if tmp_semrep_input.is_file():
+    tmp_semrep_input.unlink()
+  if tmp_semrep_output.is_file():
+    tmp_semrep_output.unlink()
+  with open(tmp_semrep_input, 'w') as semrep_input_file:
+    for line in semrep_util.sentences_to_semrep_input(
+        records,
+        UNICODE_TO_ASCII_JAR_PATH
+    ):
+      semrep_input_file.write(f"{line}\n")
+  runner = semrep_util.SemRepRunner(
+      semrep_install_dir=SEMREP_INSTALL_DIR,
+      metamap_server=metamap_server,
+      lexicon_year=2020,
+      mm_data_year="2020AA",
+  )
+  runner.run(tmp_semrep_input, tmp_semrep_output)
+  assert tmp_semrep_output.is_file()
+  # should return one per document
+  records = semrep_util.semrep_xml_to_records(tmp_semrep_output)
+  assert len(records) == 2
 
 def test_parse_semrep_end_to_end_difficult():
-  # Run SemRep
-  if RUN_SEMREP_TESTS:
-    # These records contain text that would cause errors if not properly cleaned.
-    records = [
-        {
-          "id": "s:31839740:1:4",
-          "sent_text": "Real-time polymerase chain reaction (RT-PCR) was used "
-                       "to study the effects of BPs at a dose of 10-9 M on the "
-                       "expression of FGF, CTGF, TGF-β1, TGFβR1, TGFβR2, "
-                       "TGFβR3, DDR2, α-actin, fibronectin, decorin, and "
-                       "elastin."
-        },
-    ]
+  # These records contain text that would cause errors if not properly cleaned.
+  records = [
+      {
+        "id": "s:31839740:1:4",
+        "sent_text": "Real-time polymerase chain reaction (RT-PCR) was used "
+                     "to study the effects of BPs at a dose of 10-9 M on the "
+                     "expression of FGF, CTGF, TGF-β1, TGFβR1, TGFβR2, "
+                     "TGFβR3, DDR2, α-actin, fibronectin, decorin, and "
+                     "elastin."
+      },
+  ]
 
-    tmp_semrep_input = \
-        Path("/tmp/test_parse_semrep_end_to_end_difficult_input")
-    tmp_semrep_output = \
-        Path("/tmp/test_parse_semrep_end_to_end_difficult_output")
-    if tmp_semrep_input.is_file():
-      tmp_semrep_input.unlink()
-    if tmp_semrep_output.is_file():
-      tmp_semrep_output.unlink()
+  tmp_semrep_input = \
+      Path("/tmp/test_parse_semrep_end_to_end_difficult_input")
+  tmp_semrep_output = \
+      Path("/tmp/test_parse_semrep_end_to_end_difficult_output")
+  if tmp_semrep_input.is_file():
+    tmp_semrep_input.unlink()
+  if tmp_semrep_output.is_file():
+    tmp_semrep_output.unlink()
 
-    with open(tmp_semrep_input, 'w') as semrep_input_file:
-      for line in semrep_util.sentences_to_semrep_input(
-          records,
-          UNICODE_TO_ASCII_JAR_PATH
-      ):
-        semrep_input_file.write(f"{line}\n")
+  with open(tmp_semrep_input, 'w') as semrep_input_file:
+    for line in semrep_util.sentences_to_semrep_input(
+        records,
+        UNICODE_TO_ASCII_JAR_PATH
+    ):
+      semrep_input_file.write(f"{line}\n")
 
-    runner = semrep_util.SemRepRunner(
-        semrep_install_dir=SEMREP_INSTALL_DIR,
-        metamap_server=metamap_server,
-        lexicon_year=2020,
-        mm_data_year="2020AA",
-    )
-    runner.run(tmp_semrep_input, tmp_semrep_output)
-    assert tmp_semrep_output.is_file()
-
-    # should return one per document
-    records = semrep_util.semrep_xml_to_records(tmp_semrep_output)
-    assert len(records) == 2
+  runner = semrep_util.SemRepRunner(
+      semrep_install_dir=SEMREP_INSTALL_DIR,
+      metamap_server=metamap_server,
+      lexicon_year=2020,
+      mm_data_year="2020AA",
+  )
+  runner.run(tmp_semrep_input, tmp_semrep_output)
+  assert tmp_semrep_output.is_file()
+  # should return one per document
+  records = semrep_util.semrep_xml_to_records(tmp_semrep_output)
+  assert len(records) == 2
 
 def test_extract_entitites_and_predicates_with_dask():
-  if RUN_SEMREP_TESTS:
-    records = dbag.from_sequence([
-        {
-          "id": "s:1234:1:2",
-          "sent_text": "Tobacco causes cancer in mice."
-        },
-        {
-          "id": "s:2345:1:2",
-          "sent_text": "Tobacco causes cancer in humans."
-        },
-    ], npartitions=1)
-    work_dir = Path("/tmp/test_extract_entitites_and_predicates_with_dask")
-    work_dir.mkdir(exist_ok=True, parents=True)
-    # Configure Metamap Server through DPG
-    preloader = dpg.WorkerPreloader()
-    preloader.register(*semrep_util.get_metamap_server_initializer(
-      metamap_install_dir=METAMAP_INSTALL_DIR,
-    ))
-    dpg.add_global_preloader(preloader=preloader)
-
-    actual = semrep_util.extract_entities_and_predicates_from_sentences(
-        sentence_records=records,
-        unicode_to_ascii_jar_path=UNICODE_TO_ASCII_JAR_PATH,
-        semrep_install_dir=SEMREP_INSTALL_DIR,
-        work_dir=work_dir,
-        lexicon_year=2020,
-        mm_data_year="2020AA",
-    ).compute()
-    assert len(actual) == 2
-
+  records = dbag.from_sequence([
+      {
+        "id": "s:1234:1:2",
+        "sent_text": "Tobacco causes cancer in mice."
+      },
+      {
+        "id": "s:2345:1:2",
+        "sent_text": "Tobacco causes cancer in humans."
+      },
+  ], npartitions=1)
+  work_dir = Path("/tmp/test_extract_entitites_and_predicates_with_dask")
+  work_dir.mkdir(exist_ok=True, parents=True)
+  # Configure Metamap Server through DPG
+  preloader = dpg.WorkerPreloader()
+  preloader.register(*semrep_util.get_metamap_server_initializer(
+    metamap_install_dir=METAMAP_INSTALL_DIR,
+  ))
+  dpg.add_global_preloader(preloader=preloader)
+  actual = semrep_util.extract_entities_and_predicates_from_sentences(
+      sentence_records=records,
+      unicode_to_ascii_jar_path=UNICODE_TO_ASCII_JAR_PATH,
+      semrep_install_dir=SEMREP_INSTALL_DIR,
+      work_dir=work_dir,
+      lexicon_year=2020,
+      mm_data_year="2020AA",
+  ).compute()
+  assert len(actual) == 2

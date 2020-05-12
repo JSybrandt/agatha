@@ -23,74 +23,21 @@
 #include <sqlite3.h>
 
 #include <filesystem>
-#include <fstream>
 #include <list>
-#include <sstream>
-#include <tuple>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include <argparse.hpp>
-#include <cppitertools/zip.hpp>
 #include <nlohmann/json.hpp>
 #include <sqlite_orm/sqlite_orm.h>
 
 #include "add_index_to_sqlite.h"
 #include "glob.h"
+#include "parse_kv_json.h"
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 namespace sql = sqlite_orm;
 
-struct TableEntry {
-  TableEntry(
-      const std::string& k,
-      const std::string& v
-  ): key(k), value(v) {}
-  std::string key;
-  std::string value;
-};
-
-std::string get_value_string(const json& val){
-  if (val.is_object() || val.is_array()){
-    return val.dump();
-  } else {
-    return val.get<std::string>();
-  }
-}
-
-std::list<TableEntry> parse_json(const fs::path& json_path){
-  std::list<TableEntry> res;
-  std::fstream json_file(json_path, std::ios::in);
-  std::string line;
-  while (getline(json_file, line)){
-    json key_value_entry = json::parse(line);
-    assert(key_value_entry.find("key") != key_value_entry.end());
-    assert(key_value_entry.find("value") != key_value_entry.end());
-    assert(key_value_entry["key"].is_string());
-    res.emplace_back(
-        key_value_entry["key"].get<std::string>(),
-        get_value_string(key_value_entry["value"])
-    );
-  }
-  json_file.close();
-  return res;
-}
-
-void merge_duplicate_keys(std::list<TableEntry>& table_entries){
-  std::unordered_map<std::string, std::unordered_set<std::string>> key2values;
-  for (const auto& entry : table_entries){
-    key2values[entry.key].insert(entry.value);
-  }
-  table_entries.clear();
-  for(const auto& [key, value_set] : key2values){
-    table_entries.emplace_back(
-      key,
-      json(value_set).dump()
-    );
-  }
-}
 
 int main(int argc, char** argv){
   argparse::ArgumentParser parser("create_lookup_table");
@@ -132,12 +79,12 @@ int main(int argc, char** argv){
 
   // List used because splice is O(1) and vector merge is O(n)
   size_t num_finished = 0;
-  std::list<TableEntry> table_entries;
+  std::list<KVPair> table_entries;
   #pragma omp parallel
   {
     #pragma omp for schedule(dynamic)
     for(size_t i = 0; i < all_json_files.size(); ++i){
-      std::list<TableEntry> tmp = parse_json(all_json_files[i]);
+      std::list<KVPair> tmp = parse_kv_json(all_json_files[i]);
       #pragma omp critical
       {
         table_entries.splice(table_entries.end(), tmp);
@@ -162,8 +109,8 @@ int main(int argc, char** argv){
       sqlite_path,
       sql::make_table(
         "lookup_table",
-        sql::make_column("key", &TableEntry::key),
-        sql::make_column("value", &TableEntry::value)
+        sql::make_column("key", &KVPair::key),
+        sql::make_column("value", &KVPair::value)
       )
   );
   storage.pragma.journal_mode(sqlite_orm::journal_mode::OFF);

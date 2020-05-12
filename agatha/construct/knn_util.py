@@ -8,6 +8,7 @@ from typing import Iterable, List, Tuple
 from agatha.construct import (
     embedding_util,
     file_util,
+    graph_util,
 )
 from agatha.util.misc_util import (
     iter_to_batches,
@@ -17,7 +18,6 @@ from agatha.util.misc_util import (
 from agatha.util.misc_util import Record
 from agatha.util import sqlite3_lookup
 import dask
-import networkx as nx
 from agatha.construct import dask_process_global as dpg
 
 
@@ -42,22 +42,23 @@ def nearest_neighbors_network_from_index(
     num_neighbors:int,
     faiss_index_name="final",
     weight:float=1.0,
-)->Iterable[nx.Graph]:
+)->Iterable[str]:
   """
   Applies faiss and runs results through inverted index.
   """
   assert hash2name_db.is_file(), "Missing hash2names sqlite3 db."
 
-  def apply_faiss_to_edges(
+  def _apply_faiss(
       hash_and_embedding:Iterable[Record],
-  )->Iterable[nx.Graph]:
+  )->List[Record]:
 
     # The only reason we need parts_written_to_db is to make sure that the
     # writing happens before this point
     index = dpg.get(f"knn_util:faiss_{faiss_index_name}")
-
-    graph = nx.Graph()
     hash2names = sqlite3_lookup.Sqlite3LookupTable(hash2name_db)
+
+    # "id", "neighs"
+    res = []
     for batch in iter_to_batches(hash_and_embedding, batch_size):
       hashes, embeddings = to_hash_and_embedding(records=batch)
       _, neighs_per_root = index.search(embeddings, num_neighbors)
@@ -66,14 +67,19 @@ def nearest_neighbors_network_from_index(
       for root_hash, neigh_indices in zip(hashes, neighs_per_root):
         if root_hash in hash2names:
           for root_name in hash2names[root_hash]:
+            val = {"id":root_name, "neighs":set()}
             for neigh_hash in neigh_indices:
               if neigh_hash != root_hash and neigh_hash in hash2names:
                 for neigh_name in hash2names[neigh_hash]:
-                  graph.add_edge(root_name, neigh_name, weight=weight)
-                  graph.add_edge(neigh_name, root_name, weight=weight)
-    return [graph]
+                  val["neighs"].add(neigh_name)
+            res.append(val)
+    return res
 
-  return hash_and_embedding.map_partitions(apply_faiss_to_edges)
+  return graph_util.record_to_bipartite_edges(
+      hash_and_embedding.map_partitions(_apply_faiss),
+      bidirectional=True,
+      get_neighbor_keys_fn=lambda r:r["neighs"]
+  )
 
 
 def train_distributed_knn(

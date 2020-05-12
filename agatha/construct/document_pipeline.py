@@ -137,9 +137,8 @@ def perform_document_independent_tasks(
   coded_term_edges = graph_util.record_to_bipartite_edges(
     records=sentences,
     get_neighbor_keys_fn=text_util.get_mesh_keys,
-    weight_by_tf_idf=False,
   )
-  ckpt("coded_term_edges", ckpt_prefix)
+  ckpt("coded_term_edges", ckpt_prefix, textfile=True)
 
   # Make edges between each adj sentence
   adj_sent_edges = graph_util.record_to_bipartite_edges(
@@ -148,10 +147,9 @@ def perform_document_independent_tasks(
     # We can store only one side of the connection because each sentence will
     # get their own neighbors. Additionally, these should all have the same
     # sort of connections.
-    weight_by_tf_idf=False,
     bidirectional=False,
   )
-  ckpt("adj_sent_edges", ckpt_prefix)
+  ckpt("adj_sent_edges", ckpt_prefix, textfile=True)
 
   # Apply lemmatization and entity extraction to sentences
   parsed_sentences = sentences.map_partitions(
@@ -165,17 +163,15 @@ def perform_document_independent_tasks(
   lemma_edges = graph_util.record_to_bipartite_edges(
     records=parsed_sentences,
     get_neighbor_keys_fn=text_util.get_interesting_token_keys,
-    weight_by_tf_idf=False,
   )
-  ckpt("lemma_edges", ckpt_prefix)
+  ckpt("lemma_edges", ckpt_prefix, textfile=True)
 
   # Get entity edges
   entity_edges = graph_util.record_to_bipartite_edges(
     records=parsed_sentences,
     get_neighbor_keys_fn=text_util.get_entity_keys,
-    weight_by_tf_idf=False,
   )
-  ckpt("entity_edges", ckpt_prefix)
+  ckpt("entity_edges", ckpt_prefix, textfile=True)
 
   # If we're running semrep
   if (

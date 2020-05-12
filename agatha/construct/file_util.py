@@ -11,7 +11,6 @@ import os
 import random
 import time
 
-EXT = ".pkl"
 DONE_FILE = "__done__"
 
 def get_random_ascii_str(str_len:int)->str:
@@ -85,14 +84,19 @@ def load(dir_path:Path, allow_failure:bool=False)->dbag.Bag:
   return dbag.from_delayed(load_tasks)
 
 
-def save_part(part:List[Any], path:Path)->Path:
+def save_part(part:List[Any], path:Path, textfile=False)->Path:
   "Stores that partition at `path`, returns `path`"
   path = Path(path)
   # Turns out that some complex functions might have non-list partitions
   # For instance, a partition containing numpy arrays will be _MapChunk
   part = list(part)
-  with open(path, 'wb') as f:
-    pickle.dump(part, f, protocol=4)
+  if textfile:
+    with open(path, 'w') as text_file:
+      for line in part:
+          text_file.write(f"{line}\n")
+  else:
+    with open(path, 'wb') as f:
+      pickle.dump(part, f, protocol=4)
   return path
 
 
@@ -104,15 +108,27 @@ def write_done_file(parts:List[str], part_dir:Path)->Path:
       f.write(f"{part}\n")
   return done_path
 
-def save(bag:dbag.Bag, path:Path, keep_partial_result:bool=False)->dask.delayed:
+def save(
+    bag:dbag.Bag,
+    path:Path,
+    keep_partial_result:bool=False,
+    textfile=False
+)->dask.delayed:
   path = Path(path)
   path.mkdir(parents=True, exist_ok=True)
   save_tasks = []
   for part_idx, part in enumerate(bag.to_delayed()):
-    part_path = path.joinpath(f"part-{part_idx}{EXT}")
+    ext = ".txt" if textfile else ".pkl"
+    part_path = path.joinpath(f"part-{part_idx}{ext}")
     # if the partial result is not present, or we're not keeping partials
     if not part_path.is_file() or not keep_partial_result:
-      save_tasks.append(dask.delayed(save_part)(part, part_path))
+      save_tasks.append(
+          dask.delayed(save_part)(
+            part=part,
+            path=part_path,
+            textfile=textfile
+          )
+      )
     else:
       # introduces a no-op that keeps __done__ file correct
       save_tasks.append(dask.delayed(part_path))

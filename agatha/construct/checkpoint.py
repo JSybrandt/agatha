@@ -1,3 +1,6 @@
+"""A singleton responsible for saving and loading dask bags.
+"""
+
 from typing import Dict, Any, Optional, Set
 import dask.bag as dbag
 from agatha.construct import file_util
@@ -93,17 +96,47 @@ def checkpoint(
     bag:Optional[dbag.Bag]=None,
     verbose:Optional[bool]=None,
     allow_partial:Optional[bool]=None,
-    halt_after:Optional[bool]=None,
+    halt_after:Optional[str]=None,
+    textfile:bool=False,
     **compute_kw
-)->dbag.Bag:
-  """
+)->Optional[dbag.Bag]:
+  """Stores the contents of the bag as a series of files.
+
+  This function takes each partition of the input bag and writes them to files
+  within a directory associated with the input name. The location of each
+  checkpoint directory is dependent on the `ckpt_root` option.
+
+  For each optional argument, (other than `bag`) of this function, there is an
+  associated module-level parameter that can be set globally.
+
+  The module-level parameter checkpoint_root, set with `set_root` must be set
+  before calling checkpoint.
+
   Usage:
     checkpoint(name) - returns load opt for checkpoint "name"
     checkpoint(name, bag) - if ckpt
     writes bag to ckpt "name" and returns load op
     if disable() was called, returns the input bag
+
+  Args:
+    name: The name of the checkpoint directory to lookup or save to
+    bag: If set, save this bag. Otherwise, we will require that this checkpoint
+      has already been saved.
+    verbose: Print helper info. If unspecified, defaults to module-level parameter.
+    allow_partial: If true, partial files present in an unfinished checkpoint
+      directory will not be overwritten. If false, unfinished checkpoints will
+      be recomputed in full. Defaults to module-level parameter if unset.
+    halt_after: If set to the name of the current checkpoint, the agatha process
+      will stop after computing its contents. This is important for partial
+      pipeline runs, for instance, for computing training data for an ml model.
+    textfile: If set, checkpoint will be stored in plaintext format, used to
+      save strings. This results in this function returning `None`.
+
+  Returns:
+    A dask bag that, if computed, _LOADS_ the specified checkpoint. This means
+    that future operations can depend on the loading of intermediate data,
+    rather than the intermediate computations themselves.
   """
-  # Get defaults if nessesary
   if verbose is None:
     verbose = get_verbose()
   if allow_partial is None:
@@ -128,7 +161,10 @@ def checkpoint(
   if is_ckpt_done(name):
     vprint("\t- Ready")
     check_halt()
-    return file_util.load(get_or_make_ckpt_dir(name))
+    if textfile:
+      return None
+    else:
+      return file_util.load(get_or_make_ckpt_dir(name))
 
   # If check pointing is enabled, we need to save the bag and return the load fn
   if _PARAM["enabled"]:
@@ -137,11 +173,15 @@ def checkpoint(
     file_util.save(
         bag=bag,
         path=get_or_make_ckpt_dir(name),
-        keep_partial_result=allow_partial
+        keep_partial_result=allow_partial,
+        textfile=textfile,
     ).compute(**compute_kw)
     vprint("\t- Done!")
     check_halt()
-    return file_util.load(get_or_make_ckpt_dir(name))
+    if textfile:
+      return None
+    else:
+      return file_util.load(get_or_make_ckpt_dir(name))
 
   # If check pointing is disabled, we just return the in-progress bag.
   else:  #disabled
@@ -151,10 +191,36 @@ def checkpoint(
     check_halt()
     return bag
 
-def ckpt(bag_name:str, ckpt_prefix:Optional[str]=None)->dbag.Bag:
-  """
-  The fast and dirty interface for checkpoint.  In the caller's frame, sets
-  variable "bag_name" to the result of checkpoint called with default args.
+def ckpt(bag_name:str, ckpt_prefix:Optional[str]=None, **kwargs)->None:
+  """Simple checkpoint interface
+
+  This is syntactic sugar for the most common use case.
+  You can replace
+  ```
+  my_dask_bag = checkpoint("my_dask_bag", my_dask_bag)
+  ```
+
+  ```
+  ckpt("my_dask_bag")
+  ```
+
+  Calling this function will replace the variable associated with `bag_name`
+  after computing its checkpoint.  This means that calling compute on later
+  calls of `bag_name` will load that bag from storage, rather than perform all
+  intermediate computations again.
+
+  Args:
+    bag_name: The name of a local variable corresponding to a dask bag. This bag
+      will be computed and stored to a checkpoint of the same name. The bag
+      variable will be replaced with a new bag that can be loaded from this
+      checkpoint.
+    ckpt_prefix: If set, the provided string will be prefixed to the bag_name
+      checkpoint. This allows the same variable names to be associated with
+      different checkpoints. For instance, the `document_pipeline` functions
+      create a bag named "sentences" regardless of the set of documents used
+      to create those sentences. By specifying a prefix, different calls to
+      `document_pipeline` can create different checkpoints.
+
   """
 
   caller_locals = inspect.currentframe().f_back.f_locals
@@ -167,5 +233,6 @@ def ckpt(bag_name:str, ckpt_prefix:Optional[str]=None)->dbag.Bag:
 
   caller_locals[bag_name] = checkpoint(
       name=ckpt_name,
-      bag=caller_locals[bag_name]
+      bag=caller_locals[bag_name],
+      **kwargs,
   )

@@ -185,7 +185,6 @@ if __name__ == "__main__":
   ngram_edges = graph_util.record_to_bipartite_edges(
     records=ngram_sentences,
     get_neighbor_keys_fn=text_util.get_ngram_keys,
-    weight_by_tf_idf=False,
   )
   ckpt("ngram_edges")
 
@@ -239,21 +238,21 @@ if __name__ == "__main__":
       batch_size=config.sys.batch_size,
       num_neighbors=config.sentence_knn.num_neighbors,
   )
-  ckpt("knn_edges")
+  ckpt("knn_edges", textfile=True)
 
   # Now we can get all edges
-  print("Writing graph json dump")
-  graph_kv = (
-    dbag.concat([
-      checkpoint.checkpoint(name, verbose=False)
-      for name in checkpoint.get_checkpoints_like("*_edges")
-    ])
-    .map_partitions(graph_util.nxgraphs_to_kv)
-  )
-  sqlite3_lookup.export_key_value_records(
-      key_value_records=graph_kv,
-      export_dir=output_graph_dir,
-  )
+  # print("Writing graph json dump")
+  # graph_kv = (
+    # dbag.concat([
+      # checkpoint.checkpoint(name, verbose=False)
+      # for name in checkpoint.get_checkpoints_like("*_edges")
+    # ])
+    # .map_partitions(graph_util.nxgraphs_to_kv)
+  # )
+  # sqlite3_lookup.export_key_value_records(
+      # key_value_records=graph_kv,
+      # export_dir=output_graph_dir,
+  # )
 
   print("Writing sentence json dump")
   sentence_kv = bow_sentences.map(

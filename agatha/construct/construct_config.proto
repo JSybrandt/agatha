@@ -174,10 +174,11 @@ message SemRepConfig {
 
   optional int32 lexicon_year = 3 [default=2020];
   optional string mm_data_year = 4 [default="2020AA"];
+  optional string mm_data_version = 5 [default="USAbase"];
 
   // SemRep Cannot process unicode text. This requires that we install a special
   // jar that can be downloaded here:
   // https://metamap.nlm.nih.gov/ReplaceUTF8.shtml
-  optional string unicode_to_ascii_jar_path = 5;
+  optional string unicode_to_ascii_jar_path = 6;
 
 }

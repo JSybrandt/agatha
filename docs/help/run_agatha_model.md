@@ -4,9 +4,9 @@ How to Run Your Agatha Model
 The first set to run your agatha model is to either train your own, or download
 a pretrained model. Other help pages describe how to do this in more detail.
 
-To begin, lets assume you downloaded [Agatha 2020]. When extracted, you should
-see the following directory structure. This is consistent with other pretrained
-models.
+To begin, lets assume you downloaded [Agatha 2020][agatha_2020]. When extracted,
+you should see the following directory structure. This is consistent with other
+pretrained models.
 
 ```
 model_release/

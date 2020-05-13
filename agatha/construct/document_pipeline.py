@@ -189,6 +189,7 @@ def perform_document_independent_tasks(
             work_dir=prefixed_semrep_work_dir,
             lexicon_year=config.semrep.lexicon_year,
             mm_data_year=config.semrep.mm_data_year,
+            mm_data_version=config.semrep.mm_data_version,
         )
     ckpt("semrep_sentences", ckpt_prefix)
 

@@ -608,6 +608,7 @@ def _sentence_partition_to_records(
     semrep_install_dir:Path,
     lexicon_year:int,
     mm_data_year:str,
+    mm_data_version:str,
 )->List[Record]:
   input_path = Path(input_path)
   output_path = Path(output_path)
@@ -623,6 +624,7 @@ def _sentence_partition_to_records(
         metamap_server=dpg.get("semrep:metamap_server"),
         lexicon_year=lexicon_year,
         mm_data_year=mm_data_year,
+        mm_data_version=mm_data_version,
     ).run(input_path, output_path)
   # Return python records
   return semrep_xml_to_records(output_path)
@@ -635,6 +637,7 @@ def extract_entities_and_predicates_from_sentences(
     work_dir:Path,
     lexicon_year:int,
     mm_data_year:str,
+    mm_data_version:str,
 )->dbag.Bag:
   """Runs each sentence through SemRep. Identifies Predicates and Entities
 
@@ -671,5 +674,6 @@ def extract_entities_and_predicates_from_sentences(
         semrep_install_dir=semrep_install_dir,
         lexicon_year=lexicon_year,
         mm_data_year=mm_data_year,
+        mm_data_version=mm_data_version,
     ))
   return dbag.from_delayed(semrep_tasks)

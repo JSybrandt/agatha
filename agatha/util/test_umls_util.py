@@ -57,6 +57,20 @@ def test_parse_first_line():
   }
   assert actual == expected
 
+def test_filter_atoms_code_subset():
+  atoms = list(umls_util.parse_mrconso(TEST_MRCONSO_PATH))
+  filtered_atoms = umls_util.filter_atoms(
+      mrconso_data=atoms,
+      include_suppressed=True,
+      filter_language="ENG",
+      code_subset={"C0000005"},
+  )
+  num_items = len(list(filtered_atoms))
+  assert num_items > 0
+  assert num_items < len(atoms)
+  for aton in filtered_atoms:
+    assert aton["cui"] == "C0000005"
+
 def test_filter_atoms_language_eng():
   atoms = list(umls_util.parse_mrconso(TEST_MRCONSO_PATH))
   # tiny MRCONSO has 337 English atoms

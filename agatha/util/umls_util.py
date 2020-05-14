@@ -87,6 +87,7 @@ def filter_atoms(
     mrconso_data:List[Dict[str,str]],
     include_suppressed:bool=False,
     filter_language:Optional[str]="ENG",
+    code_subset:Optional[Set[str]]=None,
 )->Iterable[Dict[str,str]]:
   """Filters the lines of MRCONSO
 
@@ -95,6 +96,9 @@ def filter_atoms(
 
   If `filter_language` is not `None`, then only atoms with `LAT` set to the
   filter language will be included.
+
+  If `code_subset` is set, then only UMLS terms present in this set will be
+  passed through the filter.
 
   """
   if filter_language is not None:
@@ -109,6 +113,9 @@ def filter_atoms(
         ) and ( # no language set, or the correct language
           filter_language is None
           or atom["lat"].lower() == filter_language
+        ) and (
+          code_subset is None
+          or atom['cui'] in code_subset
         )
     ):
       yield atom

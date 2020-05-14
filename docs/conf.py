@@ -77,6 +77,7 @@ apidoc_extra_args = [
 # readthedocs_mocked_requirements file. These must be mocked instead.
 if "READTHEDOCS" in os.environ and os.environ["READTHEDOCS"].lower() == "true":
   autodoc_mock_imports = [
+    'Levenshtein',
     'cloudpickle',
     'dask',
     'distributed',

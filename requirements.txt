@@ -2,6 +2,12 @@
 # I wrote a really dumb parser, this means that a line cannot contain both a
 # comment and a module name. Comment lines MUST start with #
 
+
+################################################################################
+# WARNING: If you make changes here, don't forget to update docs/conf.py #######
+################################################################################
+
+
 ################################################################################
 # Required to Construct the Semantic Network And Train Models ##################
 ################################################################################
@@ -21,6 +27,7 @@ numpy
 pandas
 protobuf
 pygsheets
+python-Levenshtein
 pytorch-lightning
 scispacy
 sentencepiece

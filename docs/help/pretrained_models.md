@@ -1,7 +1,8 @@
 Pretrained Models
 =================
 
-## 2015
+AGATHA 2015
+-----------
 
 [DOWNLOAD AGATHA 2015][agatha_2015]
 
@@ -22,32 +23,8 @@ model_release/
   predicate_graph.sqlite3
 ```
 
-### Data Construction Parameters
-
-
-
-
-## 2020
-
-[DOWNLOAD AGATHA 2020][agatha_2020]
-
-The 2020 version of the Agatha model was trained on 2020-05-04. This model uses
-all available Medline abstracts as well as all available predicates in the most
-up-to-date release of SemMedDB[semmeddb]. *This model does NOT contain any
-COVID-19 related terms or customizations.*
-
-### Contents
-
-```
-model_release/
-  model.pt
-  predicate_embeddings/
-    embeddings_*.v5.h5
-  predicate_entities.sqlite3
-  predicate_graph.sqlite3
-```
-
 ### Model Training Parameters
+
 ```python3
 {
   'logger':                         True,
@@ -110,6 +87,31 @@ model_release/
   'disable_cache':                  False
 }
 ```
+
+
+
+
+AGATHA 2020
+-----------
+
+[DOWNLOAD AGATHA 2020][agatha_2020]
+
+The 2020 version of the Agatha model was trained on 2020-05-04. This model uses
+all available Medline abstracts as well as all available predicates in the most
+up-to-date release of SemMedDB[semmeddb]. *This model does NOT contain any
+COVID-19 related terms or customizations.*
+
+### Contents
+
+```
+model_release/
+  model.pt
+  predicate_embeddings/
+    embeddings_*.v5.h5
+  predicate_entities.sqlite3
+  predicate_graph.sqlite3
+```
+
 
 ### Data Construction Parameters
 

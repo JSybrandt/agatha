@@ -4,10 +4,10 @@ package agatha;
 // Config used to perform topic model queries
 message TopicQueryConfig {
 
-  // The first term of this query
+  // The first term of this query. This is a graph key
   optional string source = 1;
 
-  // The second term of this query
+  // The second term of this query. This is a graph key
   optional string target = 2;
 
   // The path to the graph sqlite database used to run this query
@@ -36,6 +36,9 @@ message TopicQueryConfig {
   // is allows to have. High degree nodes will be downsampled to this rate. A
   // higher value indicates a more accurate shortest path, at a longer runtime.
   optional int32 max_degree = 10 [default=1000];
+
+  //If set, we will not preload the graph
+  optional bool preload_graph_db = 11 [default=false];
 }
 
 
@@ -54,7 +57,7 @@ message LdaConfig {
   optional int32 iterations = 3 [default=50];
 
   // Remove any word that does not occur at least X times
-  optional int32 min_support_count = 4 [default=2];
+  optional int32 min_support_count = 4 [default=0];
 
   // Take the top X words per-topic, only effects output
   optional int32 truncate_size = 7 [default=250];

@@ -1,29 +1,44 @@
 syntax = "proto2";
 package agatha;
 
-message Topic {
-  message TermWeight {
-    optional string term = 1;
-    optional float weight = 2;
-  }
-  repeated TermWeight term_weights = 1;
-  optional int32 index = 2;
-}
 
-message Document {
-  message TopicWeight {
-    optional int32 topic = 1;
-    optional float weight = 2;
-  }
-  optional string key = 1;
-  repeated TopicWeight topic_weights = 2;
-  repeated string terms = 3;
-}
-
+// A result of the topic_query process
 message TopicQueryResult {
-  repeated string path = 1;
-  repeated Document documents = 2;
-  repeated Topic topics = 3;
-  optional string source = 4;
-  optional string target = 5;
+  // the first word searched
+  optional string source = 1;
+  // the second word searched
+  optional string target = 2;
+  // The path of graph connections that connections source and target
+  repeated string path = 3;
+  // The set of topics produced by this query
+  repeated Topic topics = 4;
+  // The set of sentences that were used to create this query
+  repeated Document documents = 5;
+  // Topical network information
+  optional TopicalNetwork topical_network = 6;
+}
+
+// Helper Messages
+
+// A topic is a probability distribution over a vocabulary
+message Topic {
+  map<string, float> term2weight = 1;
+}
+
+// A document is a single sentence in our subcorpus
+message Document {
+  // the identifier of this document
+  optional string doc_id = 1;
+  // The topic mixture of this document. Note that topic2weight[i]
+  // corresponds to TopicQueryResult.topics[i]
+  map<int32, float> topic2weight = 2;
+}
+
+// Stores the topic network information
+message TopicalNetwork {
+  message TopicalNode {
+   map<int32, float> neighbors = 1;
+   optional string name = 2;
+  }
+  map<int32, TopicalNode> nodes = 1;
 }

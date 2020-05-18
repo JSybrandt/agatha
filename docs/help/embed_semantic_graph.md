@@ -2,7 +2,7 @@ How to Embed the Agatha Semantic Graph
 ======================================
 
 We use [Pytorch Big Graph
-(PTBG)][https://torchbiggraph.readthedocs.io/en/latest/] to embed our semantic
+(PTBG)](https://torchbiggraph.readthedocs.io/en/latest/) to embed our semantic
 graph. This is a distributed knowledge graph embedding tool, meaning that it
 uses multiple machines, and takes node / edge type into account when embedding.
 PTBG is a complex tool that requires a number of preprocessing steps to use.

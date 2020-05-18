@@ -181,4 +181,95 @@ def get_torchbiggraph_config():
 
 ## Launch the PTBG training cluster
 
-Now you are ready to start training!
+Now there is only a little more book keeping nessesary to launch PTBG
+distributed training. This next step will look familiar to you if you've
+already taken a look at the docs for training the agatha deep learning model.
+Afterall, both techniques are using pytorch distributed.
+
+You need every machine in your compute cluster to have some environment
+variables set. The offical docs on pytorch distributed environemnt variables can
+be found
+[here](https://pytorch.org/docs/stable/distributed.html#environment-variable-initialization).
+
+These varaibles are:
+
+`MASTER_ADDR`
+: The hostname of the master node. In our case, this is just one of the workers.
+
+`MASTER_PORT`
+: An unused port to communicate. This can almost be anything. We use `12910`.
+
+`NODE_RANK`
+: The rank of this machine with respect to the "world". If there are 3 total
+  machines, then each should have `NODE_RANK` set to a different value in:
+  [0, 1, 2]. Note, we use `NODE_RANK` but default pytorch uses `RANK`. It
+  doesn't really matter as long as you're consistent.
+
+`WORLD_SIZE`
+: The total number of machines.
+
+
+The simplest way to set these variables is to use a `nodefile`, which is just a
+file that contains each machine's address. If you're on PBS, you will have a
+file called `$PBS_NODEFILE` and if you're on SLURM then you will have variable
+called `$SLURM_NODELIST`. To remain platform agnositic, we assume you have
+copied any nessesry nodefile to `~/.nodefile`.
+
+You can set all of the nessesary variables with this snippet, run on each node.
+Preferably, this should be somewhere in your `~.bashrc`.
+
+```bash
+export NODEFILE="~/.nodefile"
+export NODE_RANK=$(grep -n $HOSTNAME $NODEFILE | awk 'BEGIN{FS=":"}{print $1-1}')
+export MASTER_ADDR=$(head -1 $NODEFILE)
+export MASTER_PORT=12910
+export WORLD_SIZE=$(cat $NODEFILE | wc -l)
+```
+
+Now that you've setup the appropriate environment variables, you're ready to
+start training. To launch a training process for each compute node, we're going
+to use `parallel`.
+
+```bash
+parallel \
+  --sshloginfile $NODEFILE \
+  --ungroup \
+  --nonall \
+  "torchbiggraph_train --rank \$NODE_RANK /path/to/config.py"
+```
+
+**Warning:** It is important to escape the '$' when calling `$NODE_RANK` in the
+above parallel command. With the escape (`\$`) we're saying "evaluate
+`NODE_RANK` on the remote machine". Without the escape we're saying "evaluate
+`NODE_RANK` on _this_ machine."
+
+Expect graph embedding to take a very long time. Typically, we run for
+approximately 5 epochs, which is the most we can compute in our normal 72-hour
+time limit.
+
+## Index the Resulting Embeddings
+
+Now, you should have a directory in `DATA_ROOT/embeddings` that is full of files
+that look like: `embeddings_{type}_{part}.v{epoch}.h5`. Each one represents a
+matrix where row `i` corresponds to entity `i` of the given type and partition.
+Therefore, we need to build a small index that helps us reference each embedding
+given an entity name. For this, we use the `ptbg_index_embeddings.py` tool. You
+can find this here: `agatha/tools/py_scripts/ptbg_index_embeddings.py`.
+
+Like all tools, you can use the `--help` option to get more information. Here's
+an example of how to run it:
+
+```bash
+cd /path/to/agatha/tools/py_scripts
+./ptbg_index_embeddings.py \
+  <DATA_ROOT>/entities \
+  entities.sqlite3 
+```
+
+This tool will create an sqlite3 lookup table (compatible with
+`Sqlite3LookupTable`) that maps each entity to its embedding location. The
+result will be stored in `entities.sqlite3` (or wherever you specify). The
+Agatha embedding lookup table will use this along with the `embeddings`
+directory to rapidly lookup vectors for each entity.
+
+

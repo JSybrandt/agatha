@@ -35,8 +35,24 @@ using Buckets = std::vector<std::vector<std::list<Edge>>>;
 
 namespace fs = std::filesystem;
 
+char get_node_type(const std::string& name){
+  //Names should be of form x:data where x is a 1 character type, and data may
+  //be anything
+  if(name[1] != ':')
+    throw std::runtime_error("Invalid node name: " + name);
+  return name[0];
+}
+
+bool is_name_selected(
+    const std::string& name,
+    const std::unordered_set<char>& types
+){
+  return types.find(get_node_type(name)) != types.end();
+}
+
 std::unordered_set<std::string> get_all_node_names(
-    const std::vector<fs::path>& file_names
+    const std::vector<fs::path>& file_names,
+    const std::unordered_set<char>& select_types
 ){
   // Each thread is going to load a segment of the json files, collecting names
 
@@ -48,8 +64,10 @@ std::unordered_set<std::string> get_all_node_names(
     #pragma omp for schedule(dynamic)
     for(size_t i = 0; i < file_names.size(); ++i){
       for (const KVPair& kv : parse_kv_json(file_names[i])){
-        local_result.insert(kv.key);
-        local_result.insert(kv.value);
+        if(is_name_selected(kv.key, select_types))
+          local_result.insert(kv.key);
+        if(is_name_selected(kv.value, select_types))
+          local_result.insert(kv.value);
       }
       #pragma omp critical
       {
@@ -65,23 +83,13 @@ std::unordered_set<std::string> get_all_node_names(
   return result;
 }
 
-
-char get_node_type(const std::string& name){
-  //Names should be of form x:data where x is a 1 character type, and data may
-  //be anything
-  if(name[1] != ':')
-    throw std::runtime_error("Invalid node name: " + name);
-  return name[0];
-}
-
-
 size_t get_node_partition(const std::string& name, size_t num_partitions){
   return std::hash<std::string>{}(name) % num_partitions;
 }
 
 
 Partition get_empty_partition(
-    const std::vector<char>& node_types,
+    const std::unordered_set<char>& node_types,
     size_t num_parts
 ){
   Partition result;
@@ -113,7 +121,7 @@ Buckets& merge_buckets(Buckets& base, Buckets& add){
 //using Partition = std::unordered_map<char, std::vector<vector<std::string>>>;
 Partition partition_nodes(
     const std::vector<std::string>& node_names,
-    const std::vector<char>& node_types,
+    const std::unordered_set<char>& node_types,
     size_t num_partitions
 ){
   Partition result = get_empty_partition(node_types, num_partitions);
@@ -217,7 +225,10 @@ Buckets bucket_edges(
   return result;
 }
 
-void write_hdf5_edge_list(const fs::path& hdf5_path, const std::list<Edge>& edges){
+void write_hdf5_edge_list(
+    const fs::path& hdf5_path,
+    const std::list<Edge>& edges
+){
   std::vector<size_t> lhs, rhs, rel;
   for(auto [s, t, r] : edges){
     lhs.push_back(s);
@@ -263,23 +274,22 @@ void write_hdf5_edge_buckets(
   }
 }
 
-std::vector<char> split_string_to_chars(const string& input){
-  std::vector<char> res;
+std::unordered_set<char> split_node_types(const string& input){
+  std::unordered_set<char> res;
   std::stringstream ss(input);
-  std::string s;
-  while(getline(ss, s, ',')){
-    assert(s.size()==1);
-    res.push_back(s[0]);
+  char c;
+  while(ss >> c){
+    res.insert(c);
   }
   return res;
 }
 
-std::vector<std::string> split_string_to_strings(const string& input){
-  std::vector<std::string> res;
+std::unordered_set<std::string> split_relationships(const string& input){
+  std::unordered_set<std::string> res;
   std::stringstream ss(input);
-  std::string s;
-  while(getline(ss, s, ',')){
-    res.push_back(s);
+  std::string rel;
+  while(ss >> rel){
+    res.insert(rel);
   }
   return res;
 }
@@ -288,25 +298,30 @@ int main(int argc, char **argv){
   argparse::ArgumentParser parser("graph_to_ptbg");
   parser.add_argument("-i", "--kv-json-dir")
         .help("Location containing .jsonfiles. As {'key':..., 'value':...}")
-        .action([](const std::string& s){ return fs::path(s); });
+        .action([](const std::string& s){ return fs::path(s); })
+        .required();
   parser.add_argument("-o", "--ptbg-dir")
         .help("The location to place pytorch graph data. Will create a dir.")
-        .action([](const std::string& s){ return fs::path(s); });
+        .action([](const std::string& s){ return fs::path(s); })
+        .required();
   parser.add_argument("-c", "--partition-count")
         .default_value(size_t(100))
         .help("Each entity type will be split into this number of parts.")
         .action([](const std::string& s){ return size_t(std::stoi(s)); });
   parser.add_argument("--types")
-        .default_value(std::vector<char>{'s', 'e', 'l', 'm', 'n', 'p'})
-        .help("List of character names used as node types.")
-        .action(split_string_to_chars);
+        .default_value(std::string("selmnp"))
+        .help("List of node types to inclide. Types are one char long. "
+              "Default: \"selmnp\""
+        );
   parser.add_argument("--relations")
-        .default_value(std::vector<std::string>{
-          "ss", "se", "es", "sl", "ls", "sm", "ms", "sn", "ns", "sp", "ps",
-          "pn", "np", "pm", "mp", "pl", "lp", "pe", "ep",
-        })
-        .help("List of character names used as node types.")
-        .action(split_string_to_strings);
+        .default_value(std::string(
+            "ss se es sl ls sm ms sn ns sp ps pn np pm mp pl lp pe ep"
+        ))
+        .help(
+          "Relations are 2 chars defining directional edges. Default: "
+          "\"ss se es sl ls sm ms sn ns sp ps pn np pm mp pl lp pe ep\""
+        );
+  // This is a flag
   parser.add_argument("--load-entity-partitions")
         .help("Recover the entity partitions from a previous run.")
         .default_value(false)
@@ -322,25 +337,34 @@ int main(int argc, char **argv){
   fs::path json_dir = parser.get<fs::path>("--kv-json-dir");
   fs::path ptbg_root_dir = parser.get<fs::path>("--ptbg-dir");
   size_t num_partitions = parser.get<size_t>("--partition-count");
-  std::vector<char> node_types = parser.get<std::vector<char>>("--types");
-  std::vector<std::string> relation_types
-    = parser.get<std::vector<std::string>>("--relations");
+  std::unordered_set<char> node_types =
+    split_node_types(parser.get<std::string>("--types"));
+  std::unordered_set<std::string> relation_types =
+    split_relationships(parser.get<std::string>("--relations"));
   bool load_entity_partitions = parser.get<bool>("--load-entity-partitions");
 
   assert(fs::is_directory(json_dir));
+
+  std::cout << "Selected Types:";
+  for (char t : node_types){
+    std::cout << " " << t;
+  }
+  std::cout << std::endl;
+
+  std::cout << "Selected Relationships:";
+  for (const std::string& s : relation_types){
+    std::cout << " " << s;
+  }
+  std::cout << std::endl;
 
   std::cout << "Indexing Relations" << std::endl;
   //Check all the relations are valid
   for(const std::string& rel : relation_types){
     assert(rel.size() == 2);
     for(char c : rel){
-      assert(
-          std::find(
-            node_types.begin(),
-            node_types.end(),
-            c
-          ) != node_types.end()
-      );
+      // ensures that each character from the relations is actually found in the
+      // node types
+      assert(node_types.find(c) != node_types.end());
     }
   }
   std::unordered_map<std::string, size_t> relation2idx;
@@ -389,7 +413,8 @@ int main(int argc, char **argv){
   } else {
 
     std::cout << "Getting all node names" << std::endl;
-    std::unordered_set<std::string> node_names = get_all_node_names(kv_json_paths);
+    std::unordered_set<std::string> node_names =
+      get_all_node_names(kv_json_paths, node_types);
 
     std::cout << "Ordering Node Names" << std::endl;
     std::vector<std::string> ordered_node_names;
@@ -405,10 +430,11 @@ int main(int argc, char **argv){
     );
 
     std::cout << "Writing entity partition files" << std::endl;
+    std::vector<char> ordered_node_types(node_types.begin(), node_types.end());
     #pragma omp parallel for collapse(2)
-    for(size_t type_idx = 0; type_idx < node_types.size(); ++type_idx)
+    for(size_t type_idx = 0; type_idx < ordered_node_types.size(); ++type_idx)
       for(size_t part_idx = 0; part_idx < num_partitions; ++part_idx){
-        char type = node_types[type_idx];
+        char type = ordered_node_types[type_idx];
         const std::list<std::string>& nodes = type2part2nodes[type][part_idx];
         write_count_file(ptbg_entity_dir, type, part_idx, nodes);
         write_json_file(ptbg_entity_dir, type, part_idx, nodes);
@@ -419,9 +445,9 @@ int main(int argc, char **argv){
     {
       std::unordered_map<std::string, size_t> local_node2idx;
       #pragma omp for collapse(2)
-      for(size_t type_idx = 0; type_idx < node_types.size(); ++type_idx)
+      for(size_t type_idx = 0; type_idx < ordered_node_types.size(); ++type_idx)
         for(size_t part_idx = 0; part_idx < num_partitions; ++part_idx){
-          char type = node_types[type_idx];
+          char type = ordered_node_types[type_idx];
           const std::list<std::string>& nodes = type2part2nodes[type][part_idx];
           for(const auto& [idx, name] : iter::enumerate(nodes)){
             local_node2idx[name] = idx;

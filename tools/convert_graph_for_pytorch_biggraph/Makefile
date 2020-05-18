@@ -18,6 +18,3 @@ graph_to_ptbg: main.cc
 
 clean:
 	rm -rf graph_to_ptbg
-
-test: graph_to_ptbg
-	./graph_to_ptbg -i test/raw -c 10 -o test/ptbg

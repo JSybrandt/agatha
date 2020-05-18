@@ -275,3 +275,29 @@ def test_len():
   db_path = make_sqlite3_db("test_len", expected)
   table = Sqlite3LookupTable(db_path)
   assert len(table) == len(expected)
+
+def test_iter():
+  expected = {
+      "A": ["B", "C"],
+      "B": ["A"],
+      "C": ["A"],
+  }
+  db_path = make_sqlite3_db("test_iter", expected)
+  table = Sqlite3LookupTable(db_path)
+  actual = {k: v for k, v in table}
+  assert actual == expected
+
+def test_iter_where():
+  db_data = {
+      "AA": ["B", "C"],
+      "BBBB": ["A"],
+      "CC": ["A"],
+  }
+  db_path = make_sqlite3_db("test_iter_where", db_data)
+  table = Sqlite3LookupTable(db_path)
+  actual = {k: v for k, v in table.iterate(where="length(key) = 2")}
+  expected= {
+      "AA": ["B", "C"],
+      "CC": ["A"],
+  }
+  assert actual == expected

@@ -7,6 +7,19 @@ Record = Dict[str, Any]
 
 
 def iter_to_batches(iterable, batch_size):
+  """
+  Chunks the input iterable into fixed-sized batches.
+  Example:
+    ```python3
+    list(iter_to_batches(range(10), 3))
+    [
+      [0, 1, 2],
+      [3, 4, 5],
+      [6, 7, 8],
+      [9]
+    ]
+    ```
+  """
   args = [iter(iterable)] * batch_size
   for batch in zip_longest(*args):
     yield list(filter(lambda b: b is not None, batch))

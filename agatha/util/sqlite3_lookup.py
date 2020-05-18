@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 import json
-from typing import List, Any, Set, Optional
+from typing import List, Any, Set, Optional, Tuple
 import dask.bag as dbag
 from agatha.util.misc_util import Record
 import os
@@ -399,6 +399,52 @@ class Sqlite3LookupTable():
           """
       ).fetchone()[0]
     return self._len
+
+  class _CursorIterator:
+    """
+    Iterates a cursor.
+    Expects cursor to return key, value pairs
+    """
+    def __init__(self, cursor):
+      self.cursor = cursor
+
+    def __next__(self)->Tuple[str, Any]:
+      key_value = next(self.cursor)
+      if key_value is None:
+        return None
+      assert len(key_value) == 2, \
+          "_CursorIterator's cursor must produce key-value pairs."
+      key, val = key_value
+      val = json.loads(val)
+      return key, val
+
+    def __iter__(self):
+      return self
+
+  def iterate(self, where:Optional[str]=None):
+    """
+    Returns an iterator to the underlying database.
+    If `where` is specified, returned rows will be conditioned.
+    Note, when writing a `where` clause that columns are `key` and `value`
+    """
+    assert self.connected(), "Attempting to operate on closed db."
+    query_stmt = f"""
+      SELECT
+        {self.key_column_name} as key,
+        {self.value_column_name} as value
+      FROM {self.table_name}
+    """
+    if where is not None:
+      query_stmt += f"""
+        WHERE {where}
+      """
+    return Sqlite3LookupTable._CursorIterator(self._cursor.execute(query_stmt))
+
+  def __iter__(self):
+    """
+    Returns an iterator that enables us to loop through the entire database.
+    """
+    return self.iterate()
 
 
 ################################################################################

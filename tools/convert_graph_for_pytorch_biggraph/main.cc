@@ -345,6 +345,13 @@ int main(int argc, char **argv){
 
   assert(fs::is_directory(json_dir));
 
+  // We don't want to depend on the ordering anymore
+  std::vector<std::string> ordered_relations(
+      relation_types.begin(),
+      relation_types.end()
+  );
+  std::sort(ordered_relations.begin(), ordered_relations.end());
+
   std::cout << "Selected Types:";
   for (char t : node_types){
     std::cout << " " << t;
@@ -352,14 +359,14 @@ int main(int argc, char **argv){
   std::cout << std::endl;
 
   std::cout << "Selected Relationships:";
-  for (const std::string& s : relation_types){
+  for (const std::string& s : ordered_relations){
     std::cout << " " << s;
   }
   std::cout << std::endl;
 
   std::cout << "Indexing Relations" << std::endl;
   //Check all the relations are valid
-  for(const std::string& rel : relation_types){
+  for(const std::string& rel : ordered_relations){
     assert(rel.size() == 2);
     for(char c : rel){
       // ensures that each character from the relations is actually found in the
@@ -368,7 +375,7 @@ int main(int argc, char **argv){
     }
   }
   std::unordered_map<std::string, size_t> relation2idx;
-  for(const auto& [idx, rel] : iter::enumerate(relation_types)){
+  for(const auto& [idx, rel] : iter::enumerate(ordered_relations)){
     relation2idx[rel] = idx;
   }
 
@@ -380,6 +387,9 @@ int main(int argc, char **argv){
 
   std::cout << "Getting txt files from " << json_dir << std::endl;
   std::vector<fs::path> kv_json_paths = glob_ext(json_dir, ".txt");
+
+  // Must find .txt files
+  assert(kv_json_paths.size() > 0);
 
   // This is what we're going to load
   std::unordered_map<std::string, size_t> node2idx;

@@ -40,7 +40,7 @@ every node and edge of the input graph for PTBG distributed training. The
 settings used to run this tool will determine qualities of the resulting PTBG
 config, so you will want to save the exact command you run for later steps.
 
-**WARNING:** This program is extremely memory intensive. If you're running on
+**Warning:** This program is extremely memory intensive. If you're running on
 plametto, make sure to grab the 1.5 or 2 TB node.
 
 To begin, build the `convert_graph_for_pytorch_biggraph` tool.
@@ -87,9 +87,6 @@ long string. Relationships are also directed in PTBG, meaning that if you would
 like to select both `UMLS -> predicate` edges, as well as `predicate -> UMLS`
 edges, you will need to specify both edge types.
 
-**WARNING:** You will need to remember the order you list the relationships.
-This will determine the order of relationships in the PTBG config.
-
 ## Create a PTBG Config
 
 Now that you have converted the agatha semantic graph for PTBG, you now need to
@@ -122,13 +119,11 @@ def get_torchbiggraph_config():
     `convert_graph_for_pytorch_biggraph`. The above value is the default. If you
     used the `--types` flag, then you need to set this value accordingly."""
 
-    RELATIONS = [ "ss", "se", "es", "sl", "ls", "sm", "ms", "sn", "ns", "sp",
-                  "ps", "pn", "np", "pm", "mp", "pl", "lp", "pe", "ep" ]
+    RELATIONS = [ "ep", "es", "lp", "ls", "mp", "ms", "np", "ns", "pe", "pl", 
+                  "pm", "pn", "ps", "se", "sl", "sm", "sn", "sp", "ss" ]
     """ This is the ordered list of relationships that you specified when
     running `convert_graph_for_pytorch_biggraph`. The above is the default. If
     you specified `--relations` then you need to set this value accordingly.
-    WARNING: The order of relationships matters! This list should be in the same
-    order as the relationships specified in the `--relations` argument.
     """
 
     EMBEDDING_DIM = 512
@@ -156,7 +151,7 @@ def get_torchbiggraph_config():
         entities={t: {'num_partitions': PARTS} for t in ENT_TYPES},
         relations=[
           dict(name=rel, lhs=rel[0], rhs=rel[1], operator='translation')
-          for rel in RELATIONS
+          for rel in sorted(RELATIONS)
         ],
 
         # Scoring model

@@ -35,11 +35,17 @@ using Buckets = std::vector<std::vector<std::list<Edge>>>;
 
 namespace fs = std::filesystem;
 
+bool is_node_valid(const std::string& name){
+  // Names must be at least <char>:<value>
+  return (name.size() > 2) && (name[1] == ':');
+}
+
 char get_node_type(const std::string& name){
   //Names should be of form x:data where x is a 1 character type, and data may
   //be anything
-  if(name[1] != ':')
+  if(!is_node_valid(name)){
     throw std::runtime_error("Invalid node name: " + name);
+  }
   return name[0];
 }
 
@@ -61,13 +67,23 @@ std::unordered_set<std::string> get_all_node_names(
   #pragma omp parallel
   {
     std::unordered_set<std::string> local_result;
+    auto safe_add_to_local = [&local_result, &select_types](const std::string& name){
+      if(is_node_valid(name)){
+        if(is_name_selected(name, select_types)){
+          local_result.insert(name);
+        }
+      } else {
+        std::cout << "Warning, encountered an invalid node name: '"
+                  << name
+                  << "'"
+                  << std::endl;
+      }
+    };
     #pragma omp for schedule(dynamic)
     for(size_t i = 0; i < file_names.size(); ++i){
       for (const KVPair& kv : parse_kv_json(file_names[i])){
-        if(is_name_selected(kv.key, select_types))
-          local_result.insert(kv.key);
-        if(is_name_selected(kv.value, select_types))
-          local_result.insert(kv.value);
+        safe_add_to_local(kv.key);
+        safe_add_to_local(kv.value);
       }
       #pragma omp critical
       {
@@ -197,18 +213,29 @@ Buckets bucket_edges(
     #pragma omp for schedule(dynamic)
     for(size_t i = 0; i < kv_json_paths.size(); ++i){
       for (const KVPair& kv : parse_kv_json(kv_json_paths[i])){
-        std::stringstream relation;
-        relation << get_node_type(kv.key) << get_node_type(kv.value);
-        const auto& relation_index = relation2idx.find(relation.str());
-        if (relation_index != relation2idx.end()) {
-          local_buckets
-            [get_node_partition(kv.key, num_partitions)]
-            [get_node_partition(kv.value, num_partitions)]
-            .push_back({
-              node2idx.at(kv.key),
-              node2idx.at(kv.value),
-              relation_index->second
-            });
+        if(is_node_valid(kv.key) && is_node_valid(kv.value)){
+          std::stringstream relation;
+          relation << get_node_type(kv.key) << get_node_type(kv.value);
+          const auto& relation_index = relation2idx.find(relation.str());
+          const auto& source_idx = node2idx.find(kv.key);
+          const auto& target_idx = node2idx.find(kv.value);
+          if (
+              // The relation is indexed
+              ( relation_index != relation2idx.end() )
+              // The source node is indexed
+              && ( source_idx != node2idx.end() )
+              // The target node is indexed
+              && ( target_idx != node2idx.end() )
+          ) {
+            local_buckets
+              [get_node_partition(kv.key, num_partitions)]
+              [get_node_partition(kv.value, num_partitions)]
+              .push_back({
+                source_idx->second,
+                target_idx->second,
+                relation_index->second
+              });
+          }
         }
       }
       #pragma omp critical

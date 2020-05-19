@@ -19,3 +19,6 @@
 [submodule "externals/cppitertools"]
 	path = externals/include/cppitertools
 	url =  https://github.com/ryanhaining/cppitertools.git
+[submodule "externals/edge2vec"]
+	path = externals/edge2vec
+	url = git@github.com:RoyZhengGao/edge2vec.git

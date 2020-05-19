@@ -20,7 +20,7 @@ def main(
     input_db:Path,
     output_dir:Path,
     nodes_per_file:int=1e6,
-    output_file_fmt_str:str="{:08d}.json",
+    output_file_fmt_str:str="{:08d}.txt",
     disable_pbar:bool=False
 ):
   """Sqlite3Graph -> Edge Json

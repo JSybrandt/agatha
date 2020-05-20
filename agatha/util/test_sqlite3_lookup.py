@@ -20,8 +20,9 @@ def make_sqlite3_db(
     table_name:str="lookup_table",
     key_column_name:str="key",
     value_column_name:str="value",
+    tmp_dir:Path=Path("/tmp")
 )->Path:
-  db_path = Path("/tmp/").joinpath(f"{test_name}.sqlite3")
+  db_path = tmp_dir.joinpath(f"{test_name}.sqlite3")
   if db_path.is_file():
     db_path.unlink()
   with sqlite3.connect(db_path) as db_conn:

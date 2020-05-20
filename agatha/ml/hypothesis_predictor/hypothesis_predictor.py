@@ -208,7 +208,10 @@ class HypothesisPredictor(pl.LightningModule):
     entities = self.embeddings.keys()
     assert len(entities) > 0, "Failed to find embedding entities."
     self.coded_terms = list(filter(is_umls_term_type, entities))
-    self.predicates = list(filter(is_predicate_type, entities))
+    self.predicates = list(filter(
+      predicate_util.is_valid_predicate_name,
+      entities
+    ))
     self._vprint("Splitting train/validation")
     validation_size = int(
         len(self.predicates) * self.hparams.validation_fraction

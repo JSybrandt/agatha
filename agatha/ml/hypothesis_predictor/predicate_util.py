@@ -32,6 +32,15 @@ def clean_coded_term(term:str)->str:
     return f"{UMLS_TERM_TYPE}:{term}".lower()
 
 
+def is_valid_predicate_name(predicate_name:str)->bool:
+  if not is_predicate_type(predicate_name):
+    return False
+  try:
+    typ, sub, vrb, obj = predicate_name.lower().split(":")
+  except Exception:
+    return False
+  return (len(sub) > 0) and (len(obj) > 0)
+
 def parse_predicate_name(predicate_name:str)->Tuple[str, str]:
   """Parses subject and object from predicate name strings.
 

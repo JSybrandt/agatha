@@ -39,7 +39,6 @@ def main(
   semmeddb_csv_path:Path,
   output_json_path:Path,
   cut_date:sm.Datestr=None,
-  edge_weight:float=1.0,
 ):
   semmeddb_csv_path = Path(semmeddb_csv_path)
   output_json_path = Path(output_json_path)

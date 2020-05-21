@@ -317,17 +317,27 @@ class HypothesisPredictor(pl.LightningModule):
           .collate_predicate_embeddings(neg)
           .to(self.get_device())
       )
-      partial_losses.append(
-          self.loss_fn(
-            positive_predictions,
-            negative_predictions,
-            positive_predictions.new_ones(len(positive_predictions))
-          )
+      part_loss = self.loss_fn(
+          positive_predictions,
+          negative_predictions,
+          positive_predictions.new_ones(len(positive_predictions))
       )
+      # If something has gone terrible
+      if torch.isnan(part_loss) or torch.isinf(part_loss):
+        print("ERROR: Loss is:\n", part_loss)
+        print("Positive Predicates:\n", positive_predicates)
+        print("Positive Scores:\n", positive_predictions)
+        print("Negative Scores:\n", negative_predictions)
+        print("Positive Sample:\n", pos)
+        print("Negative Sample:\n", neg)
+        raise Exception("Invalid loss")
+      else:
+        partial_losses.append(part_loss)
+    # End of batch
     loss=torch.mean(torch.stack(partial_losses))
     return (
         loss,
-        dict(
+        dict( # pbar metrics
         )
     )
 

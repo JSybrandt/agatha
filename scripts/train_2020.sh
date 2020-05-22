@@ -6,9 +6,9 @@
 
 DISTRIBUTED=${1:-"0"}
 
-#RELEASE_DIR="/zfs/safrolab/users/jsybran/agatha/data/releases/2020"
-RELEASE_DIR="/burstbuffer/fast/covid/2020_release"
-MODEL_DIR="$RELEASE_DIR/hypothesis_predictor"
+RELEASE_DIR="/zfs/safrolab/users/jsybran/agatha/data/releases/2020"
+#RELEASE_DIR="/burstbuffer/fast/covid/2020_release"
+MODEL_DIR="$RELEASE_DIR/hypothesis_predictor_test"
 mkdir -p $MODEL_DIR
 
 NUM_NODES=1

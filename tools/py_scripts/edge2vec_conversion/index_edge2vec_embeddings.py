@@ -20,10 +20,11 @@ from agatha.ml.util.test_embedding_lookup import (
 from pathlib import Path
 from fire import Fire
 import pickle
-from typing import Iterable, List
+from typing import Iterable, List, Tuple
+from tqdm import tqdm
 
 
-def iterate_vectors(vector_text_path:Path)->Iterable[str, List[float]]:
+def iterate_vectors(vector_text_path:Path)->Iterable[Tuple[str, List[float]]]:
   assert vector_text_path.is_file()
   num_vectors = None
   expected_dim = None
@@ -34,7 +35,7 @@ def iterate_vectors(vector_text_path:Path)->Iterable[str, List[float]]:
         num_vectors, expected_dim = [int(t) for t in tokens]
       if expected_dim is not None and len(tokens) == expected_dim + 1:
         idx = int(tokens[0])
-        vec = [float(t) for t in tokens]
+        vec = [float(t) for t in tokens[1:]]
         yield idx, vec
 
 
@@ -52,7 +53,7 @@ def main(
   # Need an empty output dir
   output_dir = Path(output_dir)
   output_dir.mkdir(parents=True, exist_ok=True)
-  assert len(list(output_dir.listdir())) == 0
+  assert len(list(output_dir.iterdir())) == 0
 
   with open(input_index_path, 'rb') as pkl_file:
     node2idx = pickle.load(pkl_file)["node2idx"]
@@ -62,7 +63,7 @@ def main(
   node2vec = {
       idx2node[idx]: vec
       for idx, vec
-      in iterate_vectors(input_vector_text_path)
+      in tqdm(iterate_vectors(input_vector_text_path))
   }
   setup_embedding_lookup_data(
       node2vec,

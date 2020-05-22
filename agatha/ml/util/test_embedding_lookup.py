@@ -53,6 +53,7 @@ def setup_embedding_lookup_data(
     name2vec:RawEmbeddingTable,
     test_name:str,
     num_parts:int,
+    test_root_dir:Path=Path("/tmp")
 )->Tuple[Path, Path]:
   """
   Creates an embedding hdf5 file and an entity sqlite3 database for testing
@@ -66,7 +67,7 @@ def setup_embedding_lookup_data(
     embedding_dir, entity_db_path
     You can run EmbeddingLookupTable(*setup_embedding_lookup_data(...))
   """
-  test_dir = Path("/tmp").joinpath(test_name)
+  test_dir = test_root_dir.joinpath(test_name)
   if test_dir.is_dir():
     shutil.rmtree(test_dir)
   assert not test_dir.exists(), f"Refusing to overwrite {test_dir}"

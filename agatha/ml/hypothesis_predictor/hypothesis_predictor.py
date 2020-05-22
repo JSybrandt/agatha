@@ -457,6 +457,11 @@ class HypothesisPredictor(pl.LightningModule):
     parser.add_argument("--warmup-steps", type=int)
     parser.add_argument("--weight-decay", type=float)
     parser.add_argument("--disable-cache", action="store_true")
+    parser.add_argument(
+        "--simple",
+        help="If set, ignore graph and use a simpler model architecture.",
+        action="store_true"
+    )
     return parser
 
   def init_ddp_connection(

@@ -22,6 +22,7 @@ from fire import Fire
 import pickle
 from typing import Iterable, List, Tuple
 from tqdm import tqdm
+from agatha.ml.hypothesis_predictor.predicate_util import clean_coded_term
 
 
 def iterate_vectors(vector_text_path:Path)->Iterable[Tuple[str, List[float]]]:
@@ -61,7 +62,7 @@ def main(
   idx2node = {i: n for n, i in node2idx.items()}
 
   node2vec = {
-      idx2node[idx]: vec
+      clean_coded_term(idx2node[idx]): vec
       for idx, vec
       in tqdm(iterate_vectors(input_vector_text_path))
   }

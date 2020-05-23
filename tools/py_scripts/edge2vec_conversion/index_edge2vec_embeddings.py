@@ -20,12 +20,16 @@ from agatha.ml.util.test_embedding_lookup import (
 from pathlib import Path
 from fire import Fire
 import pickle
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Dict
 from tqdm import tqdm
 from agatha.ml.hypothesis_predictor.predicate_util import clean_coded_term
 
 
-def iterate_vectors(vector_text_path:Path)->Iterable[Tuple[str, List[float]]]:
+def iterate_vectors(
+    vector_text_path:Path,
+    idx2node:Dict[str, int],
+    predicate_keys:Iterable[str],
+)->Iterable[Tuple[str, List[float]]]:
   assert vector_text_path.is_file()
   num_vectors = None
   expected_dim = None
@@ -37,7 +41,10 @@ def iterate_vectors(vector_text_path:Path)->Iterable[Tuple[str, List[float]]]:
       if expected_dim is not None and len(tokens) == expected_dim + 1:
         idx = int(tokens[0])
         vec = [float(t) for t in tokens[1:]]
-        yield idx, vec
+        yield clean_coded_term(idx2node[idx]), vec
+  assert expected_dim is not None
+  for pred_key in predicate_keys:
+    yield pred_key, [0]*expected_dim
 
 
 def main(
@@ -57,15 +64,16 @@ def main(
   assert len(list(output_dir.iterdir())) == 0
 
   with open(input_index_path, 'rb') as pkl_file:
-    node2idx = pickle.load(pkl_file)["node2idx"]
+    index = pickle.load(pkl_file)
 
-  idx2node = {i: n for n, i in node2idx.items()}
+  idx2node = {i: n for n, i in index["node2idx"].items()}
 
-  node2vec = {
-      clean_coded_term(idx2node[idx]): vec
-      for idx, vec
-      in tqdm(iterate_vectors(input_vector_text_path))
-  }
+  node2vec = dict(tqdm(iterate_vectors(
+    input_vector_text_path,
+    idx2node=idx2node,
+    predicate_keys=index["predicate_keys"]
+  )))
+
   setup_embedding_lookup_data(
       node2vec,
       test_name="edge2vec",

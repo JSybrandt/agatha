@@ -50,6 +50,7 @@ def main(
   index = dict(
       node2idx={},
       relation2idx={},
+      predicate_keys=set()
   )
   get_or_add_node     = lambda n: get_or_add_idx(n, index["node2idx"])
   get_or_add_relation = lambda n: get_or_add_idx(n, index["relation2idx"])
@@ -67,6 +68,7 @@ def main(
       vrb = get_or_add_relation(predicate["pred_type"])
       out_edge_file.write(f"{sub} {obj} {vrb} {edge_idx}\n")
       edge_idx += 1
+      index["predicate_keys"].add(sm.predicate_to_key(predicate))
   with open(output_index, 'wb') as out_index_file:
     pickle.dump(index, out_index_file)
 

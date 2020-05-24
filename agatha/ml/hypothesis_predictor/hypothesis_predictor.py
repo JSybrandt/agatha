@@ -17,6 +17,10 @@ from agatha.ml.util import hparam_util
 class HypothesisPredictor(pl.LightningModule):
   def __init__(self, hparams:Namespace):
     super(HypothesisPredictor, self).__init__()
+    # Backwards compatability for `simple` kwarg
+    if not hasattr(hparams, "simple"):
+      hparams.simple = False
+
     # If the hparams have been setup with paths, typical for training
     if (
         hasattr(hparams, "graph_db")
@@ -32,8 +36,14 @@ class HypothesisPredictor(pl.LightningModule):
     else: # Otherwise, the user will need to call configure_paths themselves
       self.graph = None
       self.embeddings = None
+
     # Clear paths, don't want to serialize them later
     self.hparams = hparam_util.remove_paths_from_namespace(hparams)
+
+    # If we're using the simple model, we're going to overwrite the
+    # neighbor_sample_rate
+    if self.hparams.simple:
+      self.hparams.neighbor_sample_rate = 0
 
     # Set when init_process_group is called
     self._distributed = False
@@ -43,18 +53,22 @@ class HypothesisPredictor(pl.LightningModule):
     self.embedding_transformation = torch.nn.Linear(
         self.hparams.dim, self.hparams.dim
     )
-    ## Encoder Stack
-    self.encode_predicate_data = torch.nn.TransformerEncoder(
-        encoder_layer=torch.nn.TransformerEncoderLayer(
-          self.hparams.dim,
-          self.hparams.transformer_heads,
-          self.hparams.transformer_ff_dim,
-          self.hparams.transformer_dropout,
-          "relu"
-        ),
-        num_layers=self.hparams.transformer_layers,
-        norm=torch.nn.LayerNorm(self.hparams.dim),
-    )
+    if self.hparams.simple:
+      # Take two embeddings, produce one value
+      self.simple_linear = torch.nn.Linear(2*self.hparams.dim, 1)
+    else:
+      ## Encoder Stack
+      self.encode_predicate_data = torch.nn.TransformerEncoder(
+          encoder_layer=torch.nn.TransformerEncoderLayer(
+            self.hparams.dim,
+            self.hparams.transformer_heads,
+            self.hparams.transformer_ff_dim,
+            self.hparams.transformer_dropout,
+            "relu"
+          ),
+          num_layers=self.hparams.transformer_layers,
+          norm=torch.nn.LayerNorm(self.hparams.dim),
+      )
     ## Avg emb to logit
     self.encoding_to_logit = torch.nn.Linear(
       self.hparams.dim, 1
@@ -272,11 +286,17 @@ class HypothesisPredictor(pl.LightningModule):
     )
 
   def forward(self, predicate_embeddings:torch.FloatTensor)->torch.FloatTensor:
+    # Size <seq_len> X <batch_size> X <dim>
     local_stacked_emb = self.embedding_transformation(predicate_embeddings)
     local_stacked_emb = torch.relu(local_stacked_emb)
-    encoded_predicate = self.encode_predicate_data(local_stacked_emb)
-    encoded_predicate = encoded_predicate.mean(dim=0)
-    logit = self.encoding_to_logit(encoded_predicate)
+    if self.hparams.simple:
+      # Reorder to <batch_size> X <seq_len> X <dim>
+      # Flatten to <batch_size> X <dim*seq_len> (in this case seq_len=2)
+      logit = self.simple_linear(local_stacked_emb.permute(1, 0, 2).flatten(1))
+    else:
+      encoded_predicate = self.encode_predicate_data(local_stacked_emb)
+      encoded_predicate = encoded_predicate.mean(dim=0)
+      logit = self.encoding_to_logit(encoded_predicate)
     logit = torch.sigmoid(logit)
     return logit.reshape(-1)
 

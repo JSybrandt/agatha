@@ -4,6 +4,7 @@ from agatha.ml.util import hparam_util
 from pytorch_lightning import Trainer
 from argparse import ArgumentParser, Namespace
 from typing import List, Any, Tuple, Dict
+import os
 
 class AgathaModule(pl.LightningModule):
   """

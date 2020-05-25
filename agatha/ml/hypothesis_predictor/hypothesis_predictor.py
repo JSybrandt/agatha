@@ -301,8 +301,6 @@ class HypothesisPredictor(AgathaModule):
         print("Positive Predicates:\n", positive_predicates)
         print("Positive Scores:\n", positive_predictions)
         print("Negative Scores:\n", negative_predictions)
-        print("Positive Sample:\n", pos)
-        print("Negative Sample:\n", neg)
         raise Exception("Invalid loss")
       else:
         partial_losses.append(part_loss)

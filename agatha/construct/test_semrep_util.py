@@ -366,12 +366,15 @@ def test_parse_semrep_end_to_end_difficult():
       metamap_server=metamap_server,
       lexicon_year=2020,
       mm_data_year="2020AA",
+      mm_data_version="20_utf8",
   )
   runner.run(tmp_semrep_input, tmp_semrep_output)
   assert tmp_semrep_output.is_file()
   # should return one per document
-  records = semrep_util.semrep_xml_to_records(tmp_semrep_output)
-  assert len(records) == 2
+  records = semrep_util.semrep_xml_to_records(
+      tmp_semrep_output
+  )
+  assert len(records) == 1
 
 def test_extract_entitites_and_predicates_with_dask():
   records = dbag.from_sequence([
@@ -399,5 +402,6 @@ def test_extract_entitites_and_predicates_with_dask():
       work_dir=work_dir,
       lexicon_year=2020,
       mm_data_year="2020AA",
+      mm_data_version="20_utf8",
   ).compute()
   assert len(actual) == 2

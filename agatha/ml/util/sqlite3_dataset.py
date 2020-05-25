@@ -1,7 +1,7 @@
 from pathlib import Path
 from torch.utils.data import Dataset
 from agatha.util.sqlite3_lookup import Sqlite3LookupTable
-from typing import Tuple, Any, Callable, List
+from typing import Tuple, Any, Callable, List, Union
 
 def _accept_all(key:str)->bool:
   return True
@@ -9,9 +9,12 @@ def _accept_all(key:str)->bool:
 class Sqlite3Dataset(Dataset):
   def __init__(
       self,
-      table:Sqlite3LookupTable,
+      table:Union[Sqlite3LookupTable, Path],
       filter_fn:Callable[[str], bool]=_accept_all,
   ):
+    if isinstance(table, str) or isinstance(table, Path):
+      table = Sqlite3LookupTable(table)
+
     self.table=table
     self._keys = None
     self._filter_fn = filter_fn
@@ -50,7 +53,7 @@ class Sqlite3KeyDataset(Sqlite3Dataset):
     Sqlite3Dataset.__init__(self, *args, **kwargs)
 
   def __getitem__(self, idx)->str:
-    return Sqlite3Dataset.__getitem__(idx)[0]
+    return Sqlite3Dataset.__getitem__(self, idx)[0]
 
 class Sqlite3ValueDataset(Sqlite3Dataset):
   """
@@ -60,4 +63,4 @@ class Sqlite3ValueDataset(Sqlite3Dataset):
     Sqlite3Dataset.__init__(self, *args, **kwargs)
 
   def __getitem__(self, idx)->str:
-    return Sqlite3Dataset.__getitem__(idx)[1]
+    return Sqlite3Dataset.__getitem__(self, idx)[1]

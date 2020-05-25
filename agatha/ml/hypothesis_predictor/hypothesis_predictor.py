@@ -1,6 +1,6 @@
 from collections import defaultdict
 import torch
-import pytorch_lightning as pl
+from agatha.ml.module import AgathaModule
 from argparse import Namespace, ArgumentParser
 from agatha.ml.util.lamb_optimizer import Lamb
 from typing import List, Tuple, Dict, Any, Optional
@@ -11,17 +11,15 @@ from agatha.util.misc_util import iter_to_batches
 from agatha.ml.hypothesis_predictor import predicate_util
 from pathlib import Path
 import os
-from pytorch_lightning import Trainer
 from agatha.ml.util import hparam_util
 
-class HypothesisPredictor(pl.LightningModule):
+class HypothesisPredictor(AgathaModule):
   def __init__(self, hparams:Namespace):
-    super(HypothesisPredictor, self).__init__()
-    # Backwards compatability for `simple` kwarg
-    if not hasattr(hparams, "simple"):
-      hparams.simple = False
+    super(HypothesisPredictor, self).__init__(hparams)
 
     # If the hparams have been setup with paths, typical for training
+    self.graph = None
+    self.embeddings = None
     if (
         hasattr(hparams, "graph_db")
         and hasattr(hparams, "entity_db")
@@ -33,20 +31,14 @@ class HypothesisPredictor(pl.LightningModule):
           embedding_dir=hparams.embedding_dir,
           disable_cache=hparams.disable_cache,
       )
-    else: # Otherwise, the user will need to call configure_paths themselves
-      self.graph = None
-      self.embeddings = None
 
-    # Clear paths, don't want to serialize them later
-    self.hparams = hparam_util.remove_paths_from_namespace(hparams)
-
-    # If we're using the simple model, we're going to overwrite the
-    # neighbor_sample_rate
-    if self.hparams.simple:
+    # Backwards compatability for `simple` kwarg
+    if not hasattr(self.hparams, "simple"):
+      self.hparams.simple = False
+    elif self.hparams.simple:
+      # If we're using the simple model, we're going to overwrite the
+      # neighbor_sample_rate
       self.hparams.neighbor_sample_rate = 0
-
-    # Set when init_process_group is called
-    self._distributed = False
 
     # Layers
     ## Graph Emb Input
@@ -82,13 +74,6 @@ class HypothesisPredictor(pl.LightningModule):
     self.predicates = None
     self.coded_terms = None
     self.predicate_batch_generator = None
-
-  def _vprint(self, *args, **kwargs):
-    if self.hparams.verbose:
-      print(*args, **kwargs)
-
-  def set_verbose(self, val:bool)->None:
-    self.hparams.verbose = val
 
   def configure_paths(
       self,
@@ -226,20 +211,8 @@ class HypothesisPredictor(pl.LightningModule):
       predicate_util.is_valid_predicate_name,
       entities
     ))
-    self._vprint("Splitting train/validation")
-    validation_size = int(
-        len(self.predicates) * self.hparams.validation_fraction
-    )
-    training_size = len(self.predicates) - validation_size
-    self._vprint("\t- Training:", training_size)
-    self._vprint("\t- Validation:", validation_size)
-    (
-        self.training_predicates,
-        self.validation_predicates,
-    ) = torch.utils.data.random_split(
-        self.predicates,
-        [training_size, validation_size]
-    )
+    self.training_predicates, self.validation_predicates = \
+        self.training_validation_split(self.predicates)
     self._vprint("Preparing Batch Generator")
     self.predicate_batch_generator = predicate_util.PredicateBatchGenerator(
         graph=self.graph,
@@ -252,30 +225,12 @@ class HypothesisPredictor(pl.LightningModule):
     )
     self._vprint("Ready for training!")
 
-  def _configure_dataloader(
-      self,
-      predicate_dataset:torch.utils.data.Dataset,
-      shuffle:bool,
-  )->torch.utils.data.DataLoader:
-    self.preload()
-    sampler = None
-    if self._distributed:
-      shuffle = False
-      sampler=torch.utils.data.distributed.DistributedSampler(predicate_dataset)
-    return torch.utils.data.DataLoader(
-        dataset=predicate_dataset,
-        shuffle=shuffle,
-        sampler=sampler,
-        batch_size=self.hparams.positives_per_batch,
-        num_workers=self.hparams.dataloader_workers,
-        pin_memory=True,
-    )
-
   def train_dataloader(self)->torch.utils.data.DataLoader:
     self._vprint("Getting Training Dataloader")
     return self._configure_dataloader(
         self.training_predicates,
         shuffle=True,
+        batch_size=self.hparams.positives_per_batch,
     )
 
   def val_dataloader(self)->torch.utils.data.DataLoader:
@@ -283,6 +238,7 @@ class HypothesisPredictor(pl.LightningModule):
     return self._configure_dataloader(
         self.validation_predicates,
         shuffle=False,
+        batch_size=self.hparams.positives_per_batch,
     )
 
   def forward(self, predicate_embeddings:torch.FloatTensor)->torch.FloatTensor:
@@ -299,9 +255,6 @@ class HypothesisPredictor(pl.LightningModule):
       logit = self.encoding_to_logit(encoded_predicate)
     logit = torch.sigmoid(logit)
     return logit.reshape(-1)
-
-  def get_device(self):
-    return next(self.parameters()).device
 
   def _step(
       self,
@@ -383,19 +336,6 @@ class HypothesisPredictor(pl.LightningModule):
     val_metrics["val_loss"] = loss
     return val_metrics
 
-  def _on_epoch_end(
-      self,
-      outputs:List[Dict[str,torch.Tensor]]
-  )->Dict[str, Dict[str,torch.Tensor]]:
-    keys = outputs[0].keys()
-    return {
-        key: torch.mean(torch.stack([o[key] for o in outputs]))
-        for key in keys
-    }
-
-  def validation_epoch_end(self, outputs:List[Dict[str,torch.Tensor]]):
-    return self._on_epoch_end(outputs)
-
   def configure_optimizers(self):
     self._vprint("Configuring optimizers")
     return Lamb(
@@ -403,11 +343,6 @@ class HypothesisPredictor(pl.LightningModule):
         lr=self.hparams.lr,
         weight_decay=self.hparams.weight_decay,
     )
-
-  def on_train_start(self):
-    pl.LightningModule.on_train_start(self)
-    self._vprint("Training started")
-
 
   def optimizer_step(
       self,
@@ -456,13 +391,11 @@ class HypothesisPredictor(pl.LightningModule):
       A reference to the input argument parser.
 
     """
-    parser = Trainer.add_argparse_args(parser)
-    parser.add_argument("--dataloader-workers", type=int)
+    parser = AgathaModule.add_argparse_args(parser)
     parser.add_argument("--dim", type=int)
     parser.add_argument("--embedding-dir", type=Path)
     parser.add_argument("--entity-db", type=Path)
     parser.add_argument("--graph-db", type=Path)
-    parser.add_argument("--lr", type=float)
     parser.add_argument("--margin", type=float)
     parser.add_argument("--negative-scramble-rate", type=int)
     parser.add_argument("--negative-swap-rate", type=int)
@@ -472,8 +405,6 @@ class HypothesisPredictor(pl.LightningModule):
     parser.add_argument("--transformer-ff-dim", type=int)
     parser.add_argument("--transformer-heads", type=int)
     parser.add_argument("--transformer-layers", type=int)
-    parser.add_argument("--validation-fraction", type=float)
-    parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--warmup-steps", type=int)
     parser.add_argument("--weight-decay", type=float)
     parser.add_argument("--disable-cache", action="store_true")
@@ -483,50 +414,3 @@ class HypothesisPredictor(pl.LightningModule):
         action="store_true"
     )
     return parser
-
-  def init_ddp_connection(
-      self,
-      proc_rank:int,
-      world_size:int,
-      is_slurm_managing_tasks:bool=False
-  )->None:
-    """
-    Override to define your custom way of setting up a distributed environment.
-    Lightning's implementation uses env:// init by default and sets the first node as root
-    for SLURM managed cluster.
-    Args:
-        proc_rank: The current process rank within the node.
-        world_size: Number of GPUs being use across all nodes. (num_nodes * num_gpus).
-        is_slurm_managing_tasks: is cluster managed by SLURM.
-    """
-
-    if self.hparams.num_nodes <= 1:
-      print("Number of nodes set to 1. Ignoring environment variables.")
-      print("MASTER_ADDR = 127.0.0.1")
-      os.environ["MASTER_ADDR"] = '127.0.0.1'
-      print("MASTER_PORT = 12910")
-      os.environ["MASTER_PORT"] = '12910'
-    else:
-      if 'MASTER_ADDR' not in os.environ:
-        print("MASTER_ADDR environment variable missing. Set as localhost")
-        os.environ['MASTER_ADDR'] = '127.0.0.1'
-
-      if 'MASTER_PORT' not in os.environ:
-        print("MASTER_PORT environment variable is not defined. Set as 12910")
-        os.environ['MASTER_PORT'] = '12910'
-
-    # Reverting to GLOO until nccl upgrades in pytorch are complete
-    #torch_backend = "nccl" if self.trainer.on_gpu else "gloo"
-    torch_backend = "gloo"
-
-    self._vprint(
-        "Attempting connection:",
-        torch_backend,
-        os.environ["MASTER_ADDR"], proc_rank, world_size
-    )
-    self._distributed = True
-    torch.distributed.init_process_group(
-        torch_backend,
-        rank=proc_rank,
-        world_size=world_size
-    )

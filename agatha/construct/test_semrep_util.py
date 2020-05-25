@@ -6,6 +6,7 @@ import dask.bag as dbag
 import agatha.construct.dask_process_global as dpg
 import os
 import pytest
+from agatha.construct import text_util
 
 # If SemRep isn't present, don't bother with these tests
 SEMREP_INSTALL_DIR = Path("externals/semrep/2020/public_semrep")
@@ -405,3 +406,75 @@ def test_extract_entitites_and_predicates_with_dask():
       mm_data_version="20_utf8",
   ).compute()
   assert len(actual) == 2
+
+def test_semrep_fails_with_bad_sentence():
+  """
+  We ran into a problem with the following abstract:
+
+    https://pubmed.ncbi.nlm.nih.gov/3624238/
+
+    Specifically, the component that includes a list of names:
+
+    (Samanta, H., Engel, D. A., Chao, H. M., Thakur, A., Garcia-Blanco, M. A.,
+    and Lengyel, P. (1986) J. Biol. Chem. 261, 11849-11858).
+
+    Was split into these sentences:
+
+    1: (Samanta, H., Engel, D.
+    2: A., Chao, H.
+    ...
+
+    The sentence `A., Chao, H.` causes an error due to an unforseen exception
+    within semrep.
+
+    This problematic abstract is represented here and processed in the same way
+    as in the typical dask pipeline.
+
+  """
+  abstracts = dbag.from_sequence([{
+    "pmid": "3624238",
+    "version": 1,
+    "text_data": [{
+      "text": "Interferons as Gene Activators. Characteristics of an "
+              "Interferon-Activatable Enhancer",
+      "type": "title",
+    }, {
+      "text": "Previously we linked a 0.8-kilobase segment (including the "
+              "5'-flanking region and the 5'-terminal exon) of an "
+              "interferon-activatable mouse gene (202 gene) to the "
+              "chloramphenicol acetyltransferase gene and transfected the "
+              "construct into mouse Ltk- cells (Samanta, H., Engel, D. A., "
+              "Chao, H.  M., Thakur, A., Garcia-Blanco, M. A., and "
+              "Lengyel, P. (1986) J. Biol.  Chem. 261, 11849-11858). "
+              "Treatment of these cells with mouse beta-interferon increased "
+              "the expression of the chloramphenicol acetyltransferase gene "
+              "5-10-fold. Here we demonstrate that this segment from the 202 "
+              "gene has characteristics of an interferon-activatable "
+              "enhancer: (a) it can activate a heterologous promoter (SV40 "
+              "early promoter), (b) it is active in both the appropriate "
+              "and the inverted orientation and in either upstream or "
+              "downstream locations from the promoter activated, and (c) "
+              "treatment of cells with interferon increases its activity "
+              "severalfold.",
+      "type": "abstract:raw",
+    }]
+  }], npartitions=1)
+  sentences = abstracts.map_partitions(text_util.split_sentences)
+  work_dir = Path("/tmp/test_semrep_fails_with_bad_sentence")
+  work_dir.mkdir(exist_ok=True, parents=True)
+  # Configure Metamap Server through DPG
+  preloader = dpg.WorkerPreloader()
+  preloader.register(*semrep_util.get_metamap_server_initializer(
+    metamap_install_dir=METAMAP_INSTALL_DIR,
+  ))
+  dpg.add_global_preloader(preloader=preloader)
+  actual = semrep_util.extract_entities_and_predicates_from_sentences(
+      sentence_records=sentences,
+      unicode_to_ascii_jar_path=UNICODE_TO_ASCII_JAR_PATH,
+      semrep_install_dir=SEMREP_INSTALL_DIR,
+      work_dir=work_dir,
+      lexicon_year=2020,
+      mm_data_year="2020AA",
+      mm_data_version="20_utf8",
+  ).compute()
+  assert len(actual) > 0

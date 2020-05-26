@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Tuple
 from agatha.ml.util.sqlite3_dataset import Sqlite3ValueDataset
 from agatha.util.misc_util import Record
 from agatha.ml.util.lamb_optimizer import Lamb
+from copy import deepcopy
 
 
 class Gpt2Finetune(AgathaModule):
@@ -17,16 +18,35 @@ class Gpt2Finetune(AgathaModule):
     if hasattr(hparams, "abstract_db"):
       self.configure_paths(abstract_db=hparams.abstract_db)
 
-    self.language_model = GPT2LMHeadModel.from_pretrained(
-        self.hparams.baseline_model
-    )
-    self.tokenizer = GPT2Tokenizer.from_pretrained(
-        self.hparams.baseline_model
-    )
+    self.language_model = None
     # Defaults
     self.training_abstracts = None
     self.validation_abstracts = None
     self._abstract_tokenizer_dataset = None
+
+  def _set_lm_if_not_set(self)->None:
+    """
+    The pretrained model contains _something_ that can't be serialized.  We
+    need to serialize this module a couple of times to setup distributed
+    training. So the strat is to only set the language_model at the last
+    possible second.
+    """
+    if self.language_model is None:
+      assert not self._training_started, \
+          "Attempting to reset language model after training started"
+      self.language_model = GPT2LMHeadModel.from_pretrained(
+          self.hparams.baseline_model
+      )
+
+  def __getstate__(self)->Dict[str, Any]:
+    self.language_model = None
+    state =self.__dict__.copy()
+    return state
+
+  def on_train_start(self):
+    self._set_lm_if_not_set()
+    super(AgathaModule, self).on_train_start()
+
 
   def configure_paths(
       self,
@@ -41,7 +61,7 @@ class Gpt2Finetune(AgathaModule):
         "Must call configure_paths before prepare_for_training"
     self._abstract_tokenizer_dataset = AbstractTokenizerDataset(
         abstracts=self.abstracts,
-        tokenizer=self.tokenizer,
+        tokenizer_name=self.hparams.baseline_model,
         max_length=self.hparams.max_length,
     )
     self.training_abstracts, self.validation_abstracts = (
@@ -81,7 +101,8 @@ class Gpt2Finetune(AgathaModule):
     Returns:
       (batch_size) X (seq_lenth) X (vocab_size)
     """
-    return self.language_model.forward(tokens, *args, **kwargs)
+    self._set_lm_if_not_set()
+    return self.language_model.forward(*args, **kwargs)
 
   def _step(
       self,
@@ -122,6 +143,7 @@ class Gpt2Finetune(AgathaModule):
 
   def configure_optimizers(self):
     self._vprint("Configuring optimizers")
+    self._set_lm_if_not_set()
     return Lamb(
         self.parameters(),
         lr=self.hparams.lr,
@@ -155,14 +177,25 @@ class AbstractTokenizerDataset(torch.utils.data.Dataset):
   def __init__(
       self,
       abstracts:torch.utils.data.Dataset,
-      tokenizer:GPT2Tokenizer,
+      tokenizer_name:str,
       max_length:int
   ):
+    self.tokenizer_name = tokenizer_name
     self.abstracts = abstracts
-    self.tokenizer = tokenizer
+    self.tokenizer = None
     self.max_length = max_length
 
+  def __getstate__(self):
+    "Don't serialize the keys."
+    tokenizer = self.tokenizer
+    self.tokenizer = None
+    state = self.__dict__.copy()
+    self.tokenizer= tokenizer
+    return state
+
   def __getitem__(self, idx:int)->List[int]:
+    if self.tokenizer is None:
+      self.tokenizer = GPT2Tokenizer.from_pretrained(self.tokenizer_name)
     return self.tokenizer.encode(
         text=abstract_record_to_string(self.abstracts[idx]),
         add_special_tokens=True,
@@ -176,12 +209,17 @@ class AbstractTokenizerDataset(torch.utils.data.Dataset):
     input_ids = torch.nn.utils.rnn.pad_sequence(
         [torch.LongTensor(t) for t in tokens],
         batch_first=True,
+        padding_value=0
+    )
+    labels = torch.nn.utils.rnn.pad_sequence(
+        [torch.LongTensor(t) for t in tokens],
+        batch_first=True,
         padding_value=-100
     )
     attention_mask = (input_ids != -1).float()
     return dict(
         input_ids=input_ids,
         attention_mask=attention_mask,
-        labels=input_ids, # labels are shifted inside language model
+        labels=labels, # labels are shifted inside language model
     )
 

@@ -24,6 +24,9 @@ class AgathaModule(pl.LightningModule):
     # Set when init_process_group is called
     self._distributed = False
 
+    # Set when training started
+    self._training_started = False
+
   def set_verbose(self, val:bool)->None:
     self.hparams.verbose = val
 
@@ -81,6 +84,7 @@ class AgathaModule(pl.LightningModule):
   def on_train_start(self):
     pl.LightningModule.on_train_start(self)
     self._vprint("Training started")
+    self._training_started = True
 
   def get_device(self):
     return next(self.parameters()).device

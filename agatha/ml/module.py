@@ -65,9 +65,9 @@ class AgathaModule(pl.LightningModule):
         print("MASTER_PORT environment variable is not defined. Set as 12910")
         os.environ['MASTER_PORT'] = '12910'
 
-    torch_backend = "nccl" if self.trainer.on_gpu else "gloo"
+    #torch_backend = "nccl" if self.trainer.on_gpu else "gloo"
     # Reverting to GLOO until nccl upgrades in pytorch are complete
-    #torch_backend = "gloo"
+    torch_backend = "gloo"
 
     self._vprint(
         "Attempting connection:",

@@ -253,11 +253,12 @@ class PredicateExampleDataset(torch.utils.data.Dataset):
 
   def __getitem__(self, idx:int)->Dict[str, Any]:
     if self._first_call:
+      print("Worker preloading...")
       start = time.time()
       self.graph.preload()
       self.embeddings.preload()
       end = time.time()
-      print(f"Worker preloading: {int(end-start)}")
+      print(f"Worker preloading: {int(end-start)}s")
       self._first_call = False
     start = time.time()
     positive_predicate = self.predicate_ds[idx]

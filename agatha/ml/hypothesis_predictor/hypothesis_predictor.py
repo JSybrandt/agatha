@@ -234,7 +234,7 @@ class HypothesisPredictor(AgathaModule):
         neighbor_sample_rate=self.hparams.neighbor_sample_rate,
         negative_swap_rate=self.hparams.negative_swap_rate,
         negative_scramble_rate=self.hparams.negative_scramble_rate,
-        preload_on_first_call=self.hparams.disable_cache,
+        preload_on_first_call=not self.hparams.disable_cache,
     )
     self._vprint("Ready for training!")
 

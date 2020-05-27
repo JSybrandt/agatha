@@ -1,7 +1,7 @@
 from agatha.ml.util.embedding_lookup import EmbeddingLookupTable
 from agatha.util.sqlite3_lookup import Sqlite3LookupTable
 import numpy as np
-from typing import List, Tuple, Set
+from typing import List, Tuple, Set, Dict, Any
 from agatha.util.entity_types import (
     PREDICATE_TYPE,
     UMLS_TERM_TYPE,
@@ -11,6 +11,7 @@ from agatha.util.entity_types import (
 import random
 import torch
 from dataclasses import dataclass
+import time
 
 
 @dataclass
@@ -146,11 +147,14 @@ class PredicateObservationGenerator():
       subj, obj = parse_predicate_name(predicate)
     except Exception:
       raise Exception(f"Failed to parse predicate: {predicate}")
+    start = time.time()
     subj_neigh, obj_neigh = self._get_pred_neigh_from_diff(subj, obj)
     subj = self.embeddings[subj]
     obj = self.embeddings[obj]
     subj_neigh = [self.embeddings[s] for s in subj_neigh]
     obj_neigh = [self.embeddings[o] for o in obj_neigh]
+    end = time.time()
+    #print("Generating PredicateEmbeddings:", int(end-start))
     return PredicateEmbeddings(
         subj=subj,
         obj=obj,
@@ -184,8 +188,6 @@ class PredicateScrambleObservationGenerator(PredicateObservationGenerator):
     )
 
 
-
-
 class NegativePredicateGenerator():
   def __init__(
       self,
@@ -195,7 +197,6 @@ class NegativePredicateGenerator():
     "Generates coded terms that appear in graph."
     self.coded_terms = coded_terms
     self.graph = graph
-    self._log = []
 
   def _choose_term(self):
     term = random.choice(self.coded_terms)
@@ -207,41 +208,33 @@ class NegativePredicateGenerator():
     subj = self._choose_term()
     obj = self._choose_term()
     predicate = to_predicate_name(subj, obj)
-    if self._log is not None:
-      self._log.append(predicate)
     return predicate
 
-  def disable_debug_log(self):
-    self._log = None
 
-  def get_debug_log(self)->List[str]:
-    "Returns the last negative predicates since the log was cleared"
-    return self._log[:]
-
-  def clear_debug_log(self)->None:
-    self._log = []
-
-
-
-class PredicateBatchGenerator():
+class PredicateExampleDataset(torch.utils.data.Dataset):
   def __init__(
       self,
+      predicate_ds:torch.utils.data.Dataset,
+      all_predicates:List[str],
       graph:Sqlite3LookupTable,
       embeddings:EmbeddingLookupTable,
-      predicates:List[str],
       coded_terms:List[str],
       neighbor_sample_rate:int,
       negative_swap_rate:int,
       negative_scramble_rate:int,
+      preload_on_first_call:bool=True,
       verbose:bool=False,
   ):
+    self.graph = graph
+    self.embeddings = embeddings
     self.verbose = verbose
+    self.predicate_ds = predicate_ds
     self.negative_generator = NegativePredicateGenerator(
         coded_terms=coded_terms,
         graph=graph,
     )
     self.scramble_observation_generator = PredicateScrambleObservationGenerator(
-        predicates=predicates,
+        predicates=all_predicates,
         graph=graph,
         embeddings=embeddings,
         neighbor_sample_rate=neighbor_sample_rate,
@@ -253,68 +246,74 @@ class PredicateBatchGenerator():
     )
     self.negative_swap_rate = negative_swap_rate
     self.negative_scramble_rate  = negative_scramble_rate
+    self._first_call = preload_on_first_call
 
-  def get_last_batch_neg_predicates(self)->List[str]:
-    return self.negative_generator.get_debug_log()
+  def __len__(self)->int:
+    return len(self.predicate_ds)
 
-  def __call__(self, positive_predicates):
-    return self.generate(positive_predicates)
-
-  def generate(
-      self,
-      positive_predicates:List[str]
-  )->Tuple[List[PredicateEmbeddings], List[List[PredicateEmbeddings]]]:
-    """
-    Generates a list of embedding data for each positive predicate
-    Generates negative samples associated with each positive predicate
-
-    pos, negs = self.generate(...)
-    pos[i] == embeddings related to positive_predicates[i]
-    negs[j][i] == embeddings related to the j'th negative sample of i
-
-    collate_predicate_embeddings(pos) == positive model input
-    collate_predicate_embeddings(negs[j]) ==
-      one of the corresponding negative inputs
-    """
-
-    if self.verbose:
-      print("Generating Positives...")
-    pos = [self.observation_generator[p] for p in positive_predicates]
-    negs = []
-    if self.verbose:
-      print("Generating Negative Swaps...")
-    self.negative_generator.clear_debug_log()
+  def __getitem__(self, idx:int)->Dict[str, Any]:
+    if self._first_call:
+      start = time.time()
+      self.graph.preload()
+      self.embeddings.preload()
+      end = time.time()
+      print(f"Worker preloading: {int(end-start)}")
+      self._first_call = False
+    start = time.time()
+    positive_predicate = self.predicate_ds[idx]
+    positive_observation = self.observation_generator[positive_predicate]
+    negative_predicates = []
+    negative_observations = []
     for _ in range(self.negative_swap_rate):
-      negs.append([
-        self.observation_generator[
-          self.negative_generator.generate()
-        ]
-        for _ in positive_predicates
-      ])
-    if self.verbose:
-      print("Generating Negative Scrambles...")
-    for _ in range(self.negative_scramble_rate):
-      negs.append([
-        self.scramble_observation_generator[
-          self.negative_generator.generate()
-        ]
-        for _ in positive_predicates
-      ])
-    return pos, negs
+      p = self.negative_generator.generate()
+      negative_predicates.append(p)
+      negative_observations.append(self.observation_generator[p])
+    for _ in range(self.negative_swap_rate):
+      p = self.negative_generator.generate()
+      negative_predicates.append(p)
+      negative_observations.append(self.scramble_observation_generator[p])
+    end = time.time()
+    #print(f"Worker produced batch: {int(end-start)}")
+    return dict(
+        positive_predicate=positive_predicate,
+        positive_observation=positive_observation,
+        negative_predicates=negative_predicates,
+        negative_observations=negative_observations,
+    )
+
 
 
 def collate_predicate_embeddings(
     predicate_embeddings:List[PredicateEmbeddings]
-)->torch.FloatTensor:
-  """Combines a list of predicate embeddings into a single tensor.
-
-  if n = len(predicate_embeddings) r = neighbor_sample_rate d = embedding
-  dimensionality, then the result is of size: (2+2(r)) X n X d
-
-  """
+):
   return torch.cat([
     torch.nn.utils.rnn.pad_sequence([
       torch.FloatTensor([p.subj, p.obj] + p.subj_neigh + p.obj_neigh)
       for p in predicate_embeddings
     ])
   ])
+
+def collate_predicate_training_examples(
+    examples:List[Dict[str,Any]],
+)->Dict[str, Any]:
+  """
+  Takes a list of results from PredicateExampleDataset and produces tensors
+  for input into the agatha training model.
+  """
+  positive_predicates = [e["positive_predicate"] for e in examples]
+  positive_observations = collate_predicate_embeddings(
+      [e["positive_observation"] for e in examples]
+  )
+  negative_predicates_list = \
+      list(zip(*[e["negative_predicates"] for e in examples]))
+  negative_observations_list = [
+      collate_predicate_embeddings(neg_obs)
+      for neg_obs in zip(*[e["negative_observations"] for e in examples])
+  ]
+  return dict(
+      positive_predicates=positive_predicates,
+      positive_observations=positive_observations,
+      negative_predicates_list=negative_predicates_list,
+      negative_observations_list=negative_observations_list,
+  )
+

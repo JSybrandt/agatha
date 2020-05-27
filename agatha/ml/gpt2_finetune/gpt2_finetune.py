@@ -3,7 +3,7 @@ from agatha.ml.module import AgathaModule
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
-from typing import List, Dict, Any, Tuple, Iterable
+from typing import List, Dict, Any, Tuple, Iterable, Optional
 from agatha.ml.util.sqlite3_dataset import Sqlite3ValueDataset
 from agatha.util.misc_util import Record
 from agatha.ml.util.lamb_optimizer import Lamb
@@ -171,9 +171,10 @@ class Gpt2Finetune(AgathaModule):
       predictions = self.forward(
           **collate_token_batch(
             token_batch,
-            include_labels=False
+            include_labels=False,
+            device=self.get_device(),
           )
-      )[0]
+      )[0].detach().cpu()
       assert len(predictions) == len(token_batch)
       assert len(predictions.shape) == 3
       assert predictions.shape[1] == max(map(len,token_batch))
@@ -261,19 +262,24 @@ class AbstractTokenizerDataset(torch.utils.data.Dataset):
 
 def collate_token_batch(
     tokens:List[List[int]],
-    include_labels=True
+    include_labels=True,
+    device:Optional[torch.device]=None
 )->Dict[str, Any]:
   input_ids = torch.nn.utils.rnn.pad_sequence(
       [torch.LongTensor(t) for t in tokens],
       batch_first=True,
       padding_value=0
   )
+  if device is not None:
+    input_ids = input_ids.to(device)
   if include_labels:
     labels = torch.nn.utils.rnn.pad_sequence(
         [torch.LongTensor(t) for t in tokens],
         batch_first=True,
         padding_value=-100
     )
+    if device is not None:
+      labels = labels.to(device)
   else:
     labels = None
   attention_mask = (input_ids != -1).float()

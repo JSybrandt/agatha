@@ -286,7 +286,7 @@ class HypothesisPredictor(AgathaModule):
     # We cannot tolerate an error on a positive sample
     # An error occurs if any positive prediction is _not_ finite
     # Note that `~` is bitwise "not" for our boolean matrix
-    if torch.any(~torch.isfinite(positive_predictions.detach())):
+    if torch.any(~torch.isfinite(positive_predictions.detach().cpu())):
       print(positive_predicates)
       raise ValueError("Invalid positive sample")
 
@@ -298,7 +298,7 @@ class HypothesisPredictor(AgathaModule):
           .to(self.get_device())
       )
       # We CAN tolerate an error on a negative sample
-      if torch.any(~torch.isfinite(negative_predictions.detach())):
+      if torch.any(~torch.isfinite(negative_predictions.detach().cpu())):
         # print debug info
         print("ERROR: Encountered an issue with a negative predicate:")
         print("Negative Predicate Scores:")

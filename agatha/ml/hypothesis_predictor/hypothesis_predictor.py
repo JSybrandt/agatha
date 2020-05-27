@@ -245,7 +245,7 @@ class HypothesisPredictor(AgathaModule):
     # Size <seq_len> X <batch_size> X <dim>
     local_stacked_emb = self.embedding_transformation(predicate_embeddings)
     local_stacked_emb = torch.relu(local_stacked_emb)
-    if self.hparams.simple:
+    if hasattr(self.hparams, "simple") and self.hparams.simple:
       # Reorder to <batch_size> X <seq_len> X <dim>
       # Flatten to <batch_size> X <dim*seq_len> (in this case seq_len=2)
       logit = self.simple_linear(local_stacked_emb.permute(1, 0, 2).flatten(1))
@@ -283,6 +283,13 @@ class HypothesisPredictor(AgathaModule):
         .collate_predicate_embeddings(pos)
         .to(self.get_device())
     )
+    # We cannot tolerate an error on a positive sample
+    # An error occurs if any positive prediction is _not_ finite
+    # Note that `~` is bitwise "not" for our boolean matrix
+    if torch.any(~torch.isfinite(positive_predictions.detach())):
+      print(positive_predicates)
+      raise ValueError("Invalid positive sample")
+
     partial_losses = []
     for neg in negs:
       negative_predictions = self.forward(
@@ -290,20 +297,23 @@ class HypothesisPredictor(AgathaModule):
           .collate_predicate_embeddings(neg)
           .to(self.get_device())
       )
-      part_loss = self.loss_fn(
-          positive_predictions,
-          negative_predictions,
-          positive_predictions.new_ones(len(positive_predictions))
-      )
-      # If something has gone terrible
-      if torch.isnan(part_loss) or torch.isinf(part_loss):
-        print("ERROR: Loss is:\n", part_loss)
-        print("Positive Predicates:\n", positive_predicates)
-        print("Positive Scores:\n", positive_predictions)
-        print("Negative Scores:\n", negative_predictions)
-        raise Exception("Invalid loss")
+      # We CAN tolerate an error on a negative sample
+      if torch.any(~torch.isfinite(negative_predictions.detach())):
+        # print debug info
+        print("ERROR: Encountered an issue with a negative predicate:")
+        print("Negative Predicate Scores:")
+        print(negative_predictions)
+        print("Negative Predicates")
+        print(self.predicate_batch_generator.get_last_batch_neg_predicates())
       else:
-        partial_losses.append(part_loss)
+        partial_losses.append(
+            self.loss_fn(
+              positive_predictions,
+              negative_predictions,
+              positive_predictions.new_ones(len(positive_predictions))
+            )
+        )
+    assert len(partial_losses) > 0, "Failure occurred on all negative batches."
     # End of batch
     loss=torch.mean(torch.stack(partial_losses))
     return (

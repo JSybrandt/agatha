@@ -41,6 +41,7 @@ def is_valid_predicate_name(predicate_name:str)->bool:
     return False
   return (len(sub) > 0) and (len(obj) > 0)
 
+
 def parse_predicate_name(predicate_name:str)->Tuple[str, str]:
   """Parses subject and object from predicate name strings.
 
@@ -194,6 +195,7 @@ class NegativePredicateGenerator():
     "Generates coded terms that appear in graph."
     self.coded_terms = coded_terms
     self.graph = graph
+    self._log = []
 
   def _choose_term(self):
     term = random.choice(self.coded_terms)
@@ -204,7 +206,21 @@ class NegativePredicateGenerator():
   def generate(self):
     subj = self._choose_term()
     obj = self._choose_term()
-    return to_predicate_name(subj, obj)
+    predicate = to_predicate_name(subj, obj)
+    if self._log is not None:
+      self._log.append(predicate)
+    return predicate
+
+  def disable_debug_log(self):
+    self._log = None
+
+  def get_debug_log(self)->List[str]:
+    "Returns the last negative predicates since the log was cleared"
+    return self._log[:]
+
+  def clear_debug_log(self)->None:
+    self._log = []
+
 
 
 class PredicateBatchGenerator():
@@ -238,8 +254,13 @@ class PredicateBatchGenerator():
     self.negative_swap_rate = negative_swap_rate
     self.negative_scramble_rate  = negative_scramble_rate
 
+  def get_last_batch_neg_predicates(self)->List[str]:
+    log = self.negative_generator.get_debug_log()
+    self.negative_generator.clear_debug_log()
+    return log
+
   def __call__(self, positive_predicates):
-    self.generate(positive_predicates)
+    return self.generate(positive_predicates)
 
   def generate(
       self,
@@ -264,6 +285,7 @@ class PredicateBatchGenerator():
     negs = []
     if self.verbose:
       print("Generating Negative Swaps...")
+    self.negative_generator.clear_debug_log()
     for _ in range(self.negative_swap_rate):
       negs.append([
         self.observation_generator[

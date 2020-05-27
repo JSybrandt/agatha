@@ -255,9 +255,7 @@ class PredicateBatchGenerator():
     self.negative_scramble_rate  = negative_scramble_rate
 
   def get_last_batch_neg_predicates(self)->List[str]:
-    log = self.negative_generator.get_debug_log()
-    self.negative_generator.clear_debug_log()
-    return log
+    return self.negative_generator.get_debug_log()
 
   def __call__(self, positive_predicates):
     return self.generate(positive_predicates)

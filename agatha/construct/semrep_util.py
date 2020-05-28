@@ -306,6 +306,40 @@ class SemRepRunner():
     res.append(str(output_path))
     return res
 
+  def _run_gracefully(self, input_path:Path, output_path:Path)->None:
+    """
+    Runs semrep safely. If a sentence causes a semrep error, 
+    logs the error and re-tries execution with next input.
+    Overall, encapsulate run functionality and use @320 as a
+    wrapper.
+    Args:
+      input_path: Path to the Semrep input file
+    """
+    if not self.metamap_server.running():
+      self.metamap_server.start()
+
+    input_path = Path(input_path)
+    assert input_path.is_file(), f"Failed to find {input_path}"
+    assert not output_path.exists(), f"Refusing to overwrite {output_path}"
+    cmd = self._get_flags(input_path, output_path)
+    env = self._get_env()
+    print("Running:", " ".join(cmd))
+
+    semrep_proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE)
+    _, error = semrep_proc.communicate()
+    if semrep_proc.returncode != 0:
+      # log to file maybe?
+      print('Exception encountered in child process, attempting to respawn')
+      print('Error:{}'.format(error))
+      # recursive call for the next input?
+      self._run_gracefully(input_path, output_path)
+
+    assert output_path.is_file(), f"SemRep failed to produce {output_path}"
+
+
   def run(self, input_path:Path, output_path:Path)->None:
     """Actually calls SemRep with an input file.
 

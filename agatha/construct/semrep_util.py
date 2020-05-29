@@ -249,7 +249,7 @@ class SemRepRunner():
     self.semrep_lib_dir = paths["semrep_lib_dir"]
     self.semrep_preamble_path = paths["semrep_preamble_path"]
     self.semrep_bin_path = paths["semrep_bin_path"]
-    # Set serer
+    # Set server
     self.metamap_server=metamap_server
     self.anaphora_resolution = anaphora_resolution
     self.dysonym_processing = dysonym_processing
@@ -302,49 +302,77 @@ class SemRepRunner():
     if self.word_sense_disambiguation:
       res.append("--word_sense_disambiguation")
     res.append("--xml_output_format")
-    res.append(str(input_path))
-    res.append(str(output_path))
+    if input_path is not None:
+      res.append(str(input_path))
+    if output_path is not None:
+      res.append(str(output_path))
     return res
 
-  def _run_gracefully(self, input_path:Path, output_path:Path)->None:
+  def _read_lines(self, in_file:Path)->List[str]:
     """
-    Runs semrep safely. If a sentence causes a semrep error, 
-    logs the error and re-tries execution with next input.
-    Overall, encapsulate run functionality and use @320 as a
-    wrapper.
+    Reads in lines of a file in memory
+
     Args:
-      input_path: Path to the Semrep input file
+     in_file: Path to input file
+    Returns:
+      lines in the files
     """
-    if not self.metamap_server.running():
-      self.metamap_server.start()
+    with open(in_file, 'r') as f:
+      lines = []
+      for line in f:
+        lines.append(line.strip())
+    return lines
 
-    input_path = Path(input_path)
-    assert input_path.is_file(), f"Failed to find {input_path}"
-    assert not output_path.exists(), f"Refusing to overwrite {output_path}"
-    cmd = self._get_flags(input_path, output_path)
+
+
+  def _run_gracefully(self,
+      in_lines:List[str],
+      out_lines:List[lxml.etree._Element]
+      )->None:
+    """
+    Runs individual lines of the text through semrep and
+    produces the output xml. Raises a `ChildProcessError`
+    that is caught in the actual `run()` function.
+
+    Args:
+      lines: List[str]
+
+    Returns:
+      List of XML elements if no exception is raised
+    """
+    cmd = self._get_flags(None, None)
     env = self._get_env()
-    print("Running:", " ".join(cmd))
-
     semrep_proc = subprocess.Popen(
         cmd,
+        env=env,
         stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE)
-    _, error = semrep_proc.communicate()
+        stdout=subprocess.PIPE
+        )
+
+    out_lines, error = semrep_proc.communicate(
+        "\n".join(
+          in_lines
+          )
+        )
     if semrep_proc.returncode != 0:
-      # log to file maybe?
-      print('Exception encountered in child process, attempting to respawn')
-      print('Error:{}'.format(error))
-      # recursive call for the next input?
-      self._run_gracefully(input_path, output_path)
+      raise ChildProcessError(
+          "Semrep failed with code:{} and error:{}".format(
+            semrep_proc.returncode,
+            error
+            )
+          )
 
-    assert output_path.is_file(), f"SemRep failed to produce {output_path}"
 
 
-  def run(self, input_path:Path, output_path:Path)->None:
+  def run(self,
+      input_path:Path,
+      output_path:Path,
+      line_mode:bool=False)->None:
     """Actually calls SemRep with an input file.
 
     Args:
       input_path: The location of the SemRep Input file
+      line_mode: Flag to run semrep on files or lines.
 
     Returns:
       The path produced by SemRep representing XML output.
@@ -355,6 +383,14 @@ class SemRepRunner():
     input_path = Path(input_path)
     assert input_path.is_file(), f"Failed to find {input_path}"
     assert not output_path.exists(), f"Refusing to overwrite {output_path}"
+    if line_mode:
+      lines = self._read_lines(input_path)
+      try:
+        out_lines = self._run_gracefully(lines)
+      except ChildProcessError:
+        print("Caught exception, attempting to restart...")
+        # not sure how to make the jump to the next input
+
     cmd = self._get_flags(input_path, output_path)
     env = self._get_env()
     print("Running:", " ".join(cmd))

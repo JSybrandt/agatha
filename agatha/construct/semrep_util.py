@@ -276,11 +276,27 @@ class SemRepRunner():
       env["LD_LIBRARY_PATH"] = libstr
     return env
 
-  def _get_flags(self, input_path:Path, output_path:Path)->List[str]:
-    "Gets flags for running semrep"
+  def _get_flags(self,
+      input_path:Optional[Path]=None,
+      output_path:Optional[Path]=None
+      )->List[str]:
+    """
+    Gets flags for running semrep. If input path
+    and output path are None, then semrep is run
+    with stdin and stdout, else files are passed
+    in.
+
+    Args:
+      input_path: Path to input file as a preprocessed record.
+      output_path: Path to output XML file.
+
+    Returns:
+      The command string for running semrep.
+    """
     res = []
     res.append(str(self.semrep_preamble_path))
     res.append(str(self.semrep_bin_path))
+
     if self.anaphora_resolution:
       res.append("--anaphora_resolution")
     if self.dysonym_processing:
@@ -302,15 +318,16 @@ class SemRepRunner():
     if self.word_sense_disambiguation:
       res.append("--word_sense_disambiguation")
     res.append("--xml_output_format")
-    if input_path is not None:
+    if input_path is not None and output path is not None:
       res.append(str(input_path))
-    if output_path is not None:
       res.append(str(output_path))
+    else:
+      raise ValueError("Both input and output paths must be set or None")
     return res
 
   def _read_lines(self, in_file:Path)->List[str]:
     """
-    Reads in lines of a file in memory
+    Reads in lines of a file in memory.
 
     Args:
      in_file: Path to input file
@@ -323,19 +340,40 @@ class SemRepRunner():
         lines.append(line.strip())
     return lines
 
+  def _write_xml(self, data: List[lxml.etree._Element], out_file:Path)->None:
+    """
+    Writes the produced XML to the specified
+    file.
+
+    Args:
+      data: List of xml elements produced by semrep
+      out_file: Path to output xml file
+    """
+    assert out_file.suffix == '.xml', 'The output must be a valid XML file'
+    with open(out_file, 'w') as ofile:
+      ofile.write(
+          '\n'.join(
+            xml
+            for xml in data
+            )
+          )
+
 
 
   def _run_gracefully(self,
       in_lines:List[str],
-      out_lines:List[lxml.etree._Element]
-      )->None:
+      )->List[lxml.etree._Element]:
     """
     Runs individual lines of the text through semrep and
     produces the output xml. Raises a `ChildProcessError`
     that is caught in the actual `run()` function.
 
+    The input is expected to be a list of strings of the form:
+
+    `pmid|text`
+
     Args:
-      lines: List[str]
+      in_lines: Preprocessed semrep text.
 
     Returns:
       List of XML elements if no exception is raised
@@ -361,13 +399,15 @@ class SemRepRunner():
             error
             )
           )
+    return out_lines
 
 
 
   def run(self,
       input_path:Path,
       output_path:Path,
-      line_mode:bool=False)->None:
+      line_mode:bool=True
+      )->None:
     """Actually calls SemRep with an input file.
 
     Args:
@@ -384,22 +424,27 @@ class SemRepRunner():
     assert input_path.is_file(), f"Failed to find {input_path}"
     assert not output_path.exists(), f"Refusing to overwrite {output_path}"
     if line_mode:
+      buffer = []
       lines = self._read_lines(input_path)
-      try:
-        out_lines = self._run_gracefully(lines)
-      except ChildProcessError:
-        print("Caught exception, attempting to restart...")
-        # not sure how to make the jump to the next input
-
-    cmd = self._get_flags(input_path, output_path)
-    env = self._get_env()
-    print("Running:", " ".join(cmd))
-    subprocess.run(
-        cmd,
-        env=env,
-        check=True,
-    )
-    assert output_path.is_file(), f"SemRep Failed to produce {output_path}"
+      for line in lines:
+        try:
+          buffer += self._run_gracefully([line])
+        except ChildProcessError:
+          print("Caught exception, attempting to restart...")
+          # not sure how to make the jump to the next input
+        finally:
+          # flush output irrespective of exception to output
+          self._write_xml(buffer, output_path)
+    else:
+      cmd = self._get_flags(input_path, output_path)
+      env = self._get_env()
+      print("Running:", " ".join(cmd))
+      subprocess.run(
+          cmd,
+          env=env,
+          check=True,
+          )
+      assert output_path.is_file(), f"SemRep Failed to produce {output_path}"
 
 
 ################################################################################

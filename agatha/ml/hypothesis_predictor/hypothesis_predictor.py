@@ -330,7 +330,7 @@ class HypothesisPredictor(AgathaModule):
 
     partial_losses = []
     for negative_predicates, negative_observations in zip(
-        negative_observations_list, negative_observations_list
+        negative_predicates_list, negative_observations_list
     ):
       negative_predictions = self.forward(negative_observations)
       # We CAN tolerate an error on a negative sample

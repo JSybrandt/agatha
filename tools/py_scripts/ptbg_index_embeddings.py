@@ -4,7 +4,7 @@ from fire import Fire
 from agatha.util import sqlite3_lookup
 from pathlib import Path
 import dask.bag as dbag
-from typing import Iterable, Dict, Tuple, Any
+from typing import Iterable, Dict, Tuple, Any, Optional
 import json
 import shutil
 
@@ -43,10 +43,21 @@ def paths_to_kvs(paths:Iterable[Path])->Iterable[Dict[str, Dict[str,str]]]:
 def convert(
     entity_dir:Path,
     output_db_path:Path,
+    subset_types:Optional[str]=None,
     agatha_install_path:Path=Path("../../"),
 )->None:
   """
   Creates a database that maps name -> type, part, row
+
+  Args:
+    entity_dir: Directory containing files named
+      `entity_names_<type>_<part>.json`.
+    output_db_path: Location to write entity sqlite3 lookup table.
+    subset_types: String containing type characters to select. For instance,
+      `--subset_types mp` will only index the embeddings needed to train
+      the agatha deep learning model.
+    agatha_install_path: The place you cloned the agatha repo. Should contain
+      the `tools` subdir. Make sure you run `make` before running this tool.
   """
 
   entity_dir = Path(entity_dir)
@@ -59,6 +70,17 @@ def convert(
 
   name_json_paths = list(entity_dir.glob("entity_names_*.json"))
   assert any(name_json_paths), "Failed to find entity_names_*.json"
+  if subset_types is not None:
+    assert isinstance(subset_types, str)
+    subset_types = set(subset_types)
+    init_size = len(name_json_paths)
+    name_json_paths = [
+        p for p in name_json_paths
+        if path_to_type_part(p)[0] in subset_types
+    ]
+    final_size = len(name_json_paths)
+    print(f"Subset {init_size} entity files down to {final_size}")
+
   entity_location_kvs = (
       dbag.from_sequence(name_json_paths)
       .map_partitions(paths_to_kvs)

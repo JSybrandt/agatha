@@ -1,4 +1,4 @@
-name: latest
+name: 2020_06_02_docs
 channels:
   - conda-forge
   - defaults
@@ -7,7 +7,7 @@ dependencies:
   - _openmp_mutex=4.5=0_gnu
   - ca-certificates=2020.4.5.1=hecc5488_0
   - certifi=2020.4.5.1=py38h32f6830_0
-  - ld_impl_linux-64=2.34=h53a641e_0
+  - ld_impl_linux-64=2.34=h53a641e_4
   - libffi=3.2.1=he1b5a44_1007
   - libgcc-ng=9.2.0=h24d8f2e_2
   - libgomp=9.2.0=h24d8f2e_2
@@ -56,5 +56,5 @@ dependencies:
     - sphinxcontrib-qthelp==1.0.3
     - sphinxcontrib-serializinghtml==1.1.4
     - urllib3==1.25.9
-prefix: /home/jsybran/anaconda3/envs/latest
+prefix: /home/jsybran/anaconda3/envs/2020_06_02_docs
 

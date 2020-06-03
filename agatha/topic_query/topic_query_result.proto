@@ -16,6 +16,9 @@ message TopicQueryResult {
   repeated Document documents = 5;
   // Topical network information
   optional TopicalNetwork topical_network = 6;
+  // Plausibility metrics that accompany the topic query
+  // An extendable set of numeric scores to accompany the TopicQueryResult
+  map<string, float> metrics = 7;
 }
 
 // Helper Messages

@@ -13,6 +13,7 @@ from pathlib import Path
 import os
 from agatha.ml.util import hparam_util
 
+
 class HypothesisPredictor(AgathaModule):
   def __init__(self, hparams:Namespace):
     super(HypothesisPredictor, self).__init__(hparams)
@@ -102,6 +103,10 @@ class HypothesisPredictor(AgathaModule):
   def paths_set(self)->bool:
     return self.embeddings is not None and self.graph is not None
 
+  def _assert_configured(self)->None:
+    assert self.paths_set(), \
+      "You must call `model.configure_paths(...)` before running the model."
+
   def predict_from_terms(
       self,
       terms:List[Tuple[str, str]],
@@ -145,7 +150,7 @@ class HypothesisPredictor(AgathaModule):
       indicate more plausible results. Output `i` corresponds to `terms[i]`.
 
     """
-    assert self.paths_set(), "Cannot predict before paths_set"
+    self._assert_configured()
     # This will formulate our input as PredicateEmbeddings examples.
     observation_generator = predicate_util.PredicateObservationGenerator(
         graph=self.graph,
@@ -187,7 +192,7 @@ class HypothesisPredictor(AgathaModule):
       include_embeddings: If set, load all embedding files up front.
 
     """
-    assert self.paths_set(), "Must call configure_paths before preload."
+    self._assert_configured()
     if not self.is_preloaded():
       self.graph.preload()
       if include_embeddings:
@@ -203,8 +208,7 @@ class HypothesisPredictor(AgathaModule):
     )
 
   def prepare_for_training(self)->None:
-    assert self.paths_set(), \
-        "Must call configure_paths before prepare_for_training"
+    self._assert_configured()
     entities = self.embeddings.keys()
     assert len(entities) > 0, "Failed to find embedding entities."
     self.coded_terms = list(filter(is_umls_term_type, entities))

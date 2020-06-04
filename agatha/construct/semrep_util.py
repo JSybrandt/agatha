@@ -18,7 +18,7 @@ from agatha.util.misc_util import Record
 import os
 from pathlib import Path
 import subprocess
-from typing import Dict, Tuple, List, Iterable, Callable, Any
+from typing import Dict, Tuple, List, Iterable, Callable, Any, Optional, Union, IO
 import lxml
 import lxml.etree
 from agatha.util.entity_types import SENTENCE_TYPE
@@ -32,9 +32,9 @@ from threading import Thread
 
 
 def get_paths(
-    semrep_install_dir:Path=None,
-    metamap_install_dir:Path=None,
-)->Dict[str, Path]:
+    semrep_install_dir: Path=None,
+    metamap_install_dir: Path=None,
+) -> Dict[str, Path]:
   """Looks up all of the necessary files needed to run SemRep.
 
   This function identifies the binaries and libraries needed to run SemRep.
@@ -66,8 +66,10 @@ def get_paths(
 
   def is_dir(d):
     assert d.is_dir(), f"Failed to find directory: {d.absolute()}"
+
   def is_file(f):
     assert f.is_file(), f"Failed to find file: {f.absolute()}"
+
   def match(d, pattern):
     is_dir(d)
     # drop "*.in" files
@@ -114,6 +116,7 @@ def get_paths(
     res["semrep_bin_path"] = semrep_bin_path
   return res
 
+
 class MetaMapServer():
   """Manages connection to MetaMap
 
@@ -126,7 +129,8 @@ class MetaMapServer():
     metamap_install_dir: The install location of MetaMap
 
   """
-  def __init__(self, metamap_install_dir:Path):
+
+  def __init__(self, metamap_install_dir: Path):
     # Get paths to pos and wsd servers
     paths = get_paths(metamap_install_dir=metamap_install_dir)
     self.metamap_pos_server_path = paths["metamap_pos_server_path"]
@@ -134,7 +138,7 @@ class MetaMapServer():
     self.wsd_server_port = 5554
     self.pos_server_port = 1795
 
-  def _is_port_open(self, port:int):
+  def _is_port_open(self, port: int):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     val = sock.connect_ex(("localhost", port)) == 0
     sock.close()
@@ -146,7 +150,7 @@ class MetaMapServer():
         and self._is_port_open(self.pos_server_port)
     )
 
-  def _wait_until_running(self, interval:int=2):
+  def _wait_until_running(self, interval: int=2):
     while not self.running():
       time.sleep(interval)
 
@@ -170,15 +174,16 @@ class MetaMapServer():
 
 class UnicodeToAsciiRunner():
   "Responsible for running the MetaMap unicode to ascii jar"
-  def __init__(self, unicode_to_ascii_jar_path:str):
+
+  def __init__(self, unicode_to_ascii_jar_path: str):
     self.unicode_to_ascii_jar_path = Path(unicode_to_ascii_jar_path)
 
-  def clean_text_for_metamap(self, s:str)->str:
+  def clean_text_for_metamap(self, s: str) -> str:
     """Metamap has a bunch of stupid rules.
     """
     return s.replace("'", "")
 
-  def __call__(self, text:List[str])->List[str]:
+  def __call__(self, text: List[str]) -> List[str]:
     assert self.unicode_to_ascii_jar_path.is_file(), \
         f"Cannot find unicode to ascii jar: {unicode_to_ascii_jar_path}"
     u2a_proc = subprocess.Popen(
@@ -190,7 +195,7 @@ class UnicodeToAsciiRunner():
     # Concatinate input text, and write in utf-8
     stdout, _ = u2a_proc.communicate(
         "\n".join(
-          map(self.clean_text_for_metamap, text)
+            map(self.clean_text_for_metamap, text)
         ).encode('utf-8')
     )
     # Read out ascii text and split back into sentences
@@ -227,17 +232,18 @@ class SemRepRunner():
     word_sense_disambiguation: SemRep Flag
 
   """
+
   def __init__(
       self,
-      semrep_install_dir:Path,
-      metamap_server:MetaMapServer,
+      semrep_install_dir: Path,
+      metamap_server: MetaMapServer,
       # SemRep Flags
       anaphora_resolution=True,
       dysonym_processing=True,
-      lexicon_year:int=2006,
-      mm_data_version:str="USAbase",
-      mm_data_year:str="2006AA",
-      relaxed_model:bool=True,
+      lexicon_year: int=2006,
+      mm_data_version: str="USAbase",
+      mm_data_year: str="2006AA",
+      relaxed_model: bool=True,
       single_line_delim_input_w_id=True,
       use_generic_domain_extensions=False,
       use_generic_domain_modification=False,
@@ -250,11 +256,11 @@ class SemRepRunner():
     self.semrep_preamble_path = paths["semrep_preamble_path"]
     self.semrep_bin_path = paths["semrep_bin_path"]
     # Set server
-    self.metamap_server=metamap_server
+    self.metamap_server = metamap_server
     self.anaphora_resolution = anaphora_resolution
     self.dysonym_processing = dysonym_processing
     self.lexicon_year = lexicon_year
-    self.mm_data_version= mm_data_version
+    self.mm_data_version = mm_data_version
     self.mm_data_year = mm_data_year
     self.relaxed_model = relaxed_model
     self.single_line_delim_input_w_id = single_line_delim_input_w_id
@@ -262,7 +268,7 @@ class SemRepRunner():
     self.use_generic_domain_modification = use_generic_domain_modification
     self.word_sense_disambiguation = word_sense_disambiguation
 
-  def _get_env(self)->Dict[str,str]:
+  def _get_env(self) -> Dict[str, str]:
     "Adds the necessary semrep_lib_dir to LD_LIBRARY_PATH"
     lib_dirs = [
         self.semrep_lib_dir,
@@ -273,13 +279,13 @@ class SemRepRunner():
     if "LD_LIBRARY_PATH" in env:
       env["LD_LIBRARY_PATH"] += f":{lib_str}"
     else:
-      env["LD_LIBRARY_PATH"] = libstr
+      env["LD_LIBRARY_PATH"] = lib_str
     return env
 
   def _get_flags(self,
-      input_path:Optional[Path]=None,
-      output_path:Optional[Path]=None
-      )->List[str]:
+                 input_path: Optional[Path]=None,
+                 output_path: Optional[Path]=None
+                 ) -> List[str]:
     """
     Gets flags for running semrep. If input path
     and output path are None, then semrep is run
@@ -318,14 +324,14 @@ class SemRepRunner():
     if self.word_sense_disambiguation:
       res.append("--word_sense_disambiguation")
     res.append("--xml_output_format")
-    if input_path is not None and output path is not None:
+    if input_path is not None and output_path is not None:
       res.append(str(input_path))
       res.append(str(output_path))
     else:
       raise ValueError("Both input and output paths must be set or None")
     return res
 
-  def _read_lines(self, in_file:Path)->List[str]:
+  def _read_lines(self, in_file: Path) -> List[str]:
     """
     Reads in lines of a file in memory.
 
@@ -340,32 +346,12 @@ class SemRepRunner():
         lines.append(line.strip())
     return lines
 
-  def _write_xml(self, data: List[lxml.etree._Element], out_file:Path)->None:
-    """
-    Writes the produced XML to the specified
-    file.
-
-    Args:
-      data: List of xml elements produced by semrep
-      out_file: Path to output xml file
-    """
-    assert out_file.suffix == '.xml', 'The output must be a valid XML file'
-    with open(out_file, 'w') as ofile:
-      ofile.write(
-          '\n'.join(
-            xml
-            for xml in data
-            )
-          )
-
-
-
   def _run_gracefully(self,
-      in_lines:List[str],
-      )->List[lxml.etree._Element]:
+                      in_lines: List[str],
+                      ) -> Record:
     """
     Runs individual lines of the text through semrep and
-    produces the output xml. Raises a `ChildProcessError`
+    produce the output xml. Raises a `ChildProcessError`
     that is caught in the actual `run()` function.
 
     The input is expected to be a list of strings of the form:
@@ -373,7 +359,7 @@ class SemRepRunner():
     `pmid|text`
 
     Args:
-      in_lines: Preprocessed semrep text.
+      in_lines: Input lines in proper semrep format
 
     Returns:
       List of XML elements if no exception is raised
@@ -384,35 +370,34 @@ class SemRepRunner():
         cmd,
         env=env,
         stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE
-        )
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
 
-    out_lines, error = semrep_proc.communicate(
+    stdout, error = semrep_proc.communicate(
         "\n".join(
-          in_lines
-          )
+            in_lines
         )
+    )
+    # assumption: this function is always going to run line by line, hence a single
+    # record is going to be in the list.
+    record = semrep_xml_to_records(stdout)[0]
     if semrep_proc.returncode != 0:
       raise ChildProcessError(
-          "Semrep failed with code:{} and error:{}".format(
-            semrep_proc.returncode,
-            error
-            )
-          )
-    return out_lines
-
-
+          f"Semrep failed with code:{semrep_proc.returncode} and error:{error}"
+      )
+    return record
 
   def run(self,
-      input_path:Path,
-      output_path:Path,
-      line_mode:bool=True
-      )->None:
+          input_path: Path,
+          output_path: Path,
+          use_file_interface: bool=False
+          ) -> List[Record]:
     """Actually calls SemRep with an input file.
 
     Args:
       input_path: The location of the SemRep Input file
-      line_mode: Flag to run semrep on files or lines.
+      use_file_interface: Flag to run SemRep on files or lines.
 
     Returns:
       The path produced by SemRep representing XML output.
@@ -423,18 +408,16 @@ class SemRepRunner():
     input_path = Path(input_path)
     assert input_path.is_file(), f"Failed to find {input_path}"
     assert not output_path.exists(), f"Refusing to overwrite {output_path}"
-    if line_mode:
-      buffer = []
+    if not use_file_interface:
+      records = []
       lines = self._read_lines(input_path)
       for line in lines:
         try:
-          buffer += self._run_gracefully([line])
+          records += self._run_gracefully([line])
         except ChildProcessError:
-          print("Caught exception, attempting to restart...")
-          # not sure how to make the jump to the next input
+          print("Semrep process caught exception, restarting...")
         finally:
-          # flush output irrespective of exception to output
-          self._write_xml(buffer, output_path)
+          return records
     else:
       cmd = self._get_flags(input_path, output_path)
       env = self._get_env()
@@ -443,8 +426,13 @@ class SemRepRunner():
           cmd,
           env=env,
           check=True,
-          )
+      )
       assert output_path.is_file(), f"SemRep Failed to produce {output_path}"
+      # more efficient to do outside?
+      out_file = open(output_path, 'rb')
+      records = semrep_xml_to_records(out_file)
+      out_file.close()
+      return records
 
 
 ################################################################################
@@ -452,9 +440,9 @@ class SemRepRunner():
 ################################################################################
 
 def sentences_to_semrep_input(
-    records:Iterable[Record],
-    unicode_to_ascii_jar_path:Path,
-)->List[str]:
+    records: Iterable[Record],
+    unicode_to_ascii_jar_path: Path,
+) -> List[str]:
   """Processes Sentence Records for SemRep Input
 
   The SemRepRunner, with the default single_line_delim_input_w_id flag set,
@@ -498,7 +486,7 @@ def sentences_to_semrep_input(
   return UnicodeToAsciiRunner(unicode_to_ascii_jar_path)(res)
 
 
-def _semrep_id_to_agatha_sentence_id(semrep_id:str)->str:
+def _semrep_id_to_agatha_sentence_id(semrep_id: str) -> str:
   """Cleans the SemRep ID for Agatha
 
   When running SemRep following `sentences_to_semrep_input`, the `id` attribute
@@ -525,7 +513,8 @@ def _semrep_id_to_agatha_sentence_id(semrep_id:str)->str:
   assert found_pattern is not None, f"Invalid sentence id: {semrep_id}"
   return found_pattern.group(0)
 
-def _str_to_bool(s:str)->bool:
+
+def _str_to_bool(s: str) -> bool:
   "Converts 'true' and 'false' to True and False"
   if s.lower() == "true":
     return True
@@ -533,12 +522,13 @@ def _str_to_bool(s:str)->bool:
     return False
   raise ValueError(f"Invalid bool string: {s}")
 
+
 def _set_or_none(
-    rec:Record,
-    xml:lxml.etree._Element,
-    attr:str,
-    fn:Callable[[str], Any]=str,
-)->None:
+    rec: Record,
+    xml: lxml.etree._Element,
+    attr: str,
+    fn: Callable[[str], Any]=str,
+) -> None:
   """Sets rec[attr] = fn(xml.attrib[attr]) safely.
 
   If xml does not have attr, rec[attr] = None
@@ -554,7 +544,8 @@ def _set_or_none(
   else:
     rec[attr] = None
 
-def _parse_semrep_xml_entity(xml_entity:lxml.etree._Element)->Record:
+
+def _parse_semrep_xml_entity(xml_entity: lxml.etree._Element) -> Record:
   "Collects attributes from SemRep Entities"
   res = {}
   _set_or_none(res, xml_entity, "id", _semrep_id_to_agatha_sentence_id)
@@ -566,10 +557,11 @@ def _parse_semrep_xml_entity(xml_entity:lxml.etree._Element)->Record:
   _set_or_none(res, xml_entity, "end", int)
   return res
 
+
 def _parse_semrep_xml_predication(
-    xml_predication:lxml.etree._Element,
-    semrepid2entity:Dict[str, Record],
-)->Record:
+    xml_predication: lxml.etree._Element,
+    semrepid2entity: Dict[str, Record],
+) -> Record:
   """Parses a predication object, and dereferences entity ids.
 
   Example:
@@ -618,8 +610,8 @@ def _parse_semrep_xml_predication(
 
   def prep_entity(xml_entity):
     assert xml_entity.attrib["entityID"] in semrepid2entity, \
-      f"Predicate references unknown entity: {xml_entity.attrib['entityID']}"
-    ent =  deepcopy(semrepid2entity[xml_entity.attrib["entityID"]])
+        f"Predicate references unknown entity: {xml_entity.attrib['entityID']}"
+    ent = deepcopy(semrepid2entity[xml_entity.attrib["entityID"]])
     _set_or_none(ent, xml_entity, "maxDist", int)
     _set_or_none(ent, xml_entity, "dist", int)
     _set_or_none(ent, xml_entity, "relSemType")
@@ -640,7 +632,7 @@ def _parse_semrep_xml_predication(
   return res
 
 
-def semrep_xml_to_records(xml_path:Path)->List[Record]:
+def semrep_xml_to_records(xml_file: IO[bytes]) -> List[Record]:
   """Parses SemRep XML records to produce Predicate Records
 
   This parses SemRep XML output, generated by SemRep v1.8 via the
@@ -655,7 +647,7 @@ def semrep_xml_to_records(xml_path:Path)->List[Record]:
   multiple utterances.
 
   Args:
-    xml_path: Location of XML file to parse.
+    xml_file: A file object pointing to an open XML file.
 
   Returns:
     A list of python dicts wherein each corresponds to a detected predicate.
@@ -664,43 +656,43 @@ def semrep_xml_to_records(xml_path:Path)->List[Record]:
 
   """
   res = []
-  xml_path = Path(xml_path)
-  assert xml_path.is_file(), f"Failed to find semrep_xml file: {xml_path}"
-  with open(xml_path, 'rb') as xml_file:
-    # For each document. One document corresponds to one sentence
-    for _, xml_doc in lxml.etree.iterparse(xml_file, tag="Document"):
+  # xml_path = Path(xml_path)
+  # assert xml_path.is_file(), f"Failed to find semrep_xml file: {xml_path}"
 
-      # document data
-      semrepid2entity = {}
-      predicates = []
+  # For each document. One document corresponds to one sentence
+  for _, xml_doc in lxml.etree.iterparse(xml_file, tag="Document"):
 
-      # For each sentence, typically there will only be one, unless the SemRep
-      # sentence splitter makes a different decision than us
-      xml_uttrs = xml_doc.findall("Utterance")
-      if xml_uttrs is not None:
-        for xml_uttr in xml_uttrs:
+    # document data
+    semrepid2entity = {}
+    predicates = []
 
-          # Collect the mentioned UMLS terms
-          xml_ents = xml_uttr.findall("Entity")
-          if xml_ents is not None:
-            for xml_ent in xml_ents:
-              semrepid2entity[xml_ent.attrib["id"]] = \
-                  _parse_semrep_xml_entity(xml_ent)
+    # For each sentence, typically there will only be one, unless the SemRep
+    # sentence splitter makes a different decision than us
+    xml_uttrs = xml_doc.findall("Utterance")
+    if xml_uttrs is not None:
+      for xml_uttr in xml_uttrs:
 
-          # Collect the identified predicates
-          xml_preds = xml_uttr.findall("Predication")
-          if xml_preds is not None:
-            for xml_predication in xml_preds:
-              predicates.append(
-                  _parse_semrep_xml_predication(
+        # Collect the mentioned UMLS terms
+        xml_ents = xml_uttr.findall("Entity")
+        if xml_ents is not None:
+          for xml_ent in xml_ents:
+            semrepid2entity[xml_ent.attrib["id"]] = \
+                _parse_semrep_xml_entity(xml_ent)
+
+        # Collect the identified predicates
+        xml_preds = xml_uttr.findall("Predication")
+        if xml_preds is not None:
+          for xml_predication in xml_preds:
+            predicates.append(
+                _parse_semrep_xml_predication(
                     xml_predication,
                     semrepid2entity
-              ))
-      res.append({
+                ))
+    res.append({
         "id": _semrep_id_to_agatha_sentence_id(xml_doc.attrib["id"]),
         "entities": list(semrepid2entity.keys()),
         "predicates": predicates
-      })
+    })
   return res
 
 ################################################################################
@@ -708,23 +700,26 @@ def semrep_xml_to_records(xml_path:Path)->List[Record]:
 ################################################################################
 
 # Used to launch metamap once per machine
+
+
 def get_metamap_server_initializer(
-    metamap_install_dir:Path,
-)->Tuple[str, dpg.Initializer]:
+    metamap_install_dir: Path,
+) -> Tuple[str, dpg.Initializer]:
   def _init():
     return MetaMapServer(metamap_install_dir)
   return f"semrep:metamap_server", _init
 
+
 def _sentence_partition_to_records(
-    records:List[Record],
-    unicode_to_ascii_jar_path:Path,
-    input_path:Path,
-    output_path:Path,
-    semrep_install_dir:Path,
-    lexicon_year:int,
-    mm_data_year:str,
-    mm_data_version:str,
-)->List[Record]:
+    records: List[Record],
+    unicode_to_ascii_jar_path: Path,
+    input_path: Path,
+    output_path: Path,
+    semrep_install_dir: Path,
+    lexicon_year: int,
+    mm_data_year: str,
+    mm_data_version: str,
+) -> List[Record]:
   input_path = Path(input_path)
   output_path = Path(output_path)
   # Convert Sentences for SemRep Input
@@ -734,7 +729,7 @@ def _sentence_partition_to_records(
         input_file.write(f"{line}\n")
   # Process text with SemRep
   if not output_path.is_file():
-    SemRepRunner(
+    records = SemRepRunner(
         semrep_install_dir=semrep_install_dir,
         metamap_server=dpg.get("semrep:metamap_server"),
         lexicon_year=lexicon_year,
@@ -742,18 +737,18 @@ def _sentence_partition_to_records(
         mm_data_version=mm_data_version,
     ).run(input_path, output_path)
   # Return python records
-  return semrep_xml_to_records(output_path)
+  return records
 
 
 def extract_entities_and_predicates_from_sentences(
-    sentence_records:dbag.Bag,
-    semrep_install_dir:Path,
-    unicode_to_ascii_jar_path:Path,
-    work_dir:Path,
-    lexicon_year:int,
-    mm_data_year:str,
-    mm_data_version:str,
-)->dbag.Bag:
+    sentence_records: dbag.Bag,
+    semrep_install_dir: Path,
+    unicode_to_ascii_jar_path: Path,
+    work_dir: Path,
+    lexicon_year: int,
+    mm_data_year: str,
+    mm_data_version: str,
+) -> dbag.Bag:
   """Runs each sentence through SemRep. Identifies Predicates and Entities
 
   Requires get_metamap_server_initializer added to dask_process_global.

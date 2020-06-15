@@ -349,6 +349,23 @@ class SemRepRunner():
     )
     return '\n'.join(xml_data)
 
+  def _child_has_errors(self, error_log: str) -> bool:
+    """
+    Searches the stderr output for errors to 
+    capture bad input more robustly.
+
+    Args:
+      error_log: stderr log from call to semrep binary
+    Returns:
+      True if the log has error.
+    """
+    has_error = re.search(
+        r'\s*ERROR\s*',
+        error_log,
+        flags=re.M
+    )
+    return has_error is not None
+
   def _run_gracefully(self,
                       in_lines: List[str],
                       ) -> BytesIO:
@@ -382,8 +399,9 @@ class SemRepRunner():
             in_lines
         ).encode("utf-8")
     )
+    # print(error.decode('utf-8'))
     xml_out = self._clean_xml_from_text(stdout.decode('utf-8'))
-    if semrep_proc.returncode != 0:
+    if semrep_proc.returncode != 0 or self._child_has_errors(error.decode('utf-8')):
       semrep_proc.terminate()  # terminate semrep immediately
       raise ChildProcessError(
           f"Semrep failed with code:{semrep_proc.returncode} and error:{error}"
@@ -420,6 +438,7 @@ class SemRepRunner():
 ################################################################################
 # Dask Utility Functions #######################################################
 ################################################################################
+
 
 def sentences_to_semrep_input(
     records: Iterable[Record],
@@ -644,7 +663,6 @@ def semrep_xml_to_records(xml_file: Union[IO[bytes], BytesIO]) -> List[Record]:
 
   # For each document. One document corresponds to one sentence
   for _, xml_doc in lxml.etree.iterparse(xml_file, tag="Document"):
-
     # document data
     semrepid2entity = {}
     predicates = []
@@ -696,29 +714,27 @@ def _sentence_partition_to_records(
     records: List[Record],
     unicode_to_ascii_jar_path: Path,
     input_path: Path,
-    output_path: Path,
     semrep_install_dir: Path,
     lexicon_year: int,
     mm_data_year: str,
     mm_data_version: str,
 ) -> List[Record]:
   input_path = Path(input_path)
-  output_path = Path(output_path)
+  # output_path = Path(output_path)
   # Convert Sentences for SemRep Input
   if not input_path.is_file():
     with open(input_path, 'w') as input_file:
       for line in sentences_to_semrep_input(records, unicode_to_ascii_jar_path):
         input_file.write(f"{line}\n")
   # Process text with SemRep
-  if not output_path.is_file():
-    records = SemRepRunner(
-        semrep_install_dir=semrep_install_dir,
-        metamap_server=dpg.get("semrep:metamap_server"),
-        lexicon_year=lexicon_year,
-        mm_data_year=mm_data_year,
-        mm_data_version=mm_data_version,
-    ).run(input_path)
-  # Return python records
+  # if not output_path.is_file():
+  records = SemRepRunner(
+      semrep_install_dir=semrep_install_dir,
+      metamap_server=dpg.get("semrep:metamap_server"),
+      lexicon_year=lexicon_year,
+      mm_data_year=mm_data_year,
+      mm_data_version=mm_data_version,
+  ).run(input_path)
   return records
 
 
@@ -757,12 +773,11 @@ def extract_entities_and_predicates_from_sentences(
   semrep_tasks = []
   for part_idx, partition in enumerate(sentence_records.to_delayed()):
     semrep_input_path = semrep_input_dir.joinpath(f"input_{part_idx}.txt")
-    semrep_output_path = semrep_output_dir.joinpath(f"ouput_{part_idx}.xml")
+    # semrep_output_path = semrep_output_dir.joinpath(f"ouput_{part_idx}.xml")
     semrep_tasks.append(dask.delayed(_sentence_partition_to_records)(
         records=partition,
         unicode_to_ascii_jar_path=unicode_to_ascii_jar_path,
         input_path=semrep_input_path,
-        output_path=semrep_output_path,
         semrep_install_dir=semrep_install_dir,
         lexicon_year=lexicon_year,
         mm_data_year=mm_data_year,

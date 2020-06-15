@@ -1,4 +1,4 @@
-68842|Carcinoma-associated blood group MN precursor antigens against which all humans possess antibodies. 
-71617|Pericardial effusions associated with minoxidil. 
-62567|Growth of the nasal bone in the rat. 
-90675|alpha 2 micro-Globulin in the rat. The regulation of the appearance of multiple forms in vivo and in primary cultures of adult hepatocytes. 
+s:68842:1:1|Carcinoma-associated blood group MN precursor antigens against which all humans possess antibodies. 
+s:71617:1:1|Pericardial effusions associated with minoxidil. 
+s:62567:1:1|Growth of the nasal bone in the rat. 
+s:90675:1:1|alpha 2 micro-Globulin in the rat. The regulation of the appearance of multiple forms in vivo and in primary cultures of adult hepatocytes. 

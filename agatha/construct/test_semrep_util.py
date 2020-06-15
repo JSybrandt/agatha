@@ -402,7 +402,26 @@ def test_extract_entitites_and_predicates_with_dask():
   ).compute()
   assert len(actual) == 2
 
-  
+
+def test_bad_sentence_isolated():
+  """
+  Run the semrep runner on the input 
+  text file to see if it correctly crashes
+  """
+  work_dir = Path("/tmp/test_semrep_fails_with_bad_sentence/input_files")
+  bad_input_path = work_dir.joinpath("input_0.txt")
+  with pytest.raises(ChildProcessError):
+    runner = semrep_util.SemRepRunner(
+        semrep_install_dir=SEMREP_INSTALL_DIR,
+        metamap_server=metamap_server,
+        lexicon_year=2020,
+        mm_data_year="2020AA",
+    )
+    records = runner.run(bad_input_path)
+    assert len(records) > 0
+
+
+
 
 def test_semrep_fails_with_bad_sentence():
   """
@@ -456,7 +475,7 @@ def test_semrep_fails_with_bad_sentence():
       "type": "abstract:raw",
     }]
   }], npartitions=1)
-  sentences = abstracts.map_partitions(text_util.split_sentences)
+  sentences = abstracts.map_partitions(text_util.split_sentences) 
   work_dir = Path("/tmp/test_semrep_fails_with_bad_sentence")
   work_dir.mkdir(exist_ok=True, parents=True)
   # Configure Metamap Server through DPG

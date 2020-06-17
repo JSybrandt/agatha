@@ -145,3 +145,6 @@ explore/
 
 # Temporary Test files
 temp_*.py
+
+debug_scripts/
+

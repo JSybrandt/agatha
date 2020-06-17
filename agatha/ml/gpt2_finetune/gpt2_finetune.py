@@ -3,10 +3,11 @@ from agatha.ml.module import AgathaModule
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Iterable, Optional
 from agatha.ml.util.sqlite3_dataset import Sqlite3ValueDataset
 from agatha.util.misc_util import Record
 from agatha.ml.util.lamb_optimizer import Lamb
+import numpy as np
 
 
 class Gpt2Finetune(AgathaModule):
@@ -17,16 +18,36 @@ class Gpt2Finetune(AgathaModule):
     if hasattr(hparams, "abstract_db"):
       self.configure_paths(abstract_db=hparams.abstract_db)
 
-    self.language_model = GPT2LMHeadModel.from_pretrained(
-        self.hparams.baseline_model
-    )
-    self.tokenizer = GPT2Tokenizer.from_pretrained(
-        self.hparams.baseline_model
-    )
+    self.language_model = None
+    self._set_lm_if_not_set()
     # Defaults
     self.training_abstracts = None
     self.validation_abstracts = None
     self._abstract_tokenizer_dataset = None
+
+  def _set_lm_if_not_set(self)->None:
+    """
+    The pretrained model contains _something_ that can't be serialized.  We
+    need to serialize this module a couple of times to setup distributed
+    training. So the strat is to only set the language_model at the last
+    possible second.
+    """
+    if self.language_model is None:
+      assert not self._training_started, \
+          "Attempting to reset language model after training started"
+      self.language_model = GPT2LMHeadModel.from_pretrained(
+          self.hparams.baseline_model
+      )
+
+  def __getstate__(self)->Dict[str, Any]:
+    self.language_model = None
+    state = self.__dict__.copy()
+    return state
+
+  def on_train_start(self):
+    self._set_lm_if_not_set()
+    super(AgathaModule, self).on_train_start()
+
 
   def configure_paths(
       self,
@@ -41,7 +62,7 @@ class Gpt2Finetune(AgathaModule):
         "Must call configure_paths before prepare_for_training"
     self._abstract_tokenizer_dataset = AbstractTokenizerDataset(
         abstracts=self.abstracts,
-        tokenizer=self.tokenizer,
+        tokenizer_name=self.hparams.baseline_model,
         max_length=self.hparams.max_length,
     )
     self.training_abstracts, self.validation_abstracts = (
@@ -56,7 +77,7 @@ class Gpt2Finetune(AgathaModule):
         self.training_abstracts,
         shuffle=True,
         batch_size=self.hparams.batch_size,
-        collate_fn=self._abstract_tokenizer_dataset.collate,
+        collate_fn=collate_token_batch,
     )
 
   def val_dataloader(self)->torch.utils.data.DataLoader:
@@ -65,7 +86,7 @@ class Gpt2Finetune(AgathaModule):
         self.validation_abstracts,
         shuffle=False,
         batch_size=self.hparams.batch_size,
-        collate_fn=self._abstract_tokenizer_dataset.collate,
+        collate_fn=collate_token_batch,
     )
 
   def forward(
@@ -81,7 +102,8 @@ class Gpt2Finetune(AgathaModule):
     Returns:
       (batch_size) X (seq_lenth) X (vocab_size)
     """
-    return self.language_model.forward(tokens, *args, **kwargs)
+    self._set_lm_if_not_set()
+    return self.language_model.forward(*args, **kwargs)
 
   def _step(
       self,
@@ -122,6 +144,7 @@ class Gpt2Finetune(AgathaModule):
 
   def configure_optimizers(self):
     self._vprint("Configuring optimizers")
+    self._set_lm_if_not_set()
     return Lamb(
         self.parameters(),
         lr=self.hparams.lr,
@@ -138,9 +161,62 @@ class Gpt2Finetune(AgathaModule):
     parser.add_argument("--weight-decay", type=float)
     return parser
 
+  def generate(self, initial_texts:List[str])->Iterable[List[str]]:
+    tokenizer = GPT2Tokenizer.from_pretrained(self.hparams.baseline_model)
+    token_batch = [
+        tokenizer.encode(t, add_special_tokens=True)
+        for t in initial_texts
+    ]
+    while True:
+      predictions = self.forward(
+          **collate_token_batch(
+            token_batch,
+            include_labels=False,
+            device=self.get_device(),
+          )
+      )[0].detach().cpu()
+      assert len(predictions) == len(token_batch)
+      assert len(predictions.shape) == 3
+      assert predictions.shape[1] == max(map(len,token_batch))
+      next_tokens = [
+          weighted_index_sample(
+            torch.exp(predictions[idx, len(toks)-1, :]),
+            omit_small_terms=True,
+          )
+          for idx, toks in enumerate(token_batch)
+      ]
+      yield [tokenizer.decode([t]) for t in next_tokens]
+      for t, toks in zip(next_tokens, token_batch):
+        toks.append(t)
 
 
 ## Helper Functions
+
+def weighted_index_sample(
+    weights:torch.FloatTensor,
+    omit_small_terms:bool=False,
+)->List[int]:
+  """
+  Performs weighted sample of weights. Returns index.
+  Args:
+    weights: len <vocab_size>
+    omit_small_terms: If words have a weighted probability less than
+     `1/len(weights)` they will not be considered.
+
+  Returns:
+    weighted sample index for each input in batch
+
+  """
+  assert len(weights.shape) == 1, \
+      "weights should be of size vocab_size"
+  probs = torch.softmax(weights, dim=0).detach().cpu().numpy()
+  idx_prob = enumerate(probs)
+  if omit_small_terms:
+    idx_prob = filter(lambda i_p: i_p[1] >= 1.0 / len(weights), idx_prob)
+  indices, probs = zip(*idx_prob)
+  probs = np.array(probs, dtype=np.float32)
+  probs /= probs.sum()
+  return int(np.random.choice(indices, p=probs))
 
 
 def abstract_record_to_string(abstract:Record)->str:
@@ -155,14 +231,25 @@ class AbstractTokenizerDataset(torch.utils.data.Dataset):
   def __init__(
       self,
       abstracts:torch.utils.data.Dataset,
-      tokenizer:GPT2Tokenizer,
+      tokenizer_name:str,
       max_length:int
   ):
+    self.tokenizer_name = tokenizer_name
     self.abstracts = abstracts
-    self.tokenizer = tokenizer
+    self.tokenizer = None
     self.max_length = max_length
 
+  def __getstate__(self):
+    "Don't serialize the keys."
+    tokenizer = self.tokenizer
+    self.tokenizer = None
+    state = self.__dict__.copy()
+    self.tokenizer= tokenizer
+    return state
+
   def __getitem__(self, idx:int)->List[int]:
+    if self.tokenizer is None:
+      self.tokenizer = GPT2Tokenizer.from_pretrained(self.tokenizer_name)
     return self.tokenizer.encode(
         text=abstract_record_to_string(self.abstracts[idx]),
         add_special_tokens=True,
@@ -172,16 +259,35 @@ class AbstractTokenizerDataset(torch.utils.data.Dataset):
   def __len__(self):
     return len(self.abstracts)
 
-  def collate(self, tokens:List[List[int]])->Dict[str, Any]:
-    input_ids = torch.nn.utils.rnn.pad_sequence(
+
+def collate_token_batch(
+    tokens:List[List[int]],
+    include_labels=True,
+    device:Optional[torch.device]=None
+)->Dict[str, Any]:
+  input_ids = torch.nn.utils.rnn.pad_sequence(
+      [torch.LongTensor(t) for t in tokens],
+      batch_first=True,
+      padding_value=0
+  )
+  if device is not None:
+    input_ids = input_ids.to(device)
+  if include_labels:
+    labels = torch.nn.utils.rnn.pad_sequence(
         [torch.LongTensor(t) for t in tokens],
         batch_first=True,
         padding_value=-100
     )
-    attention_mask = (input_ids != -1).float()
-    return dict(
-        input_ids=input_ids,
-        attention_mask=attention_mask,
-        labels=input_ids, # labels are shifted inside language model
-    )
+    if device is not None:
+      labels = labels.to(device)
+  else:
+    labels = None
+  attention_mask = (input_ids != -1).float()
+  return dict(
+      input_ids=input_ids,
+      attention_mask=attention_mask,
+      labels=labels, # labels are shifted inside language model
+  )
+
+
 

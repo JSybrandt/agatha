@@ -20,7 +20,11 @@ VAL_FRAC=0.2
 
 # DISTRIBUTED
 if [[ $DISTRIBUTED != "0" ]]; then
-  NODEFILE=/home/jsybran/.nodefile
+  if [[ -z "$PBS_NODEFILE" ]]; then
+    NODEFILE=/home/$USER/.nodefile
+  else
+    NODEFILE=$PBS_NODEFILE
+  fi
   NUM_NODES=$(wc -l < $NODEFILE)
 fi
 
@@ -28,8 +32,8 @@ fi
 CMD="""
 python3 -m agatha.ml.hypothesis_predictor                                     \
   --amp_level O1                                                              \
+  --dataloader-workers 2                                                      \
   --default_root_dir $MODEL_DIR                                               \
-  --dataloader-workers 3                                                      \
   --dim 512                                                                   \
   --distributed_backend $DIST_BACKEND                                         \
   --embedding-dir $RELEASE_DIR/embeddings/predicate_subset                    \
@@ -45,8 +49,7 @@ python3 -m agatha.ml.hypothesis_predictor                                     \
   --neighbor-sample-rate 15                                                   \
   --num_nodes $NUM_NODES                                                      \
   --num_sanity_val_steps 3                                                    \
-  --positives-per-batch 80                                                    \
-  --precision 16                                                              \
+  --positives-per-batch 40                                                    \
   --train_percent_check $FRAC_PER_EPOCH                                       \
   --transformer-dropout 0.1                                                   \
   --transformer-ff-dim 1024                                                   \
@@ -57,7 +60,6 @@ python3 -m agatha.ml.hypothesis_predictor                                     \
   --warmup-steps 100                                                          \
   --weight-decay 0.01                                                         \
   --weights_save_path $MODEL_DIR                                              \
-  --disable-cache \
   $VERBOSE_FLAG
 """
 

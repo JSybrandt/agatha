@@ -13,6 +13,7 @@ from pathlib import Path
 import os
 from agatha.ml.util import hparam_util
 
+
 class HypothesisPredictor(AgathaModule):
   def __init__(self, hparams:Namespace):
     super(HypothesisPredictor, self).__init__(hparams)
@@ -69,11 +70,12 @@ class HypothesisPredictor(AgathaModule):
     self.loss_fn = torch.nn.MarginRankingLoss(margin=self.hparams.margin)
 
     # Helper data, set by prepare_for_training
+    self.training_examples = None
     self.training_predicates = None
+    self.validation_examples = None
     self.validation_predicates = None
     self.predicates = None
     self.coded_terms = None
-    self.predicate_batch_generator = None
 
   def configure_paths(
       self,
@@ -100,6 +102,10 @@ class HypothesisPredictor(AgathaModule):
 
   def paths_set(self)->bool:
     return self.embeddings is not None and self.graph is not None
+
+  def _assert_configured(self)->None:
+    assert self.paths_set(), \
+      "You must call `model.configure_paths(...)` before running the model."
 
   def predict_from_terms(
       self,
@@ -144,7 +150,7 @@ class HypothesisPredictor(AgathaModule):
       indicate more plausible results. Output `i` corresponds to `terms[i]`.
 
     """
-    assert self.paths_set(), "Cannot predict before paths_set"
+    self._assert_configured()
     # This will formulate our input as PredicateEmbeddings examples.
     observation_generator = predicate_util.PredicateObservationGenerator(
         graph=self.graph,
@@ -186,7 +192,7 @@ class HypothesisPredictor(AgathaModule):
       include_embeddings: If set, load all embedding files up front.
 
     """
-    assert self.paths_set(), "Must call configure_paths before preload."
+    self._assert_configured()
     if not self.is_preloaded():
       self.graph.preload()
       if include_embeddings:
@@ -202,8 +208,7 @@ class HypothesisPredictor(AgathaModule):
     )
 
   def prepare_for_training(self)->None:
-    assert self.paths_set(), \
-        "Must call configure_paths before prepare_for_training"
+    self._assert_configured()
     entities = self.embeddings.keys()
     assert len(entities) > 0, "Failed to find embedding entities."
     self.coded_terms = list(filter(is_umls_term_type, entities))
@@ -213,39 +218,53 @@ class HypothesisPredictor(AgathaModule):
     ))
     self.training_predicates, self.validation_predicates = \
         self.training_validation_split(self.predicates)
-    self._vprint("Preparing Batch Generator")
-    self.predicate_batch_generator = predicate_util.PredicateBatchGenerator(
-        graph=self.graph,
+    self.training_examples = predicate_util.PredicateExampleDataset(
+        predicate_ds=self.training_predicates,
+        all_predicates=self.predicates,
         embeddings=self.embeddings,
-        predicates=self.predicates,
+        graph=self.graph,
         coded_terms=self.coded_terms,
         neighbor_sample_rate=self.hparams.neighbor_sample_rate,
         negative_swap_rate=self.hparams.negative_swap_rate,
         negative_scramble_rate=self.hparams.negative_scramble_rate,
+        preload_on_first_call=not self.hparams.disable_cache,
+    )
+    self.validation_examples = predicate_util.PredicateExampleDataset(
+        predicate_ds=self.validation_predicates,
+        all_predicates=self.predicates,
+        embeddings=self.embeddings,
+        graph=self.graph,
+        coded_terms=self.coded_terms,
+        neighbor_sample_rate=self.hparams.neighbor_sample_rate,
+        negative_swap_rate=self.hparams.negative_swap_rate,
+        negative_scramble_rate=self.hparams.negative_scramble_rate,
+        preload_on_first_call=not self.hparams.disable_cache,
     )
     self._vprint("Ready for training!")
 
   def train_dataloader(self)->torch.utils.data.DataLoader:
     self._vprint("Getting Training Dataloader")
     return self._configure_dataloader(
-        self.training_predicates,
+        self.training_examples,
         shuffle=True,
         batch_size=self.hparams.positives_per_batch,
+        collate_fn=predicate_util.collate_predicate_training_examples,
     )
 
   def val_dataloader(self)->torch.utils.data.DataLoader:
     self._vprint("Getting Validation Dataloader")
     return self._configure_dataloader(
-        self.validation_predicates,
+        self.validation_examples,
         shuffle=False,
         batch_size=self.hparams.positives_per_batch,
+        collate_fn=predicate_util.collate_predicate_training_examples,
     )
 
   def forward(self, predicate_embeddings:torch.FloatTensor)->torch.FloatTensor:
     # Size <seq_len> X <batch_size> X <dim>
     local_stacked_emb = self.embedding_transformation(predicate_embeddings)
     local_stacked_emb = torch.relu(local_stacked_emb)
-    if self.hparams.simple:
+    if hasattr(self.hparams, "simple") and self.hparams.simple:
       # Reorder to <batch_size> X <seq_len> X <dim>
       # Flatten to <batch_size> X <dim*seq_len> (in this case seq_len=2)
       logit = self.simple_linear(local_stacked_emb.permute(1, 0, 2).flatten(1))
@@ -258,7 +277,10 @@ class HypothesisPredictor(AgathaModule):
 
   def _step(
       self,
-      positive_predicates:List[str]
+      positive_predicates:List[str],
+      positive_observations:torch.FloatTensor,
+      negative_predicates_list:List[List[str]],
+      negative_observations_list:List[torch.FloatTensor],
   )->Tuple[torch.Tensor, Dict[str, Any]]:
     """ Performs a forward pass of the model during training.
 
@@ -269,41 +291,69 @@ class HypothesisPredictor(AgathaModule):
     between the two.
 
     Args:
-      positive_predicates: A list of predicate names, each in the form,
-        p:subj:verb:obj
+      positive_predicates: List of string names associated with positive batch
+      positive_observations: Packed tensor containing info corresponding to
+        positive_predicates. Shape: <seq_len> X <batch_size> X <dim>
+      negative_predicates_list: List of predicate lists.
+        negative_predicates_list[i] corresponds to the i'th negative sample
+        batch. Each batch should be the same size as the positive batch.
+      negative_observations_list: List of packed tensors.
+        negative_observations_list[i] corresponds to the i'th negative sample.
 
     Returns:
       The first element is the loss tensor, used for back propagation. The
       second element is a dict containing all extra metrics.
 
     """
-    pos, negs = self.predicate_batch_generator.generate(positive_predicates)
-    positive_predictions = self.forward(
-        predicate_util
-        .collate_predicate_embeddings(pos)
-        .to(self.get_device())
-    )
+    # Do positive checks
+    assert isinstance(positive_observations, torch.Tensor), \
+      f"Err: positive_observations is {type(positive_observations)}"
+    assert len(positive_observations.shape) == 3
+    _, actual_batch_size, actual_dim = positive_observations.shape
+    assert len(positive_predicates) == actual_batch_size
+    assert self.hparams.positives_per_batch == actual_batch_size
+    assert self.hparams.dim == actual_dim
+
+    # no negative checks
+    assert len(negative_predicates_list) == len(negative_observations_list)
+    for n_preds, n_obs in zip(negative_predicates_list, negative_observations_list):
+      assert isinstance(n_obs, torch.Tensor)
+      assert len(n_obs.shape) == 3
+      _, actual_batch_size, actual_dim = n_obs.shape
+      assert len(n_preds) == actual_batch_size
+      assert self.hparams.positives_per_batch == actual_batch_size
+      assert self.hparams.dim == actual_dim
+
+    positive_predictions = self.forward(positive_observations)
+    # We cannot tolerate an error on a positive sample
+    # An error occurs if any positive prediction is _not_ finite
+    # Note that `~` is bitwise "not" for our boolean matrix
+    if torch.any(~torch.isfinite(positive_predictions.detach().cpu())):
+      print(positive_predicates)
+      raise ValueError("Invalid positive sample")
+
     partial_losses = []
-    for neg in negs:
-      negative_predictions = self.forward(
-          predicate_util
-          .collate_predicate_embeddings(neg)
-          .to(self.get_device())
-      )
-      part_loss = self.loss_fn(
-          positive_predictions,
-          negative_predictions,
-          positive_predictions.new_ones(len(positive_predictions))
-      )
-      # If something has gone terrible
-      if torch.isnan(part_loss) or torch.isinf(part_loss):
-        print("ERROR: Loss is:\n", part_loss)
-        print("Positive Predicates:\n", positive_predicates)
-        print("Positive Scores:\n", positive_predictions)
-        print("Negative Scores:\n", negative_predictions)
-        raise Exception("Invalid loss")
+    for negative_predicates, negative_observations in zip(
+        negative_predicates_list, negative_observations_list
+    ):
+      negative_predictions = self.forward(negative_observations)
+      # We CAN tolerate an error on a negative sample
+      if torch.any(~torch.isfinite(negative_predictions.detach().cpu())):
+        # print debug info
+        print("ERROR: Encountered an issue with a negative predicate:")
+        print("Negative Predicate Scores:")
+        print(negative_predictions)
+        print("Negative Predicates")
+        print(negative_predicates)
       else:
-        partial_losses.append(part_loss)
+        partial_losses.append(
+            self.loss_fn(
+              positive_predictions,
+              negative_predictions,
+              positive_predictions.new_ones(len(positive_predictions))
+            )
+        )
+    assert len(partial_losses) > 0, "Failure occurred on all negative batches."
     # End of batch
     loss=torch.mean(torch.stack(partial_losses))
     return (
@@ -314,10 +364,14 @@ class HypothesisPredictor(AgathaModule):
 
   def training_step(
       self,
-      positive_predictions:List[str],
+      inputs:Dict[str, Any],
       batch_idx:int
   )->Dict[str, Any]:
-    loss, metrics = self._step(positive_predictions)
+    """
+    The input to this function is the output of
+    collate_predicate_training_examples
+    """
+    loss, metrics = self._step(**inputs)
     return dict(
         loss=loss,
         progress_bar=metrics,
@@ -326,10 +380,14 @@ class HypothesisPredictor(AgathaModule):
 
   def validation_step(
       self,
-      positive_predictions:List[str],
+      inputs:Dict[str, Any],
       batch_idx:int
   )->Dict[str, Any]:
-    loss, metrics = self._step(positive_predictions)
+    """
+    The input to this function is the output of
+    collate_predicate_training_examples
+    """
+    loss, metrics = self._step(**inputs)
     val_metrics = {f"val_{k}": v for k, v in metrics.items()}
     val_metrics["val_loss"] = loss
     return val_metrics

@@ -24,6 +24,9 @@ class AgathaModule(pl.LightningModule):
     # Set when init_process_group is called
     self._distributed = False
 
+    # Set when training started
+    self._training_started = False
+
   def set_verbose(self, val:bool)->None:
     self.hparams.verbose = val
 
@@ -62,8 +65,8 @@ class AgathaModule(pl.LightningModule):
         print("MASTER_PORT environment variable is not defined. Set as 12910")
         os.environ['MASTER_PORT'] = '12910'
 
-    # Reverting to GLOO until nccl upgrades in pytorch are complete
     #torch_backend = "nccl" if self.trainer.on_gpu else "gloo"
+    # Reverting to GLOO until nccl upgrades in pytorch are complete
     torch_backend = "gloo"
 
     self._vprint(
@@ -81,6 +84,7 @@ class AgathaModule(pl.LightningModule):
   def on_train_start(self):
     pl.LightningModule.on_train_start(self)
     self._vprint("Training started")
+    self._training_started = True
 
   def get_device(self):
     return next(self.parameters()).device

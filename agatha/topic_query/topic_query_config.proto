@@ -37,8 +37,12 @@ message TopicQueryConfig {
   // higher value indicates a more accurate shortest path, at a longer runtime.
   optional int32 max_degree = 10 [default=1000];
 
-  //If set, we will not preload the graph
+  // If set, we will not preload the graph
   optional bool preload_graph_db = 11 [default=false];
+
+  // If set, we will load the specified hypothesis_predictor and use it to
+  // generate `metrics["agatha_ranking_criteria"]` in the output.
+  optional HypothesisPredictorConfig hypothesis_predictor = 12;
 }
 
 
@@ -67,4 +71,23 @@ message LdaConfig {
 message ShortestPathConfig {
   // Number of nodes to download at a time.
   optional int32 node_batch = 1 [default=10];
+}
+
+// Specifies what HypothesisPredictor model to load to accompany the result.
+message HypothesisPredictorConfig {
+  // Path to the `model.pt` file containing the pretrained pytorch model.
+  // Model should be of type: agatha.ml.hypothesis_predictor.HypothesisPredictor
+  optional string model_path = 1;
+  // Path to the `graph.sqlite3` or `predicate_graph.sqlite3` database.
+  // This typically comes along with an Agatha pretrained model.
+  // If not set, we will default to the graph_db of the parent object.
+  optional string graph_db = 2;
+  // Path to the `entities.sqlite3` or `predicate_entitites.sqlite3` database.
+  // This typically comes along with an Agatha pretrained model.
+  optional string entity_db = 3;
+  // Path to the `embeddings` or `predicate_embeddings` directory that contains
+  // files in the form of: `embeddings_<type>_<part>.<version>.h5`
+  // This typically comes along with an Agatha pretrained model.
+  optional string embedding_dir = 4;
+
 }

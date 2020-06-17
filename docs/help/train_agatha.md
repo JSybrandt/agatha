@@ -498,7 +498,18 @@ from agatha.ml.hypothesis_predictor import HypothesisPredictor
 model = HypothesisPredictor.load_from_checkpoint("...")
 # - OR -
 import torch
-torch.load("...")
+model = torch.load("...")
+
+# Configure auxilary data paths
+model.configure_paths(
+  embedding_dir="/path/to/embeddings",
+  entity_db="/path/to/entities.sqlite3",
+  graph_db="/path/to/graph.sqlite3",
+)
+
+# Optional, if you're going to do a lot of queries.
+model = model.eval()
+model.preload()
 
 # C0006826 is the term for Tobacco
 # C0040329 is the term for Cancer

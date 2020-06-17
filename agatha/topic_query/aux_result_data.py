@@ -13,35 +13,55 @@ from itertools import combinations
 from agatha.util.sqlite3_lookup import Sqlite3Graph, Sqlite3Bow
 from collections import defaultdict
 from agatha.util.entity_types import is_sentence_type
+import itertools
 
+
+def _graph_bfs_iterator(start_key:str, graph_db:Sqlite3Graph)->Iterable[str]:
+  """
+  Iterates graph keys, starting with `start_key` and going outwards in a bfs
+  manner
+  """
+  queue = [start_key]
+  visited = {start_key}
+  while len(queue) > 0:
+    current_key = queue.pop()
+    yield current_key
+    for neigh in graph_db[current_key]:
+      if neigh not in visited:
+        queue.append(neigh)
+        visited.add(neigh)
 
 def estimate_plaintext_from_graph_key(
   graph_key:str,
   graph_db:Sqlite3Graph,
   bow_db:Sqlite3Bow,
-  max_checks:Optional[int]=100,
-)->str:
+  num_sent_to_check:int=100,
+)->Optional[str]:
   """
   Given a graph key, get the most likely plaintext word associated with it.
   For instance, given "l:noun:cancer" or "m:d009369" we should get something
   like "cancer"
-
-  If `max_checks` is set to `None`, we will check every sentence associated
-  with the graph_key, however, we often only need to check a sample.
   """
 
   word2count = defaultdict(int)
 
   # Select a subset of sentences to lookup
-  sentences_to_check = [graph_key] + graph_db[graph_key]
-  sentences_to_check = list(filter(is_sentence_type, sentences_to_check))
-  if max_checks is not None:
-    sentences_to_check = sentences_to_check[:max_checks]
+  sentences_to_check = itertools.islice(
+      filter(
+        is_sentence_type,
+        _graph_bfs_iterator(
+          graph_key,
+          graph_db
+        )
+      ),
+      num_sent_to_check
+  )
 
   for neighbor in sentences_to_check:
     if neighbor in bow_db:
       for word in bow_db[neighbor]:
         word2count[word] += 1
+
   max_count = None
   res = None
   for word, count in word2count.items():
@@ -94,6 +114,8 @@ def add_topical_network(
       graph_db=graph_db,
       bow_db=bow_db,
   )
+  assert source_word is not None, \
+      f"Failed to find plaintext entry for {result.source}"
   source_word_idx = dictionary.token2id[source_word]
   source_graph_idx = -1
   source_vec = np.zeros(vocab_size)
@@ -104,6 +126,8 @@ def add_topical_network(
       graph_db=graph_db,
       bow_db=bow_db,
   )
+  assert target_word is not None, \
+      f"Failed to find plaintext entry for {result.target}"
   target_word_idx = dictionary.token2id[target_word]
   target_graph_idx = -2
   target_vec = np.zeros(vocab_size)
@@ -127,5 +151,3 @@ def add_topical_network(
   # Set all edges:
   for i, j, sim in _all_pairs_jaccard_comparisions(graph_idx2vec):
     result.topical_network.nodes[i].neighbors[j] = sim
-
-

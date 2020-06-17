@@ -98,12 +98,16 @@ def test_run_semrep():
       lexicon_year=2020,
       mm_data_year="2020AA",
   )
-  output_file = Path("/tmp/test_run_semrep.xml")
-  if output_file.is_file():
-    output_file.unlink()
-  assert not output_file.exists()
-  runner.run(TEST_DATA_PATH, output_file)
-  assert output_file.is_file()
+  # output_file = Path("/tmp/test_run_semrep.xml")
+  # if output_file.is_file():
+  #   output_file.unlink()
+  # assert not output_file.exists()
+  records = runner.run(TEST_DATA_PATH)
+  # assert output_file.is_file()
+  assert len(records) > 0
+
+
+
 
 def test_run_semrep_covid():
   runner = semrep_util.SemRepRunner(
@@ -112,12 +116,13 @@ def test_run_semrep_covid():
       lexicon_year=2020,
       mm_data_year="2020AA",
   )
-  output_file = Path("/tmp/test_run_semrep_covid.xml")
-  if output_file.is_file():
-    output_file.unlink()
-  assert not output_file.exists()
-  runner.run(TEST_COVID_DATA_PATH, output_file)
-  assert output_file.is_file()
+  # output_file = Path("/tmp/test_run_semrep_covid.xml")
+  # if output_file.is_file():
+  #   output_file.unlink()
+  # assert not output_file.exists()
+  records = runner.run(TEST_COVID_DATA_PATH)
+  # assert output_file.is_file()
+  assert len(records) > 0
 
 def test_sentence_to_semrep_input():
   # We can run this test if SemRep is not installed
@@ -173,8 +178,9 @@ def test_sentence_to_semrep_input_filter_single_quote():
 
 def test_semrep_xml_to_records():
   "Ensures that parsing xml files happens without error"
-  predicates = semrep_util.semrep_xml_to_records(TEST_COVID_XML_PATH)
-  assert len(predicates) > 0
+  with open(TEST_COVID_XML_PATH, 'rb') as xml_file:
+    predicates = semrep_util.semrep_xml_to_records(xml_file)
+    assert len(predicates) > 0
 
 def test_semrep_id_to_agatha_sentence_id():
   expected = "s:12345:1:12"
@@ -310,11 +316,9 @@ def test_parse_semrep_end_to_end():
       },
   ]
   tmp_semrep_input = Path("/tmp/test_parse_semrep_end_to_end_input")
-  tmp_semrep_output = Path("/tmp/test_parse_semrep_end_to_end_output")
   if tmp_semrep_input.is_file():
     tmp_semrep_input.unlink()
-  if tmp_semrep_output.is_file():
-    tmp_semrep_output.unlink()
+  
   with open(tmp_semrep_input, 'w') as semrep_input_file:
     for line in semrep_util.sentences_to_semrep_input(
         records,
@@ -327,10 +331,8 @@ def test_parse_semrep_end_to_end():
       lexicon_year=2020,
       mm_data_year="2020AA",
   )
-  runner.run(tmp_semrep_input, tmp_semrep_output)
-  assert tmp_semrep_output.is_file()
-  # should return one per document
-  records = semrep_util.semrep_xml_to_records(tmp_semrep_output)
+  records = runner.run(tmp_semrep_input)
+  print(records)
   assert len(records) == 2
 
 def test_parse_semrep_end_to_end_difficult():
@@ -348,12 +350,9 @@ def test_parse_semrep_end_to_end_difficult():
 
   tmp_semrep_input = \
       Path("/tmp/test_parse_semrep_end_to_end_difficult_input")
-  tmp_semrep_output = \
-      Path("/tmp/test_parse_semrep_end_to_end_difficult_output")
   if tmp_semrep_input.is_file():
     tmp_semrep_input.unlink()
-  if tmp_semrep_output.is_file():
-    tmp_semrep_output.unlink()
+  
 
   with open(tmp_semrep_input, 'w') as semrep_input_file:
     for line in semrep_util.sentences_to_semrep_input(
@@ -369,13 +368,9 @@ def test_parse_semrep_end_to_end_difficult():
       mm_data_year="2020AA",
       mm_data_version="20_utf8",
   )
-  runner.run(tmp_semrep_input, tmp_semrep_output)
-  assert tmp_semrep_output.is_file()
-  # should return one per document
-  records = semrep_util.semrep_xml_to_records(
-      tmp_semrep_output
-  )
+  records = runner.run(tmp_semrep_input)
   assert len(records) == 1
+
 
 def test_extract_entitites_and_predicates_with_dask():
   records = dbag.from_sequence([
@@ -406,6 +401,27 @@ def test_extract_entitites_and_predicates_with_dask():
       mm_data_version="20_utf8",
   ).compute()
   assert len(actual) == 2
+
+
+def test_bad_sentence_isolated():
+  """
+  Run the semrep runner on the input 
+  text file to see if it correctly crashes
+  """
+  work_dir = Path("/tmp/test_semrep_fails_with_bad_sentence/input_files")
+  bad_input_path = work_dir.joinpath("input_0.txt")
+  with pytest.raises(ChildProcessError):
+    runner = semrep_util.SemRepRunner(
+        semrep_install_dir=SEMREP_INSTALL_DIR,
+        metamap_server=metamap_server,
+        lexicon_year=2020,
+        mm_data_year="2020AA",
+    )
+    records = runner.run(bad_input_path)
+    assert len(records) > 0
+
+
+
 
 def test_semrep_fails_with_bad_sentence():
   """
@@ -459,7 +475,7 @@ def test_semrep_fails_with_bad_sentence():
       "type": "abstract:raw",
     }]
   }], npartitions=1)
-  sentences = abstracts.map_partitions(text_util.split_sentences)
+  sentences = abstracts.map_partitions(text_util.split_sentences) 
   work_dir = Path("/tmp/test_semrep_fails_with_bad_sentence")
   work_dir.mkdir(exist_ok=True, parents=True)
   # Configure Metamap Server through DPG
